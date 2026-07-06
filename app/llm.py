@@ -25,6 +25,41 @@ def build_id_inference_prompt(filenames: List[str]) -> Tuple[str, str]:
     return system, user
 
 
+COLUMN_IDENTIFICATION_TEMPLATE = """请分析以下临床数据表格，识别 ID 列、二分类标签列和临床特征列。
+返回纯 JSON：{{"id_col": "...", "label_col": "...", "feature_cols": ["..."], "reasoning": "..."}}
+
+表格信息：
+- 行数: {n_rows}
+- 列数: {n_columns}
+- 任务描述: {task_hint}
+
+列详情：
+{columns}
+"""
+
+
+def _format_columns(columns: List[Dict]) -> str:
+    lines = ["| 列名 | 类型 | 非空数 | 缺失率 | 唯一值 | 示例 |"]
+    for c in columns:
+        lines.append(f"| {c['column_name']} | {c['dtype']} | {c['non_null']} | {c['missing_rate']} | {c['n_unique']} | {c['samples']} |")
+    return "\n".join(lines)
+
+
+def build_column_identification_prompt(context: Dict[str, Any]) -> Tuple[str, str]:
+    system = (
+        "You are a clinical data analyst for radiomics research. "
+        "Return ONLY a JSON object with keys: id_col, label_col, feature_cols, reasoning. "
+        "Label_col must be a binary 0/1 outcome. feature_cols must not include id_col or label_col."
+    )
+    user = COLUMN_IDENTIFICATION_TEMPLATE.format(
+        n_rows=context["n_rows"],
+        n_columns=context["n_columns"],
+        task_hint=context["task_hint"],
+        columns=_format_columns(context["columns"]),
+    )
+    return system, user
+
+
 class LLMClient:
     def __init__(
         self,
