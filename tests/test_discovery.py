@@ -34,6 +34,19 @@ def test_false_positive_tumor_volume_is_image(tmp_path):
     assert result["pairs"][0]["mask_path"] == str(tmp_path / "P001_mask.nii.gz")
 
 
+def test_mask_with_modality_suffix_is_classified(tmp_path):
+    (tmp_path / "P001_T1.nii.gz").write_text("")
+    (tmp_path / "P001_mask_T1.nii.gz").write_text("")
+
+    agent = DiscoveryAgent()
+    result = agent.run(str(tmp_path))
+
+    assert result["success"] is True
+    assert len(result["pairs"]) == 1
+    assert result["pairs"][0]["image_path"] == str(tmp_path / "P001_T1.nii.gz")
+    assert result["pairs"][0]["mask_path"] == str(tmp_path / "P001_mask_T1.nii.gz")
+
+
 def test_hidden_directories_are_skipped(tmp_path):
     visible = tmp_path / "visible"
     visible.mkdir()

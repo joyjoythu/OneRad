@@ -19,7 +19,7 @@ _MASK_KEYWORDS_PATTERN = "|".join(re.escape(kw) for kw in sorted(MASK_KEYWORDS, 
 
 # Collect modality tokens for the mask+modality suffix heuristic.
 _MODALITY_TOKENS = sorted(
-    {kw.upper() for keywords in MODALITY_KEYWORDS.values() for kw in keywords},
+    {kw.lower() for keywords in MODALITY_KEYWORDS.values() for kw in keywords},
     key=len,
     reverse=True,
 )
