@@ -45,13 +45,37 @@ def get_next_stage(current: PipelineStage) -> Optional[PipelineStage]:
 
 
 def merge_data(state: Dict[str, Any]) -> Dict[str, Any]:
-    feature_df = state["feature"]["feature_df"]
-    matched_df = state["matching"]["matched_df"]
+    """Merge radiomic feature matrix with the matched clinical table.
+
+    Expected ``state`` shape::
+
+        {
+            "feature": {"feature_df": pd.DataFrame indexed by patient_id, ...},
+            "matching": {"matched_df": pd.DataFrame with a "patient_id" column, ...},
+        }
+
+    Returns a dict with keys ``success``, ``message``, ``df`` (the merged
+    DataFrame or ``None``), ``n_samples`` and ``n_features``. On error the
+    result reports ``success=False`` and leaves ``df`` as ``None``.
+    """
+    feature_bucket = state.get("feature")
+    matching_bucket = state.get("matching")
+    if not isinstance(feature_bucket, dict):
+        return {"success": False, "message": "特征矩阵为空", "df": None, "n_samples": 0, "n_features": 0}
+    if not isinstance(matching_bucket, dict):
+        return {"success": False, "message": "匹配表格为空", "df": None, "n_samples": 0, "n_features": 0}
+
+    feature_df = feature_bucket.get("feature_df")
+    matched_df = matching_bucket.get("matched_df")
 
     if feature_df is None or feature_df.empty:
         return {"success": False, "message": "特征矩阵为空", "df": None, "n_samples": 0, "n_features": 0}
     if matched_df is None or matched_df.empty:
         return {"success": False, "message": "匹配表格为空", "df": None, "n_samples": 0, "n_features": 0}
+
+    overlap = set(feature_df.columns) & (set(matched_df.columns) - {"patient_id"})
+    if overlap:
+        return {"success": False, "message": f"特征列与临床表列名冲突: {overlap}", "df": None, "n_samples": 0, "n_features": 0}
 
     merged = matched_df.set_index("patient_id").join(feature_df, how="inner")
     merged = merged.reset_index()

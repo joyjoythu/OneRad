@@ -215,3 +215,78 @@ def test_merge_data():
     assert result["n_samples"] == 2
     assert "f1" in result["df"].columns
     assert "Label" in result["df"].columns
+
+
+def test_merge_data_empty_feature_df():
+    orch = Orchestrator(image_dir="./data", clinical_path="./data/clinical.csv")
+    orch.state["feature"] = {"feature_df": pd.DataFrame()}
+    orch.state["matching"] = {
+        "matched_df": pd.DataFrame({"patient_id": ["P001"], "Label": [0]})
+    }
+    result = merge_data(orch.state)
+    assert result["success"] is False
+    assert "特征矩阵为空" in result["message"]
+
+
+def test_merge_data_empty_matched_df():
+    orch = Orchestrator(image_dir="./data", clinical_path="./data/clinical.csv")
+    orch.state["feature"] = {
+        "feature_df": pd.DataFrame({"f1": [1.0]}, index=["P001"])
+    }
+    orch.state["matching"] = {"matched_df": pd.DataFrame()}
+    result = merge_data(orch.state)
+    assert result["success"] is False
+    assert "匹配表格为空" in result["message"]
+
+
+def test_merge_data_mismatched_patient_ids():
+    orch = Orchestrator(image_dir="./data", clinical_path="./data/clinical.csv")
+    orch.state["feature"] = {
+        "feature_df": pd.DataFrame({"f1": [1.0, 2.0]}, index=["P001", "P002"])
+    }
+    orch.state["matching"] = {
+        "matched_df": pd.DataFrame({"patient_id": ["P003", "P004"], "Label": [0, 1]})
+    }
+    result = merge_data(orch.state)
+    assert result["success"] is True
+    assert result["n_samples"] == 0
+
+
+def test_merge_data_missing_feature_state():
+    state = {
+        "matching": {
+            "matched_df": pd.DataFrame({"patient_id": ["P001"], "Label": [0]})
+        }
+    }
+    result = merge_data(state)
+    assert result["success"] is False
+    assert "特征矩阵为空" in result["message"]
+
+
+def test_merge_data_missing_matching_state():
+    state = {
+        "feature": {
+            "feature_df": pd.DataFrame({"f1": [1.0]}, index=["P001"])
+        }
+    }
+    result = merge_data(state)
+    assert result["success"] is False
+    assert "匹配表格为空" in result["message"]
+
+
+def test_merge_data_overlapping_columns():
+    orch = Orchestrator(image_dir="./data", clinical_path="./data/clinical.csv")
+    orch.state["feature"] = {
+        "feature_df": pd.DataFrame({"f1": [1.0, 2.0]}, index=["P001", "P002"])
+    }
+    orch.state["matching"] = {
+        "matched_df": pd.DataFrame({
+            "patient_id": ["P001", "P002"],
+            "f1": [10.0, 20.0],
+            "Label": [0, 1],
+        })
+    }
+    result = merge_data(orch.state)
+    assert result["success"] is False
+    assert "特征列与临床表列名冲突" in result["message"]
+    assert "f1" in result["message"]
