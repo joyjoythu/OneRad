@@ -1,3 +1,4 @@
+import traceback
 from enum import Enum, auto
 from typing import Dict, Any, Optional, Callable, List, Tuple, Generator
 
@@ -56,6 +57,7 @@ class Orchestrator:
         covariates: Optional[List[str]] = None,
         n_jobs: int = -1,
         target_spacing: Optional[Tuple[float, float, float]] = None,
+        min_samples: int = 30,
         yaml_path: str = "./DONGGUAN_NEW_Radiomic/Params_labels_qian.yaml",
         api_key: Optional[str] = None,
         base_url: str = "https://api.deepseek.com/v1",
@@ -74,6 +76,7 @@ class Orchestrator:
                 "skip_stages": [],
                 "n_jobs": n_jobs,
                 "target_spacing": target_spacing,
+                "min_samples": min_samples,
                 "yaml_path": yaml_path,
                 "llm": {
                     "api_key": api_key,
@@ -113,7 +116,7 @@ class Orchestrator:
         if self._sse_emitter:
             self._sse_emitter(event)
 
-    def _make_event(self, event_type: str, message: str, payload: Optional[Dict] = None) -> Dict:
+    def _make_event(self, event_type: str, message: str, payload: Optional[Dict] = None) -> Dict[str, Any]:
         """Build a standard event payload for SSE delivery."""
         return {
             "type": event_type,
@@ -181,8 +184,9 @@ class Orchestrator:
         try:
             if stage == PipelineStage.ANALYSIS:
                 n = self._get_merged_sample_count()
-                if n < 30:
-                    return False, f"有效样本量不足: 仅 {n} 例，要求 ≥ 30"
+                min_samples = self.state["config"].get("min_samples", 30)
+                if n < min_samples:
+                    return False, f"有效样本量不足: 仅 {n} 例，要求 ≥ {min_samples}"
 
             result = handler(self.state)
             if not isinstance(result, dict) or "success" not in result:
@@ -201,7 +205,6 @@ class Orchestrator:
             ))
             return True, ""
         except Exception as e:
-            import traceback
             tb = traceback.format_exc()
             return False, f"{stage.name} 阶段异常: {e}\n{tb}"
 
@@ -210,9 +213,19 @@ class Orchestrator:
         if merged and isinstance(merged, dict):
             return merged.get("n_samples", 0)
         qc_passed = self.state.get("qc", {}).get("passed_pairs", [])
+        if not isinstance(qc_passed, list):
+            qc_passed = []
         matched_ids = self.state.get("matching", {}).get("matched_ids", [])
-        qc_ids = {p["patient_id"] for p in qc_passed}
-        return len(set(matched_ids) & qc_ids)
+        if not isinstance(matched_ids, list):
+            matched_ids = []
+        qc_ids = set()
+        for p in qc_passed:
+            if isinstance(p, dict):
+                patient_id = p.get("patient_id")
+                if patient_id is not None:
+                    qc_ids.add(patient_id)
+        matched_id_set = {str(m) for m in matched_ids}
+        return len(matched_id_set & qc_ids)
 
     def resume(self, user_decision: str) -> Generator[Dict[str, Any], None, Dict[str, Any]]:
         if self.state["stage"] != PipelineStage.INTERRUPTED:
@@ -229,7 +242,9 @@ class Orchestrator:
 
         if user_decision == "skip":
             if interrupted_stage:
-                self.state["config"]["skip_stages"].append(interrupted_stage.name)
+                skip_stages = self.state["config"]["skip_stages"]
+                if interrupted_stage.name not in skip_stages:
+                    skip_stages.append(interrupted_stage.name)
             next_stage = get_next_stage(interrupted_stage) if interrupted_stage else None
             if next_stage is None:
                 self.state["stage"] = PipelineStage.COMPLETED
@@ -238,6 +253,9 @@ class Orchestrator:
             return (yield from self._continue_from(next_stage))
 
         if user_decision == "retry":
+            if interrupted_stage is None:
+                yield self._yield_event(self._make_event("error", "无法重试：未记录中断阶段"))
+                return self.state
             return (yield from self._continue_from(interrupted_stage))
 
         yield self._yield_event(self._make_event("error", f"未知决策: {user_decision}"))
