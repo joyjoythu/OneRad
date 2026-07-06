@@ -73,6 +73,10 @@ def test_qc_spacing_mismatch_resamples_mask(tmp_path):
     # Mask was geometrically realigned, so the run is considered resampled.
     assert result["resampled"] is True
 
+    single = agent._check_single(pair)
+    assert single["shape"] == (10, 10, 10)
+    assert single["resampled_shape"] == (10, 10, 10)
+
 
 def test_qc_origin_direction_mismatch_resamples_mask(tmp_path):
     img_arr = np.random.randint(0, 100, (10, 10, 10)).astype(np.int16)
@@ -89,6 +93,10 @@ def test_qc_origin_direction_mismatch_resamples_mask(tmp_path):
     assert result["passed"] == 1
     assert result["failed"] == 0
     assert result["resampled"] is True
+
+    single = agent._check_single(pair)
+    assert single["shape"] == (10, 10, 10)
+    assert single["resampled_shape"] == (10, 10, 10)
 
 
 def test_qc_target_spacing_resampling_and_file_output(tmp_path):
@@ -114,6 +122,7 @@ def test_qc_target_spacing_resampling_and_file_output(tmp_path):
     resampled = sitk.ReadImage(str(expected_img))
     assert np.allclose(resampled.GetSpacing(), (2.0, 2.0, 2.0))
     single = agent._check_single(pair)
+    assert single["shape"] == resampled.GetSize()
     assert single["resampled_shape"] == resampled.GetSize()
 
 
@@ -143,7 +152,8 @@ def test_qc_nan_inf_failure(tmp_path, monkeypatch):
 
 
 def test_qc_ct_hu_warning(tmp_path):
-    # Values outside the common -1000..3000 CT range should emit a warning message
+    # When CT intensities fall outside the common -1000..3000 HU range,
+    # a warning message is appended to the QC record.
     img_arr = np.random.randint(-1200, 3200, (10, 10, 10)).astype(np.int16)
     mask_arr = np.zeros((10, 10, 10), dtype=np.uint8)
     mask_arr[3:7, 3:7, 3:7] = 1
@@ -152,10 +162,7 @@ def test_qc_ct_hu_warning(tmp_path):
     agent = QCAgent()
     result = agent.run([pair])
     assert result["passed"] == 1
-    messages = result["passed_pairs"][0].get("messages", [])
-    # Message lives in the failed_checks? No, it passed. It lives in result passed_pairs? No.
-    # The run result contains passed_pairs built from passed records. We need the record.
-    # But run() returns passed_pairs with only a subset. Re-run single check for messages.
+    # The run summary does not expose per-record messages, so inspect the single record.
     single = agent._check_single(pair)
     assert any("CT HU" in msg for msg in single["messages"])
 
@@ -205,3 +212,8 @@ def test_qc_multi_pair_batch_aggregation(tmp_path):
 def test_qc_invalid_target_spacing_raises(bad_spacing):
     with pytest.raises(ValueError):
         QCAgent(target_spacing=bad_spacing)
+
+
+def test_qc_numpy_scalar_target_spacing_accepted():
+    agent = QCAgent(target_spacing=(np.float64(1.0), np.int64(2), 3.0))
+    assert agent.target_spacing == (1.0, 2.0, 3.0)

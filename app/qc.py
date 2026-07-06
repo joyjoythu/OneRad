@@ -34,7 +34,7 @@ class QCAgent:
             raise ValueError("target_spacing must be a tuple or list of 3 positive floats")
         if len(target_spacing) != 3:
             raise ValueError("target_spacing must contain exactly 3 values")
-        if not all(isinstance(s, (int, float)) and float(s) > 0 for s in target_spacing):
+        if not all(np.isscalar(s) and not isinstance(s, bool) and float(s) > 0 for s in target_spacing):
             raise ValueError("target_spacing must contain positive floats")
         return tuple(float(s) for s in target_spacing)
 
@@ -93,6 +93,12 @@ class QCAgent:
         Checks include: non-empty mask, dimension match, geometric alignment
         (spacing/origin/direction), optional resampling to ``target_spacing``,
         finite intensity values, and modality-specific intensity rules.
+
+        The returned dict always contains ``shape`` (the current image size,
+        updated after any resampling). When resampling occurs, either for
+        geometric alignment or to reach ``target_spacing``, ``resampled`` is
+        ``True`` and ``resampled_shape`` records the image size after the
+        resampling step.
         """
         result = {
             "patient_id": pair["patient_id"],
@@ -138,6 +144,8 @@ class QCAgent:
                 )
                 mask = self._resample_to_reference(mask, image, is_mask=True)
                 result["resampled"] = True
+                result["shape"] = image.GetSize()
+                result["resampled_shape"] = image.GetSize()
 
             # 目标 spacing resample
             if self.target_spacing and not self._spacing_equal(image.GetSpacing(), self.target_spacing):
