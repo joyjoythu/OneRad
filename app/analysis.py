@@ -1,13 +1,6 @@
 import logging
 from typing import List, Dict, Any, Optional
 
-try:
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-except Exception:  # pragma: no cover - matplotlib is optional
-    plt = None
-
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LogisticRegression, LassoCV
@@ -26,6 +19,22 @@ def bootstrap_auc_ci(
     confidence: float = 0.95,
     random_state: int = 42,
 ) -> List[float]:
+    """Compute a percentile bootstrap confidence interval for AUC.
+
+    Resamples `y_true`/`y_prob` with replacement and recalculates the ROC AUC
+    for each resample. Resamples that contain only one class are skipped.
+
+    Args:
+        y_true: Ground-truth binary labels (0 or 1).
+        y_prob: Predicted probabilities for the positive class.
+        n_bootstrap: Number of bootstrap iterations.
+        confidence: Confidence level for the interval.
+        random_state: Seed for reproducible resampling.
+
+    Returns:
+        A two-element list ``[lower_bound, upper_bound]``. If no valid
+        bootstrap scores are obtained, both bounds are ``float("nan")``.
+    """
     rng = np.random.RandomState(random_state)
     scores = []
     for _ in range(n_bootstrap):
@@ -33,6 +42,8 @@ def bootstrap_auc_ci(
         if len(np.unique(y_true[idx])) < 2:
             continue
         scores.append(metrics.roc_auc_score(y_true[idx], y_prob[idx]))
+    if not scores:
+        return [float("nan"), float("nan")]
     alpha = 1 - confidence
     return [float(np.percentile(scores, alpha / 2 * 100)), float(np.percentile(scores, (1 - alpha / 2) * 100))]
 
@@ -41,8 +52,37 @@ logger = logging.getLogger(__name__)
 
 
 class AnalysisAgent:
+    """Binary classification analysis agent based on LASSO + logistic regression.
+
+    The agent performs the following steps on a merged radiomic/clinical
+    DataFrame:
+
+    1. Validates the input, label column, and label values.
+    2. Identifies radiomic feature columns and requested clinical covariates.
+    3. Runs a stratified k-fold cross-validation loop:
+       - Standardizes features per fold.
+       - Selects radiomic features with ``LassoCV``.
+       - Retains all requested clinical covariates.
+       - Trains a logistic regression model on the selected features.
+       - Accumulates out-of-fold predicted probabilities.
+    4. Intersects the per-fold selected radiomic features to obtain a stable
+       feature set. If the intersection is empty and no clinical covariates
+       were requested, the run fails early.
+    5. Fits a final logistic regression model on the stable features and
+       reports coefficients, odds ratios, confidence intervals, and p-values.
+    6. Computes classification metrics and a bootstrap AUC confidence interval.
+    """
+
     def __init__(self, covariates: Optional[List[str]] = None, n_splits: int = 5,
                  random_state: int = 42, output_dir: Optional[str] = None):
+        """Initialize the analysis agent.
+
+        Args:
+            covariates: List of clinical column names to retain as covariates.
+            n_splits: Number of cross-validation folds.
+            random_state: Random seed for reproducibility.
+            output_dir: Optional directory for future outputs.
+        """
         self.covariates = covariates or []
         self.n_splits = n_splits
         self.random_state = random_state
@@ -50,6 +90,19 @@ class AnalysisAgent:
 
     def run(self, merged_df: pd.DataFrame, label_col: str,
             output_dir: Optional[str] = None) -> Dict[str, Any]:
+        """Run the binary classification analysis pipeline.
+
+        Args:
+            merged_df: Input DataFrame containing labels, radiomic features, and
+                optionally clinical covariates.
+            label_col: Name of the binary label column (values must be 0/1).
+            output_dir: Optional output directory override.
+
+        Returns:
+            A dictionary with ``success``/``message`` and, on success, the
+            selected features, model coefficients, odds ratios, and metrics.
+            The confusion matrix is returned as ``[[tn, fp], [fn, tp]]``.
+        """
         if merged_df is None or merged_df.empty:
             return {"success": False, "message": "merged_df 为空"}
         if label_col not in merged_df.columns:
@@ -82,12 +135,11 @@ class AnalysisAgent:
         # 5 折 CV
         skf = StratifiedKFold(n_splits=self.n_splits, shuffle=True, random_state=self.random_state)
         val_probs = np.zeros(len(y))
-        val_labels = np.zeros(len(y))
         fold_selected_features = []
 
         for train_idx, val_idx in skf.split(X, y):
             X_train, X_val = X[train_idx], X[val_idx]
-            y_train, y_val = y[train_idx], y[val_idx]
+            y_train = y[train_idx]
 
             scaler = StandardScaler()
             X_train_s = scaler.fit_transform(X_train)
@@ -116,12 +168,14 @@ class AnalysisAgent:
             lr = LogisticRegression(max_iter=10000, random_state=self.random_state)
             lr.fit(X_train_sel, y_train)
             val_probs[val_idx] = lr.predict_proba(X_val_sel)[:, 1]
-            val_labels[val_idx] = y_val
 
         # 用稳定出现的特征作为最终选中特征
         selected_features = list(set.intersection(*fold_selected_features) if fold_selected_features else set())
         if not selected_features and clinical_covs:
             selected_features = clinical_covs.copy()
+
+        if not selected_features:
+            return {"success": False, "message": "各折 LASSO 选中的特征交集为空，且未指定协变量"}
 
         # 最终全量模型
         scaler_final = StandardScaler()
@@ -171,7 +225,7 @@ class AnalysisAgent:
             model_results["ci_lower"][feat] = float(ci_lo) if not np.isnan(ci_lo) else None
             model_results["ci_upper"][feat] = float(ci_hi) if not np.isnan(ci_hi) else None
 
-        metrics_result = calculate_metrics(val_labels, val_probs)
+        metrics_result = calculate_metrics(y, val_probs)
 
         return {
             "success": True,
@@ -181,11 +235,12 @@ class AnalysisAgent:
             "model_results": model_results,
             "metrics": {
                 "auc": float(metrics_result.auc),
-                "auc_ci": bootstrap_auc_ci(val_labels, val_probs),
+                "auc_ci": bootstrap_auc_ci(y, val_probs),
                 "accuracy": float(metrics_result.accuracy),
                 "sensitivity": float(metrics_result.sensitivity),
                 "specificity": float(metrics_result.specificity),
                 "threshold": float(metrics_result.best_threshold),
+                # Confusion matrix layout: [[tn, fp], [fn, tp]]
                 "confusion_matrix": [[int(metrics_result.tn), int(metrics_result.fp)],
                                       [int(metrics_result.fn), int(metrics_result.tp)]],
             },
