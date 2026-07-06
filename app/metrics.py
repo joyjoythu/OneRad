@@ -7,6 +7,20 @@ from sklearn import metrics
 
 @dataclass
 class MetricsResult:
+    """Container for binary classification performance metrics.
+
+    Fields:
+        accuracy: Proportion of correctly classified samples.
+        sensitivity: True positive rate (recall for the positive class).
+        specificity: True negative rate (recall for the negative class).
+        auc: Area under the ROC curve; 0.0 when only one class is present.
+        best_threshold: Decision threshold used to binarize probabilities.
+        tp: Count of true positives.
+        tn: Count of true negatives.
+        fn: Count of false negatives.
+        fp: Count of false positives.
+    """
+
     accuracy: float = 0.0
     sensitivity: float = 0.0
     specificity: float = 0.0
@@ -24,6 +38,13 @@ def calculate_metrics(
     threshold: Optional[float] = None,
 ) -> MetricsResult:
     """Compute binary classification metrics and the ROC AUC.
+
+    When only one class is present in `y_true`, the ROC AUC is undefined and
+    returned as 0.0. The remaining metrics are still computed using the selected
+    threshold (the explicit override if provided, otherwise 0.5).
+
+    A small epsilon of ``1e-16`` is added to denominators to avoid division by
+    zero when a class has no samples in the confusion matrix.
 
     Args:
         y_true: Ground-truth binary labels, expected to contain only 0 and 1.
@@ -50,21 +71,20 @@ def calculate_metrics(
 
     result = MetricsResult()
 
-    # When only one class is present, no ROC curve can be computed; return
-    # neutral metrics with the default threshold.
+    # When only one class is present, no ROC curve can be computed; fall back
+    # to the selected threshold for the confusion matrix.
     if len(np.unique(y_true)) < 2:
         result.auc = 0.0
         result.best_threshold = threshold if threshold is not None else 0.5
-        return result
+    else:
+        result.auc = metrics.roc_auc_score(y_true, y_prob)
 
-    result.auc = metrics.roc_auc_score(y_true, y_prob)
+        fpr, tpr, thresholds = metrics.roc_curve(y_true, y_prob)
+        youden_index = tpr - fpr
+        result.best_threshold = thresholds[np.argmax(youden_index)]
 
-    fpr, tpr, thresholds = metrics.roc_curve(y_true, y_prob)
-    youden_index = tpr - fpr
-    result.best_threshold = thresholds[np.argmax(youden_index)]
-
-    if threshold is not None:
-        result.best_threshold = threshold
+        if threshold is not None:
+            result.best_threshold = threshold
 
     y_pred = (y_prob >= result.best_threshold).astype(int)
 

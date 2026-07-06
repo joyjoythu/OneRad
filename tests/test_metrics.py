@@ -54,13 +54,14 @@ def test_calculate_metrics_single_class():
     m = calculate_metrics(y_true, y_prob)
     assert m.auc == 0.0
     assert m.best_threshold == 0.5
-    assert m.accuracy == 0.0
-    assert m.sensitivity == 0.0
-    assert m.specificity == 0.0
-    assert m.tp == 0
+    # Default threshold 0.5 -> predictions [0, 0, 1, 1]
+    assert m.tp == 2
+    assert m.fn == 2
     assert m.tn == 0
     assert m.fp == 0
-    assert m.fn == 0
+    assert m.sensitivity == 0.5
+    assert m.specificity == 0.0
+    assert m.accuracy == 0.5
 
 
 def test_calculate_metrics_single_class_with_threshold_override():
@@ -69,6 +70,36 @@ def test_calculate_metrics_single_class_with_threshold_override():
     m = calculate_metrics(y_true, y_prob, threshold=0.5)
     assert m.auc == 0.0
     assert m.best_threshold == 0.5
+    # Default threshold 0.5 -> predictions [0, 0, 1, 1]
+    assert m.tn == 2
+    assert m.fp == 2
+    assert m.tp == 0
+    assert m.fn == 0
+    assert m.specificity == 0.5
+    assert m.sensitivity == 0.0
+    assert m.accuracy == 0.5
+
+
+def test_calculate_metrics_out_of_range_probability():
+    y_true = np.array([0, 1])
+    y_prob = np.array([-0.1, 1.1])
+    with pytest.warns(UserWarning, match="outside \\[0, 1\\]"):
+        calculate_metrics(y_true, y_prob)
+
+
+def test_calculate_metrics_empty_inputs():
+    y_true = np.array([], dtype=int)
+    y_prob = np.array([], dtype=float)
+    m = calculate_metrics(y_true, y_prob)
+    assert m.auc == 0.0
+    assert m.best_threshold == 0.5
+    assert m.accuracy == 0.0
+    assert m.sensitivity == 0.0
+    assert m.specificity == 0.0
+    assert m.tp == 0
+    assert m.tn == 0
+    assert m.fp == 0
+    assert m.fn == 0
 
 
 def test_calculate_metrics_mismatched_lengths():
