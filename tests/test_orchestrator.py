@@ -52,3 +52,16 @@ def test_set_sse_emitter_and_emit_delivers_event():
     assert len(received) == 1
     assert received[0]["type"] == "test"
     assert received[0]["message"] == "hello"
+
+
+def test_run_with_mock_handlers():
+    orch = Orchestrator(image_dir="./data", clinical_path="./data/clinical.csv")
+
+    def mock_discovery(state):
+        return {"success": True, "message": "ok"}
+
+    orch.register_handler(PipelineStage.DISCOVERY, mock_discovery)
+
+    events = list(orch.run())
+    assert any(e["type"] == "pipeline_start" for e in events)
+    assert orch.state["stage"] == PipelineStage.INTERRUPTED  # 后续阶段未注册
