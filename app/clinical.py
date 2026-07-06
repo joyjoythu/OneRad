@@ -203,8 +203,30 @@ def _normalize_id(id_str: str) -> str:
     return s.lower()
 
 
-def run_matching(discovery_pairs: List[dict], clinical_df: pd.DataFrame, id_col: str,
+def run_matching(discovery_pairs: List[Dict[str, Any]], clinical_df: pd.DataFrame, id_col: str,
                  fuzzy_threshold: float = 0.8, enable_fuzzy: bool = True) -> dict:
+    """Match image discovery pairs against clinical records by patient ID.
+
+    Normalized IDs are used for comparison: lower-cased, stripped, and with
+    common image extensions removed.  The returned ``matched_df`` uses the
+    original image-side ``patient_id`` in its ``patient_id`` column, while
+    ``match_method`` reports ``"exact"`` or ``"fuzzy"`` and ``fuzzy_map``
+    records any image -> clinical normalized-ID mappings produced by fuzzy
+    matching.
+
+    Args:
+        discovery_pairs: List of dicts with ``patient_id``, ``image_path`` and
+            ``mask_path``.
+        clinical_df: Clinical DataFrame containing ``id_col``.
+        id_col: Name of the clinical ID column.
+        fuzzy_threshold: Minimum similarity ratio for fuzzy matches.
+        enable_fuzzy: Whether to enable fuzzy matching for unmatched IDs.
+
+    Returns:
+        Dict with ``success``, ``message``, and on success ``matched_df``,
+        ``matched_ids``, ``unmatched_image_ids``, ``unmatched_clinical_ids``,
+        ``match_method``, ``match_stats`` and ``fuzzy_map``.
+    """
     if not discovery_pairs:
         return {"success": False, "message": "Discovery pairs 为空"}
     if clinical_df is None or clinical_df.empty:
@@ -223,6 +245,18 @@ def run_matching(discovery_pairs: List[dict], clinical_df: pd.DataFrame, id_col:
         img_norm_to_orig[norm] = pid
 
     clinical_norm_series = clinical_df[id_col].astype(str).apply(_normalize_id)
+
+    # Detect distinct original clinical IDs that collapse to the same normalized key.
+    norm_to_originals = {}
+    for norm, orig in zip(clinical_norm_series, clinical_df[id_col].astype(str)):
+        norm_to_originals.setdefault(norm, set()).add(orig)
+    duplicate_norms = [norm for norm, origs in norm_to_originals.items() if len(origs) > 1]
+    if duplicate_norms:
+        return {
+            "success": False,
+            "message": f"临床 ID 列归一化后存在重复: {duplicate_norms}",
+        }
+
     clinical_ids = set(clinical_norm_series)
     clinical_norm_to_orig = dict(zip(clinical_norm_series, clinical_df[id_col].astype(str)))
 
@@ -293,6 +327,7 @@ def run_matching(discovery_pairs: List[dict], clinical_df: pd.DataFrame, id_col:
         "unmatched_image_ids": unmatched_image_ids,
         "unmatched_clinical_ids": unmatched_clinical_ids,
         "match_method": method,
+        "fuzzy_map": fuzzy_map,
         "match_stats": {
             "total_images": len(discovery_pairs),
             "total_clinical": len(clinical_df),
