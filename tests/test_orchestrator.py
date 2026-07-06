@@ -225,6 +225,9 @@ def test_merge_data_empty_feature_df():
     }
     result = merge_data(orch.state)
     assert result["success"] is False
+    assert result["df"] is None
+    assert result["n_samples"] == 0
+    assert result["n_features"] == 0
     assert "特征矩阵为空" in result["message"]
 
 
@@ -236,6 +239,9 @@ def test_merge_data_empty_matched_df():
     orch.state["matching"] = {"matched_df": pd.DataFrame()}
     result = merge_data(orch.state)
     assert result["success"] is False
+    assert result["df"] is None
+    assert result["n_samples"] == 0
+    assert result["n_features"] == 0
     assert "匹配表格为空" in result["message"]
 
 
@@ -248,8 +254,10 @@ def test_merge_data_mismatched_patient_ids():
         "matched_df": pd.DataFrame({"patient_id": ["P003", "P004"], "Label": [0, 1]})
     }
     result = merge_data(orch.state)
-    assert result["success"] is True
+    assert result["success"] is False
     assert result["n_samples"] == 0
+    assert result["n_features"] == 1
+    assert "无共同样本" in result["message"]
 
 
 def test_merge_data_missing_feature_state():
@@ -260,7 +268,10 @@ def test_merge_data_missing_feature_state():
     }
     result = merge_data(state)
     assert result["success"] is False
-    assert "特征矩阵为空" in result["message"]
+    assert result["df"] is None
+    assert result["n_samples"] == 0
+    assert result["n_features"] == 0
+    assert "state['feature'] 不存在或格式错误" in result["message"]
 
 
 def test_merge_data_missing_matching_state():
@@ -271,7 +282,10 @@ def test_merge_data_missing_matching_state():
     }
     result = merge_data(state)
     assert result["success"] is False
-    assert "匹配表格为空" in result["message"]
+    assert result["df"] is None
+    assert result["n_samples"] == 0
+    assert result["n_features"] == 0
+    assert "state['matching'] 不存在或格式错误" in result["message"]
 
 
 def test_merge_data_overlapping_columns():
@@ -288,5 +302,8 @@ def test_merge_data_overlapping_columns():
     }
     result = merge_data(orch.state)
     assert result["success"] is False
+    assert result["df"] is None
+    assert result["n_samples"] == 0
+    assert result["n_features"] == 0
     assert "特征列与临床表列名冲突" in result["message"]
     assert "f1" in result["message"]

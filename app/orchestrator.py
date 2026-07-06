@@ -2,6 +2,8 @@ import traceback
 from enum import Enum, auto
 from typing import Dict, Any, Optional, Callable, List, Tuple, Generator
 
+import pandas as pd
+
 
 class PipelineStage(Enum):
     """Radiomics pipeline lifecycle stages."""
@@ -61,16 +63,20 @@ def merge_data(state: Dict[str, Any]) -> Dict[str, Any]:
     feature_bucket = state.get("feature")
     matching_bucket = state.get("matching")
     if not isinstance(feature_bucket, dict):
-        return {"success": False, "message": "特征矩阵为空", "df": None, "n_samples": 0, "n_features": 0}
+        return {"success": False, "message": "state['feature'] 不存在或格式错误", "df": None, "n_samples": 0, "n_features": 0}
     if not isinstance(matching_bucket, dict):
-        return {"success": False, "message": "匹配表格为空", "df": None, "n_samples": 0, "n_features": 0}
+        return {"success": False, "message": "state['matching'] 不存在或格式错误", "df": None, "n_samples": 0, "n_features": 0}
 
     feature_df = feature_bucket.get("feature_df")
     matched_df = matching_bucket.get("matched_df")
 
-    if feature_df is None or feature_df.empty:
+    if not isinstance(feature_df, pd.DataFrame):
+        return {"success": False, "message": "state['feature'] 不存在或格式错误", "df": None, "n_samples": 0, "n_features": 0}
+    if feature_df.empty:
         return {"success": False, "message": "特征矩阵为空", "df": None, "n_samples": 0, "n_features": 0}
-    if matched_df is None or matched_df.empty:
+    if not isinstance(matched_df, pd.DataFrame):
+        return {"success": False, "message": "state['matching'] 不存在或格式错误", "df": None, "n_samples": 0, "n_features": 0}
+    if matched_df.empty:
         return {"success": False, "message": "匹配表格为空", "df": None, "n_samples": 0, "n_features": 0}
 
     overlap = set(feature_df.columns) & (set(matched_df.columns) - {"patient_id"})
@@ -79,6 +85,9 @@ def merge_data(state: Dict[str, Any]) -> Dict[str, Any]:
 
     merged = matched_df.set_index("patient_id").join(feature_df, how="inner")
     merged = merged.reset_index()
+
+    if len(merged) == 0:
+        return {"success": False, "message": "无共同样本", "df": merged, "n_samples": 0, "n_features": len(feature_df.columns)}
 
     return {
         "success": True,
