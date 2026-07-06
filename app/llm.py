@@ -1,10 +1,28 @@
 import json
 import re
 import os
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List, Tuple
 
 from langchain.prompts import PromptTemplate
 from openai import OpenAI
+
+
+ID_INFERENCE_TEMPLATE = """你是一个医学影像数据命名规范分析专家。
+请根据提供的文件名样本，推断患者ID的提取规则，返回一个Python正则表达式字符串。
+要求：
+1. 正则只提取患者ID部分，不包含模态、序列、mask等后缀
+2. 尽可能通用，能覆盖所有样本
+3. 只输出纯JSON格式：{{"pattern": "正则表达式字符串", "explanation": "简要说明"}}
+
+文件名样本：
+{samples}
+"""
+
+
+def build_id_inference_prompt(filenames: List[str]) -> Tuple[str, str]:
+    system = "You are a medical imaging filename analyst. Return only JSON."
+    user = ID_INFERENCE_TEMPLATE.format(samples="\n".join(filenames))
+    return system, user
 
 
 class LLMClient:

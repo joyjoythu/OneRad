@@ -1,4 +1,4 @@
-from pathlib import Path
+from unittest.mock import MagicMock
 
 from app.discovery import DiscoveryAgent, extract_patient_id, infer_modality
 
@@ -109,3 +109,16 @@ def test_non_existent_directory():
     assert result["success"] is False
     assert "目录不存在" in result["message"]
     assert result["pairs"] == []
+
+
+def test_discovery_with_llm_id_inference(tmp_path):
+    (tmp_path / "SUB_001_image.nii.gz").write_text("")
+    (tmp_path / "SUB_001_mask.nii.gz").write_text("")
+
+    mock_llm = MagicMock()
+    mock_llm.call.return_value = '{"pattern": "SUB_\\\\d+", "explanation": "test"}'
+    mock_llm._extract_json.return_value = {"pattern": r"SUB_\d+"}
+
+    agent = DiscoveryAgent(llm_client=mock_llm)
+    result = agent.run(str(tmp_path))
+    assert result["success"] is True

@@ -118,6 +118,11 @@ class DiscoveryAgent:
         if not files:
             return {"success": False, "message": "未找到支持的影像文件", "pairs": []}
 
+        if self.id_pattern is None and self.llm_client is not None:
+            inferred = self._infer_id_pattern_via_llm(files)
+            if inferred:
+                self.id_pattern = inferred
+
         images, masks = self._classify_files(files)
         if not images:
             return {"success": False, "message": "未找到 Image 文件", "pairs": []}
@@ -157,6 +162,31 @@ class DiscoveryAgent:
 
         recurse(dir_path)
         return sorted(files)
+
+    def _infer_id_pattern_via_llm(self, files: List[Path]) -> Optional[str]:
+        if self.llm_client is None:
+            return None
+        samples = []
+        seen = set()
+        for f in files:
+            name = get_base_name(f)
+            if name not in seen:
+                samples.append(name)
+                seen.add(name)
+            if len(samples) >= 20:
+                break
+        if len(samples) < 2:
+            return None
+        from app.llm import build_id_inference_prompt
+        system, user = build_id_inference_prompt(samples)
+        try:
+            response = self.llm_client.call(system, user, temperature=0.1, max_tokens=500)
+            parsed = self.llm_client._extract_json(response)
+            pattern = parsed.get("pattern", "")
+            re.compile(pattern)
+            return pattern
+        except Exception:
+            return None
 
     def _classify_files(self, files: List[Path]) -> Tuple[List[dict], List[dict]]:
         """Classify files into images and masks based on filename keywords."""
