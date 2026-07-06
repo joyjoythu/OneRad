@@ -116,7 +116,7 @@ class Orchestrator:
         if self._sse_emitter:
             self._sse_emitter(event)
 
-    def _make_event(self, event_type: str, message: str, payload: Optional[Dict] = None) -> Dict[str, Any]:
+    def _make_event(self, event_type: str, message: str, payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Build a standard event payload for SSE delivery."""
         return {
             "type": event_type,
@@ -218,12 +218,7 @@ class Orchestrator:
         matched_ids = self.state.get("matching", {}).get("matched_ids", [])
         if not isinstance(matched_ids, list):
             matched_ids = []
-        qc_ids = set()
-        for p in qc_passed:
-            if isinstance(p, dict):
-                patient_id = p.get("patient_id")
-                if patient_id is not None:
-                    qc_ids.add(patient_id)
+        qc_ids = {str(p.get("patient_id")) for p in qc_passed if isinstance(p, dict) and p.get("patient_id") is not None}
         matched_id_set = {str(m) for m in matched_ids}
         return len(matched_id_set & qc_ids)
 
@@ -241,11 +236,13 @@ class Orchestrator:
             return self.state
 
         if user_decision == "skip":
-            if interrupted_stage:
-                skip_stages = self.state["config"]["skip_stages"]
-                if interrupted_stage.name not in skip_stages:
-                    skip_stages.append(interrupted_stage.name)
-            next_stage = get_next_stage(interrupted_stage) if interrupted_stage else None
+            if interrupted_stage is None:
+                yield self._yield_event(self._make_event("error", "无法跳过：未记录中断阶段"))
+                return self.state
+            skip_stages = self.state["config"]["skip_stages"]
+            if interrupted_stage.name not in skip_stages:
+                skip_stages.append(interrupted_stage.name)
+            next_stage = get_next_stage(interrupted_stage)
             if next_stage is None:
                 self.state["stage"] = PipelineStage.COMPLETED
                 yield self._yield_event(self._make_event("pipeline_complete", "流水线完成"))
