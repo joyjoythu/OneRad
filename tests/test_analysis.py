@@ -10,7 +10,9 @@ def test_analysis_agent_basic():
         "patient_id": [f"P{i:03d}" for i in range(n)],
         "Label": np.random.randint(0, 2, n),
     })
-    for i in range(10):
+    for i in range(5):
+        df[f"original_feature_{i}"] = np.random.randn(n) + df["Label"] * 2.0
+    for i in range(5, 10):
         df[f"original_feature_{i}"] = np.random.randn(n)
 
     agent = AnalysisAgent(covariates=[])

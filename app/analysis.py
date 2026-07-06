@@ -1,5 +1,4 @@
 import logging
-import os
 from typing import List, Dict, Any, Optional
 
 try:
@@ -85,9 +84,8 @@ class AnalysisAgent:
         val_probs = np.zeros(len(y))
         val_labels = np.zeros(len(y))
         fold_selected_features = []
-        plot_paths = []
 
-        for fold_idx, (train_idx, val_idx) in enumerate(skf.split(X, y)):
+        for train_idx, val_idx in skf.split(X, y):
             X_train, X_val = X[train_idx], X[val_idx]
             y_train, y_val = y[train_idx], y[val_idx]
 
@@ -100,20 +98,6 @@ class AnalysisAgent:
                 X_train_radio = X_train_s[:, :len(radiomic_cols)]
                 lasso = LassoCV(cv=3, random_state=self.random_state, max_iter=10000).fit(X_train_radio, y_train)
                 radio_mask = np.abs(lasso.coef_) > 1e-6
-
-                out_dir = self.output_dir or output_dir
-                if out_dir and plt is not None:
-                    os.makedirs(out_dir, exist_ok=True)
-                    plot_path = os.path.join(out_dir, f"lasso_path_fold{fold_idx}.png")
-                    plt.figure()
-                    plt.semilogx(lasso.alphas_, lasso.coef_.T)
-                    plt.axvline(lasso.alpha_, color="black", linestyle="--")
-                    plt.xlabel("Alpha")
-                    plt.ylabel("Coefficient")
-                    plt.title(f"LASSO Path - Fold {fold_idx + 1}")
-                    plt.savefig(plot_path)
-                    plt.close()
-                    plot_paths.append(plot_path)
             else:
                 radio_mask = np.zeros(len(radiomic_cols), dtype=bool)
 
@@ -122,14 +106,7 @@ class AnalysisAgent:
             mask = np.concatenate([radio_mask, clinical_mask])
 
             if not np.any(mask):
-                if len(radiomic_cols) > 0:
-                    # Fallback: 当 LASSO 未选中任何特征时，保留系数绝对值最大的影像组学特征
-                    strongest_idx = int(np.argmax(np.abs(lasso.coef_)))
-                    radio_mask = np.zeros(len(radiomic_cols), dtype=bool)
-                    radio_mask[strongest_idx] = True
-                    mask = np.concatenate([radio_mask, clinical_mask])
-                else:
-                    return {"success": False, "message": "LASSO 未选中任何特征且未指定协变量"}
+                return {"success": False, "message": "LASSO 未选中任何特征且未指定协变量"}
 
             fold_selected_features.append(set(np.array(feature_cols)[mask]))
 
@@ -141,13 +118,8 @@ class AnalysisAgent:
             val_probs[val_idx] = lr.predict_proba(X_val_sel)[:, 1]
             val_labels[val_idx] = y_val
 
-        # 用稳定出现的特征作为最终选中特征；若交集为空，回退到并集
-        if fold_selected_features:
-            selected_features = list(set.intersection(*fold_selected_features))
-            if not selected_features:
-                selected_features = list(set.union(*fold_selected_features))
-        else:
-            selected_features = []
+        # 用稳定出现的特征作为最终选中特征
+        selected_features = list(set.intersection(*fold_selected_features) if fold_selected_features else set())
         if not selected_features and clinical_covs:
             selected_features = clinical_covs.copy()
 
@@ -218,5 +190,4 @@ class AnalysisAgent:
                                       [int(metrics_result.fn), int(metrics_result.tp)]],
             },
             "n_samples": len(y),
-            "plot_paths": plot_paths,
         }
