@@ -44,6 +44,27 @@ def get_next_stage(current: PipelineStage) -> Optional[PipelineStage]:
         return None
 
 
+def merge_data(state: Dict[str, Any]) -> Dict[str, Any]:
+    feature_df = state["feature"]["feature_df"]
+    matched_df = state["matching"]["matched_df"]
+
+    if feature_df is None or feature_df.empty:
+        return {"success": False, "message": "特征矩阵为空", "df": None, "n_samples": 0, "n_features": 0}
+    if matched_df is None or matched_df.empty:
+        return {"success": False, "message": "匹配表格为空", "df": None, "n_samples": 0, "n_features": 0}
+
+    merged = matched_df.set_index("patient_id").join(feature_df, how="inner")
+    merged = merged.reset_index()
+
+    return {
+        "success": True,
+        "message": f"合并完成: {len(merged)} 样本, {len(feature_df.columns)} 影像特征",
+        "df": merged,
+        "n_samples": len(merged),
+        "n_features": len(feature_df.columns),
+    }
+
+
 class Orchestrator:
     """Coordinates radiomics pipeline execution and stage-to-stage event emission."""
 

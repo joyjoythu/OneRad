@@ -1,6 +1,7 @@
+import pandas as pd
 import pytest
 
-from app.orchestrator import PipelineStage, Orchestrator, STAGE_ORDER, get_next_stage
+from app.orchestrator import PipelineStage, Orchestrator, STAGE_ORDER, get_next_stage, merge_data
 
 
 def test_stage_order():
@@ -192,3 +193,25 @@ def test_full_pipeline_completion():
     assert orch.state["stage"] == PipelineStage.COMPLETED
     assert any(e["type"] == "pipeline_complete" for e in events)
     assert all(stage.name in {e["stage"] for e in events if e["type"] == "stage_complete"} for stage in STAGE_ORDER)
+
+
+def test_merge_data():
+    orch = Orchestrator(image_dir="./data", clinical_path="./data/clinical.csv")
+    orch.state["feature"] = {
+        "feature_df": pd.DataFrame(
+            {"f1": [1.0, 2.0]},
+            index=["P001", "P002"],
+        )
+    }
+    orch.state["matching"] = {
+        "matched_df": pd.DataFrame({
+            "patient_id": ["P001", "P002"],
+            "image_path": ["a.nii", "b.nii"],
+            "mask_path": ["a_mask.nii", "b_mask.nii"],
+            "Label": [0, 1],
+        })
+    }
+    result = merge_data(orch.state)
+    assert result["n_samples"] == 2
+    assert "f1" in result["df"].columns
+    assert "Label" in result["df"].columns
