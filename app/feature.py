@@ -5,15 +5,11 @@ from typing import List, Dict, Any
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import pandas as pd
-import numpy as np
 
 logger = logging.getLogger(__name__)
 
-try:
-    from DONGGUAN_NEW_Radiomic.Atsea_def import cir_get_features
-except Exception as e:
-    cir_get_features = None
-    logger.warning(f"无法导入 cir_get_features: {e}")
+# Lazy-loaded by _extract_single on first use in each process.
+cir_get_features = None
 
 
 class FeatureAgent:
@@ -25,6 +21,13 @@ class FeatureAgent:
     def run(self, pairs: List[Dict[str, str]], yaml_path: str = "", n_jobs: int = -1) -> Dict[str, Any]:
         if not pairs:
             return {"success": False, "message": "pairs 为空"}
+
+        required = {"patient_id", "image_path", "mask_path"}
+        for p in pairs:
+            missing = required - set(p.keys())
+            if missing:
+                return {"success": False, "message": f"pair 缺少必要字段: {', '.join(sorted(missing))}"}
+
         if not yaml_path or not os.path.exists(yaml_path):
             return {"success": False, "message": f"YAML 配置不存在: {yaml_path}"}
 
@@ -52,7 +55,7 @@ class FeatureAgent:
         for pid, feats, err in results:
             if err:
                 failed_ids.append(pid)
-                logger.warning(f"特征提取失败 {pid}: {err}")
+                logger.warning("特征提取失败 %s: %s", pid, err)
             else:
                 row = {"patient_id": pid}
                 row.update(feats)
@@ -66,10 +69,15 @@ class FeatureAgent:
         nan_cols = df.columns[df.isna().all()].tolist()
         if nan_cols:
             df = df.drop(columns=nan_cols)
+            logger.info("剔除全为 NaN 的特征列: %s", nan_cols)
 
         zero_var = [c for c in df.columns if df[c].nunique(dropna=True) <= 1]
         if zero_var:
             df = df.drop(columns=zero_var)
+            logger.info("剔除零方差特征列: %s", zero_var)
+
+        if df.empty:
+            return {"success": False, "message": "有效特征为空"}
 
         return {
             "success": True,
@@ -84,9 +92,16 @@ class FeatureAgent:
 
     @staticmethod
     def _extract_single(args):
+        global cir_get_features
         if cir_get_features is None:
-            patient_id = args[0]
-            return patient_id, None, "cir_get_features 不可用（PyRadiomics 导入失败）"
+            try:
+                from DONGGUAN_NEW_Radiomic.Atsea_def import cir_get_features as _cir
+                cir_get_features = _cir
+            except Exception as e:
+                logger.warning("无法导入 cir_get_features: %s", e)
+                patient_id = args[0]
+                return patient_id, None, f"cir_get_features 不可用（导入失败: {e}）"
+
         patient_id, image_path, mask_path, yaml_path = args
         try:
             if not os.path.exists(image_path):
