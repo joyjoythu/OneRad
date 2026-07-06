@@ -3,6 +3,8 @@ from difflib import SequenceMatcher
 from pathlib import Path
 from typing import List, Tuple, Optional
 
+from app.llm import build_id_inference_prompt
+
 
 SUPPORTED_EXTENSIONS = (".nii.gz", ".nii", ".nrrd", ".mha", ".mhd", ".dcm", ".img", ".hdr")
 MASK_KEYWORDS = ("mask", "seg", "segmentation", "label", "roi", "gt", "annotation", "tumor")
@@ -118,12 +120,13 @@ class DiscoveryAgent:
         if not files:
             return {"success": False, "message": "未找到支持的影像文件", "pairs": []}
 
-        if self.id_pattern is None and self.llm_client is not None:
-            inferred = self._infer_id_pattern_via_llm(files)
+        id_pattern = self.id_pattern
+        if id_pattern is None and self.llm_client is not None:
+            inferred = self._infer_id_pattern_via_llm(files, id_pattern)
             if inferred:
-                self.id_pattern = inferred
+                id_pattern = inferred
 
-        images, masks = self._classify_files(files)
+        images, masks = self._classify_files(files, id_pattern)
         if not images:
             return {"success": False, "message": "未找到 Image 文件", "pairs": []}
 
@@ -163,7 +166,9 @@ class DiscoveryAgent:
         recurse(dir_path)
         return sorted(files)
 
-    def _infer_id_pattern_via_llm(self, files: List[Path]) -> Optional[str]:
+    def _infer_id_pattern_via_llm(self, files: List[Path], id_pattern: Optional[str] = None) -> Optional[str]:
+        if id_pattern is not None:
+            return id_pattern
         if self.llm_client is None:
             return None
         samples = []
@@ -177,23 +182,24 @@ class DiscoveryAgent:
                 break
         if len(samples) < 2:
             return None
-        from app.llm import build_id_inference_prompt
         system, user = build_id_inference_prompt(samples)
         try:
             response = self.llm_client.call(system, user, temperature=0.1, max_tokens=500)
             parsed = self.llm_client._extract_json(response)
             pattern = parsed.get("pattern", "")
-            re.compile(pattern)
+            compiled = re.compile(pattern)
+            if not any(compiled.search(s) for s in samples):
+                return None
             return pattern
         except Exception:
             return None
 
-    def _classify_files(self, files: List[Path]) -> Tuple[List[dict], List[dict]]:
+    def _classify_files(self, files: List[Path], id_pattern: Optional[str] = None) -> Tuple[List[dict], List[dict]]:
         """Classify files into images and masks based on filename keywords."""
         images, masks = [], []
         for f in files:
             base = get_base_name(f)
-            pid = extract_patient_id(base, self.id_pattern)
+            pid = extract_patient_id(base, id_pattern)
             modality = infer_modality(base)
             entry = {
                 "file_path": str(f),
