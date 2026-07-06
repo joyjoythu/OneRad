@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from typing import Optional
+import warnings
 import numpy as np
 from sklearn import metrics
 
@@ -17,20 +18,51 @@ class MetricsResult:
     fp: int = 0
 
 
-def calculate_metrics(y_true: np.ndarray, y_prob: np.ndarray, threshold: Optional[float] = None) -> MetricsResult:
+def calculate_metrics(
+    y_true: np.ndarray,
+    y_prob: np.ndarray,
+    threshold: Optional[float] = None,
+) -> MetricsResult:
+    """Compute binary classification metrics and the ROC AUC.
+
+    Args:
+        y_true: Ground-truth binary labels, expected to contain only 0 and 1.
+        y_prob: Predicted probabilities for the positive class.
+        threshold: Optional decision threshold. When provided, it overrides
+            the threshold selected by Youden's index.
+
+    Returns:
+        MetricsResult containing accuracy, sensitivity, specificity, AUC,
+        best threshold, and confusion matrix counts.
+
+    Raises:
+        ValueError: If `y_true` and `y_prob` have different lengths, or if
+            `y_true` contains values other than 0 and 1.
+    """
+    if len(y_true) != len(y_prob):
+        raise ValueError("y_true and y_prob must have the same length")
+
+    if not np.isin(y_true, [0, 1]).all():
+        raise ValueError("y_true must contain only 0 and 1")
+
+    if np.any(y_prob < 0) or np.any(y_prob > 1):
+        warnings.warn("y_prob contains values outside [0, 1]")
+
     result = MetricsResult()
 
+    # When only one class is present, no ROC curve can be computed; return
+    # neutral metrics with the default threshold.
     if len(np.unique(y_true)) < 2:
         result.auc = 0.0
-    else:
-        result.auc = metrics.roc_auc_score(y_true, y_prob)
+        result.best_threshold = threshold if threshold is not None else 0.5
+        return result
+
+    result.auc = metrics.roc_auc_score(y_true, y_prob)
 
     fpr, tpr, thresholds = metrics.roc_curve(y_true, y_prob)
-    youden_index = tpr + (1 - fpr)
+    youden_index = tpr - fpr
     result.best_threshold = thresholds[np.argmax(youden_index)]
 
-    if result.best_threshold > 1:
-        result.best_threshold = 0.5
     if threshold is not None:
         result.best_threshold = threshold
 
@@ -41,6 +73,8 @@ def calculate_metrics(y_true: np.ndarray, y_prob: np.ndarray, threshold: Optiona
     result.fp = int(np.sum((y_true == 0) & (y_pred == 1)))
     result.fn = int(np.sum((y_true == 1) & (y_pred == 0)))
 
+    # 1e-16 is added to denominators to avoid division by zero when a class
+    # has no samples in the confusion matrix.
     result.sensitivity = result.tp / (result.tp + result.fn + 1e-16)
     result.specificity = result.tn / (result.tn + result.fp + 1e-16)
     result.accuracy = (result.tp + result.tn) / (result.tp + result.tn + result.fp + result.fn + 1e-16)
