@@ -41,7 +41,12 @@ COLUMN_IDENTIFICATION_TEMPLATE = """请分析以下临床数据表格，识别 I
 def _format_columns(columns: List[Dict]) -> str:
     lines = ["| 列名 | 类型 | 非空数 | 缺失率 | 唯一值 | 示例 |"]
     for c in columns:
-        lines.append(f"| {c['column_name']} | {c['dtype']} | {c['non_null']} | {c['missing_rate']} | {c['n_unique']} | {c['samples']} |")
+        samples = c["samples"]
+        # Escape characters that would break the markdown table.
+        samples = str(samples).replace("|", "\\|").replace("\n", " ").replace("\r", " ")
+        if len(samples) > 50:
+            samples = samples[:50] + "..."
+        lines.append(f"| {c['column_name']} | {c['dtype']} | {c['non_null']} | {c['missing_rate']} | {c['n_unique']} | {samples} |")
     return "\n".join(lines)
 
 

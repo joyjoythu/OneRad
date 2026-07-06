@@ -1,36 +1,70 @@
+# Task 8: 实现 Clinical Agent
+
+### Task 8: 实现 Clinical Agent
+
+**Files:**
+- Create: `app/clinical.py`
+- Create: `tests/test_clinical.py`
+
+- [ ] **Step 1: 编写失败测试**
+
+`tests/test_clinical.py`:
+```python
+import pandas as pd
+from app.clinical import ClinicalAgent
+
+
+def test_clinical_agent_basic():
+    df = pd.DataFrame({
+        "PatientID": ["P001", "P002"],
+        "Age": [50, 60],
+        "Sex": ["F", "M"],
+        "Label": [0, 1],
+    })
+    from io import BytesIO
+    buf = BytesIO()
+    df.to_csv(buf, index=False)
+    buf.seek(0)
+
+    # 使用 mock LLM
+    from unittest.mock import MagicMock
+    mock_llm = MagicMock()
+    mock_llm.call.return_value = '{"id_col": "PatientID", "label_col": "Label", "feature_cols": ["Age", "Sex"]}'
+    mock_llm._extract_json.return_value = {"id_col": "PatientID", "label_col": "Label", "feature_cols": ["Age", "Sex"]}
+
+    agent = ClinicalAgent(llm_client=mock_llm)
+    import tempfile, os
+    with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as f:
+        f.write(buf.getvalue())
+        path = f.name
+    result = agent.run(path)
+    os.unlink(path)
+
+    assert result["success"] is True
+    assert result["id_col"] == "PatientID"
+    assert result["label_col"] == "Label"
+```
+
+- [ ] **Step 2: 实现 ClinicalAgent**
+
+`app/clinical.py`:
+```python
 import os
+import json
+import re
 from typing import Optional, List, Dict, Any
 
 import pandas as pd
 
 
 class ClinicalAgent:
-    """Agent for identifying and validating clinical data table columns."""
-
     SUPPORTED_EXTS = {".csv", ".xlsx", ".xls"}
 
     def __init__(self, llm_client=None, max_retries: int = 2):
-        """Initialize the clinical agent.
-
-        Args:
-            llm_client: Optional client for calling the LLM to identify columns.
-            max_retries: Number of retries on top of the first LLM call attempt.
-        """
         self.llm_client = llm_client
         self.max_retries = max_retries
 
     def run(self, clinical_path: str, task_hint: str = "") -> dict:
-        """Read a clinical table and identify the ID, label and feature columns.
-
-        Args:
-            clinical_path: Path to a CSV or Excel clinical table.
-            task_hint: Optional task description passed to the LLM.
-
-        Returns:
-            A dictionary with keys including ``success``, ``message``, ``df``,
-            ``id_col``, ``label_col``, ``feature_cols``, ``id_dtype`` and
-            ``n_samples`` on success, or ``success`` / ``message`` on failure.
-        """
         if not os.path.exists(clinical_path):
             return {"success": False, "message": f"文件不存在: {clinical_path}"}
 
@@ -65,11 +99,6 @@ class ClinicalAgent:
         id_series = df[id_col]
         id_dtype = "int" if pd.api.types.is_integer_dtype(id_series) else "str"
 
-        # ID column uniqueness check (null IDs are excluded from both sides)
-        id_non_null = df.dropna(subset=[id_col])
-        if id_non_null[id_col].nunique(dropna=True) != len(id_non_null):
-            return {"success": False, "message": f"ID 列 '{id_col}' 存在重复值"}
-
         return {
             "success": True,
             "message": "列名识别完成",
@@ -82,15 +111,6 @@ class ClinicalAgent:
         }
 
     def _build_column_context(self, df: pd.DataFrame, task_hint: str) -> Dict[str, Any]:
-        """Build a structured description of each column for the LLM prompt.
-
-        Args:
-            df: Input DataFrame.
-            task_hint: Optional task description.
-
-        Returns:
-            Dictionary containing row/column counts, task hint and column metadata.
-        """
         columns = []
         for col in df.columns:
             s = df[col]
@@ -110,14 +130,6 @@ class ClinicalAgent:
         }
 
     def _call_llm_with_retry(self, context: Dict[str, Any]) -> Dict[str, Any]:
-        """Ask the LLM to identify columns, retrying on failure.
-
-        Args:
-            context: Column context built by ``_build_column_context``.
-
-        Returns:
-            Parsed JSON dict from the LLM, or an error dict on failure.
-        """
         if self.llm_client is None:
             return {"success": False, "message": "未配置 LLM，无法自动识别列名"}
         from app.llm import build_column_identification_prompt
@@ -135,20 +147,6 @@ class ClinicalAgent:
         return {"success": False, "message": f"LLM 列名识别失败: {last_error}"}
 
     def _validate_columns(self, df: pd.DataFrame, parsed: Dict[str, Any]) -> Dict[str, Any]:
-        """Validate and normalize LLM-identified column selections.
-
-        Normalizes boolean / float 0/1 labels to integers, rejects empty labels,
-        and rejects label values outside the allowed set.
-
-        Args:
-            df: Input DataFrame.
-            parsed: Parsed LLM response with ``id_col``, ``label_col`` and
-                ``feature_cols``.
-
-        Returns:
-            Normalized result dict with ``id_col``, ``label_col`` and
-            ``feature_cols`` on success, or an error dict on failure.
-        """
         all_cols = set(df.columns)
         id_col = parsed.get("id_col")
         label_col = parsed.get("label_col")
@@ -168,22 +166,10 @@ class ClinicalAgent:
         if not feature_cols:
             return {"success": False, "message": "未识别到有效临床特征列"}
 
-        # label value validation: normalize booleans/floats 0/1 to int and reject
-        # columns that are all null or contain values outside the allowed set.
-        allowed = {0, 1, True, False, 0.0, 1.0}
-        labels = df[label_col]
-        valid_labels = labels.dropna()
-        if valid_labels.empty:
-            return {"success": False, "message": f"Label 列 '{label_col}' 全部缺失"}
-
-        if not set(valid_labels).issubset(allowed):
-            return {
-                "success": False,
-                "message": f"Label 列 '{label_col}' 值域非 0/1: {valid_labels.unique().tolist()}",
-            }
-
-        # Normalize in-place to int 0/1
-        df[label_col] = labels.map(lambda x: int(x) if pd.notna(x) else x)
+        # label 值域检查
+        unique_labels = df[label_col].dropna().unique()
+        if not set(unique_labels).issubset({0, 1}):
+            return {"success": False, "message": f"Label 列值域非 0/1: {unique_labels}"}
 
         return {
             "success": True,
@@ -191,3 +177,57 @@ class ClinicalAgent:
             "label_col": label_col,
             "feature_cols": feature_cols,
         }
+```
+
+- [ ] **Step 3: 在 llm.py 添加 Clinical prompt 构建函数**
+
+`app/llm.py` 添加：
+```python
+COLUMN_IDENTIFICATION_TEMPLATE = """请分析以下临床数据表格，识别 ID 列、二分类标签列和临床特征列。
+返回纯 JSON：{{"id_col": "...", "label_col": "...", "feature_cols": ["..."], "reasoning": "..."}}
+
+表格信息：
+- 行数: {n_rows}
+- 列数: {n_columns}
+- 任务描述: {task_hint}
+
+列详情：
+{columns}
+"""
+
+
+def _format_columns(columns: List[Dict]) -> str:
+    lines = ["| 列名 | 类型 | 非空数 | 缺失率 | 唯一值 | 示例 |"]
+    for c in columns:
+        lines.append(f"| {c['column_name']} | {c['dtype']} | {c['non_null']} | {c['missing_rate']} | {c['n_unique']} | {c['samples']} |")
+    return "\n".join(lines)
+
+
+def build_column_identification_prompt(context: Dict[str, Any]) -> Tuple[str, str]:
+    system = (
+        "You are a clinical data analyst for radiomics research. "
+        "Return ONLY a JSON object with keys: id_col, label_col, feature_cols, reasoning. "
+        "Label_col must be a binary 0/1 outcome. feature_cols must not include id_col or label_col."
+    )
+    user = COLUMN_IDENTIFICATION_TEMPLATE.format(
+        n_rows=context["n_rows"],
+        n_columns=context["n_columns"],
+        task_hint=context["task_hint"],
+        columns=_format_columns(context["columns"]),
+    )
+    return system, user
+```
+
+- [ ] **Step 4: 运行测试确认通过**
+
+Run: `pytest tests/test_clinical.py -v`
+Expected: PASS
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add app/clinical.py app/llm.py tests/test_clinical.py
+git commit -m "feat: add ClinicalAgent for column identification"
+```
+
+---
