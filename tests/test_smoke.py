@@ -1,10 +1,10 @@
-import os
-
 import numpy as np
 import pandas as pd
 import pytest
 import SimpleITK as sitk
 
+import app.clinical as clinical_module
+import app.feature as feature_module
 from app.orchestrator import Orchestrator, PipelineStage, register_default_handlers
 
 
@@ -14,7 +14,7 @@ def deterministic_rng():
     return np.random.default_rng(42)
 
 
-def test_smoke_pipeline(tmp_path, deterministic_rng):
+def test_smoke_pipeline(tmp_path, deterministic_rng, monkeypatch):
     # 1. Build temporary image directory with valid 3D NIfTI image/mask pairs.
     img_dir = tmp_path / "images"
     img_dir.mkdir()
@@ -39,26 +39,14 @@ def test_smoke_pipeline(tmp_path, deterministic_rng):
     })
     clinical_df.to_csv(clinical_path, index=False)
 
-    # 3. Instantiate orchestrator with a low min_samples threshold.
+    # 3. Create empty params YAML.  YAML content is irrelevant because
+    # FeatureAgent.run is mocked; only the file path matters.
     yaml_path = tmp_path / "params.yaml"
     yaml_path.write_text("")
 
     output_dir = tmp_path / "output"
 
-    orch = Orchestrator(
-        image_dir=str(img_dir),
-        clinical_path=str(clinical_path),
-        output_dir=str(output_dir),
-        yaml_path=str(yaml_path),
-        min_samples=5,
-    )
-    register_default_handlers(orch)
-
-    # 4. Mock ClinicalAgent.run to skip real LLM calls.
-    import app.clinical as clinical_module
-
-    original_clinical_run = clinical_module.ClinicalAgent.run
-
+    # 4. Define mocks before the orchestrator is instantiated.
     def mock_clinical_run(self, clinical_path, task_hint=""):
         return {
             "success": True,
@@ -70,13 +58,6 @@ def test_smoke_pipeline(tmp_path, deterministic_rng):
             "id_dtype": "str",
             "n_samples": len(clinical_df),
         }
-
-    clinical_module.ClinicalAgent.run = mock_clinical_run
-
-    # 5. Mock FeatureAgent.run to return a synthetic radiomic feature matrix.
-    import app.feature as feature_module
-
-    original_feature_run = feature_module.FeatureAgent.run
 
     def mock_feature_run(self, pairs, yaml_path, n_jobs=-1):
         rows = []
@@ -105,22 +86,28 @@ def test_smoke_pipeline(tmp_path, deterministic_rng):
             "extraction_time_seconds": 0.1,
         }
 
-    feature_module.FeatureAgent.run = mock_feature_run
+    monkeypatch.setattr(clinical_module.ClinicalAgent, "run", mock_clinical_run)
+    monkeypatch.setattr(feature_module.FeatureAgent, "run", mock_feature_run)
 
-    try:
-        events = list(orch.run())
-    finally:
-        # Always restore original methods, even on failure.
-        clinical_module.ClinicalAgent.run = original_clinical_run
-        feature_module.FeatureAgent.run = original_feature_run
+    # 5. Instantiate orchestrator with a low min_samples threshold.
+    orch = Orchestrator(
+        image_dir=str(img_dir),
+        clinical_path=str(clinical_path),
+        output_dir=str(output_dir),
+        yaml_path=str(yaml_path),
+        min_samples=5,
+    )
+    register_default_handlers(orch)
+
+    events = list(orch.run())
 
     # 6. Assert pipeline completed successfully and produced a report.
     assert orch.state["stage"] == PipelineStage.COMPLETED
     assert orch.state["report"]["success"] is True
 
-    expected_report_path = os.path.join(str(output_dir), "AutoRadiomics_Report.docx")
-    assert orch.state["report"]["report_path"] == expected_report_path
-    assert os.path.exists(expected_report_path)
+    expected_report_path = output_dir / "AutoRadiomics_Report.docx"
+    assert orch.state["report"]["report_path"] == str(expected_report_path)
+    assert expected_report_path.exists()
 
     # Sanity checks on intermediate stages.
     assert orch.state["discovery"]["success"] is True
