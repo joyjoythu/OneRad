@@ -156,15 +156,19 @@ class AnalysisAgent:
                 X_train_radio = X_train_s[:, :len(radiomic_cols)]
                 lasso = LassoCV(cv=3, random_state=self.random_state, max_iter=10000).fit(X_train_radio, y_train)
                 radio_mask = np.abs(lasso.coef_) > 1e-6
-                if output_dir and len(radiomic_cols) > 0:
-                    os.makedirs(output_dir, exist_ok=True)
+                save_dir = output_dir or self.output_dir
+                if save_dir and len(radiomic_cols) > 0:
+                    os.makedirs(save_dir, exist_ok=True)
+                    alphas_path, coefs_path, _ = LassoCV.path(
+                        X_train_radio, y_train, random_state=self.random_state, max_iter=10000
+                    )
                     plt.figure(figsize=(6, 4))
-                    plt.semilogx(lasso.alphas_, lasso.coef_.T)
+                    plt.semilogx(alphas_path, coefs_path.T)
                     plt.axvline(lasso.alpha_, color="black", linestyle="--")
                     plt.xlabel("Alpha")
                     plt.ylabel("Coefficient")
                     plt.title(f"LASSO Path - Fold {fold_idx + 1}")
-                    plot_path = os.path.join(output_dir, f"lasso_path_fold{fold_idx + 1}.png")
+                    plot_path = os.path.join(save_dir, f"lasso_path_fold{fold_idx + 1}.png")
                     plt.savefig(plot_path, dpi=150, bbox_inches="tight")
                     plt.close()
                     plot_paths.append(plot_path)
