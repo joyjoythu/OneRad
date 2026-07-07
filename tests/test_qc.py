@@ -118,6 +118,7 @@ def test_qc_geometric_mismatch_persists_corrected_mask(tmp_path):
     corrected_mask_path = Path(result["passed_pairs"][0]["mask_path"])
     assert corrected_mask_path.exists()
     assert corrected_mask_path.parent == out_dir
+    assert corrected_mask_path != Path(pair["mask_path"])
 
     corrected_mask = sitk.ReadImage(str(corrected_mask_path))
     image = sitk.ReadImage(pair["image_path"])

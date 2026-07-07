@@ -136,6 +136,7 @@ class QCAgent:
             spacing_aligned = self._spacing_equal(image.GetSpacing(), mask.GetSpacing())
             origin_aligned = self._origin_equal(image.GetOrigin(), mask.GetOrigin())
             direction_aligned = self._direction_equal(image.GetDirection(), mask.GetDirection())
+            geometry_corrected = False
             if not (spacing_aligned and origin_aligned and direction_aligned):
                 logger.warning(
                     "[%s] Geometric mismatch detected (spacing=%s, origin=%s, direction=%s); "
@@ -143,22 +144,20 @@ class QCAgent:
                     pair["patient_id"], spacing_aligned, origin_aligned, direction_aligned
                 )
                 mask = self._resample_to_reference(mask, image, is_mask=True)
-                self.output_dir.mkdir(parents=True, exist_ok=True)
-                modality = pair.get("modality", "unknown")
-                mask_out = self.output_dir / f"{pair['patient_id']}_{modality}_mask.nii.gz"
-                sitk.WriteImage(mask, str(mask_out))
-                result["resampled_mask_path"] = str(mask_out)
-                result["resampled"] = True
-                result["shape"] = image.GetSize()
-                result["resampled_shape"] = image.GetSize()
+                geometry_corrected = True
 
             # 目标 spacing resample
-            if self.target_spacing and not self._spacing_equal(image.GetSpacing(), self.target_spacing):
+            target_resample_needed = (
+                self.target_spacing is not None
+                and not self._spacing_equal(image.GetSpacing(), self.target_spacing)
+            )
+            if target_resample_needed:
                 logger.info(
                     "[%s] Resampling image and mask to target spacing %s",
                     pair["patient_id"], self.target_spacing
                 )
-                modality = pair.get("modality", "unknown")
+                self.output_dir.mkdir(parents=True, exist_ok=True)
+                modality = result["modality"]
                 img_out = self.output_dir / f"{pair['patient_id']}_{modality}_image.nii.gz"
                 mask_out = self.output_dir / f"{pair['patient_id']}_{modality}_mask.nii.gz"
                 image = self._resample_to_spacing(image, self.target_spacing, is_mask=False)
@@ -166,6 +165,15 @@ class QCAgent:
                 sitk.WriteImage(image, str(img_out))
                 sitk.WriteImage(mask, str(mask_out))
                 result["resampled_image_path"] = str(img_out)
+                result["resampled_mask_path"] = str(mask_out)
+                result["resampled"] = True
+                result["shape"] = image.GetSize()
+                result["resampled_shape"] = image.GetSize()
+            elif geometry_corrected:
+                self.output_dir.mkdir(parents=True, exist_ok=True)
+                modality = result["modality"]
+                mask_out = self.output_dir / f"{pair['patient_id']}_{modality}_mask.nii.gz"
+                sitk.WriteImage(mask, str(mask_out))
                 result["resampled_mask_path"] = str(mask_out)
                 result["resampled"] = True
                 result["shape"] = image.GetSize()
