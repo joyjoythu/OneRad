@@ -55,10 +55,10 @@ def create_ui():
 
     def on_project_select(project_id):
         if not project_id:
-            return [gr.update()] * 8 + ["", None]
+            return [gr.update()] * 9 + ["", None]
         project = store.load_project(project_id)
         if project is None:
-            return [gr.update()] * 8 + ["项目不存在", None]
+            return [gr.update()] * 9 + ["项目不存在", None]
         analysis = project.get("analysis", {})
         return (
             project_id,
@@ -69,6 +69,7 @@ def create_ui():
             analysis.get("modality", "auto"),
             analysis.get("covariates", ""),
             analysis.get("model", "deepseek-chat"),
+            analysis.get("api_key", ""),
             f"已加载项目: {project['name']}",
             None,
         )
@@ -90,7 +91,7 @@ def create_ui():
 
     def on_delete_project(project_id):
         if not project_id:
-            return refresh_projects(), "请先选择一个项目", *[gr.update()] * 8
+            return refresh_projects(), "请先选择一个项目", *[gr.update()] * 9
         try:
             store.delete_project(project_id)
             choices = [(p["name"], p["id"]) for p in store.list_projects()]
@@ -105,11 +106,12 @@ def create_ui():
                 "auto",
                 "",
                 "deepseek-chat",
+                "",
             )
         except Exception as e:
-            return refresh_projects(), f"删除项目失败: {e}", *[gr.update()] * 8
+            return refresh_projects(), f"删除项目失败: {e}", *[gr.update()] * 9
 
-    def on_save_config(project_id, image_dir, clinical_path, output_dir, modality, covariates, model):
+    def on_save_config(project_id, image_dir, clinical_path, output_dir, modality, covariates, model, api_key):
         if not project_id:
             return "请先选择一个项目"
         try:
@@ -120,6 +122,7 @@ def create_ui():
                 "modality": modality or "auto",
                 "covariates": covariates or "",
                 "model": model or "deepseek-chat",
+                "api_key": api_key or "",
             })
             return "项目配置已保存"
         except Exception as e:
@@ -135,6 +138,7 @@ def create_ui():
             "modality": modality or "auto",
             "covariates": covariates or "",
             "model": model or "deepseek-chat",
+            "api_key": api_key or "",
         }
         store.save_project_config(project_id, config)
         project = store.load_project(project_id)
@@ -239,6 +243,7 @@ def create_ui():
                 modality,
                 covariates,
                 model,
+                api_key,
             ],
         )
 
@@ -254,6 +259,7 @@ def create_ui():
                 modality,
                 covariates,
                 model,
+                api_key,
                 log,
                 report_file,
             ],
@@ -261,7 +267,7 @@ def create_ui():
 
         btn_save.click(
             on_save_config,
-            inputs=[current_project_id, image_dir, clinical_path, output_dir, modality, covariates, model],
+            inputs=[current_project_id, image_dir, clinical_path, output_dir, modality, covariates, model, api_key],
             outputs=[status_msg],
         )
 

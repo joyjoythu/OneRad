@@ -101,6 +101,7 @@ class ProjectStore:
                 "modality": "auto",
                 "covariates": "",
                 "model": "deepseek-chat",
+                "api_key": "",
             },
         }
         with open(project_yaml_path, "w", encoding="utf-8") as f:
@@ -158,7 +159,7 @@ class ProjectStore:
             project["analysis"] = self._default_analysis()
         return project
 
-    def _default_analysis(self) -> Dict[str, str]:
+    def _default_analysis(self) -> Dict[str, Any]:
         return {
             "image_dir": "",
             "clinical_path": "",
@@ -166,6 +167,7 @@ class ProjectStore:
             "modality": "auto",
             "covariates": "",
             "model": "deepseek-chat",
+            "api_key": "",
         }
 
     def delete_project(self, project_id: str) -> None:
@@ -198,6 +200,7 @@ class ProjectStore:
                 "modality": analysis_config.get("modality", "auto"),
                 "covariates": analysis_config.get("covariates", ""),
                 "model": analysis_config.get("model", "deepseek-chat"),
+                "api_key": analysis_config.get("api_key", ""),
             },
         }
         with open(yaml_path, "w", encoding="utf-8") as f:
