@@ -1,3 +1,4 @@
+import os
 import pytest
 from unittest.mock import patch
 from app.feature import FeatureAgent
@@ -15,6 +16,14 @@ def _make_pair(tmp_path, patient_id, image_name="img.nii", mask_name="mask.nii")
         "image_path": str(img_path),
         "mask_path": str(mask_path),
     }
+
+
+def _mock_extractor(image_path, mask_path, yaml_path):
+    if "p1" in image_path:
+        return {"f1": 1.0, "f2": 2.0}
+    if "p3" in image_path:
+        raise RuntimeError("mock extraction failure")
+    return {"f1": 2.0, "f2": 3.0}
 
 
 def test_feature_agent_empty_pairs():
@@ -37,14 +46,7 @@ def test_feature_agent_two_valid_pairs(tmp_path):
     yaml_path.write_text("setting:\n  resampledPixelSpacing: [0.35, 0.35, 0.35]\n")
     pairs = [_make_pair(tmp_path, "p1"), _make_pair(tmp_path, "p2")]
 
-    def side_effect(image_path, mask_path, yaml_path):
-        if "p1" in image_path:
-            return {"f1": 1.0, "f2": 2.0}
-        return {"f1": 2.0, "f2": 3.0}
-
-    with patch("app.feature.cir_get_features") as mock_cir:
-        mock_cir.side_effect = side_effect
-        result = FeatureAgent().run(pairs, yaml_path=str(yaml_path), n_jobs=1)
+    result = FeatureAgent(extractor=_mock_extractor).run(pairs, yaml_path=str(yaml_path), n_jobs=1)
 
     assert result["success"] is True
     assert result["feature_df"].shape == (2, 2)
@@ -57,32 +59,34 @@ def test_feature_agent_two_valid_pairs(tmp_path):
 def test_feature_agent_overrides_resampled_pixel_spacing(tmp_path):
     yaml_path = tmp_path / "params.yaml"
     yaml_path.write_text("setting:\n  resampledPixelSpacing: [0.35, 0.35, 0.35]\n")
-    pairs = [_make_pair(tmp_path, "p1")]
+    pairs = [_make_pair(tmp_path, "p1"), _make_pair(tmp_path, "p2")]
 
     received_yaml_path = None
+    written_config = None
 
     def side_effect(image_path, mask_path, yaml_path):
-        nonlocal received_yaml_path
+        nonlocal received_yaml_path, written_config
         received_yaml_path = yaml_path
-        return {"f1": 1.0}
+        if written_config is None:
+            import yaml
+            with open(yaml_path, "r", encoding="utf-8") as f:
+                written_config = yaml.safe_load(f)
+        if "p1" in image_path:
+            return {"f1": 1.0, "f2": 2.0}
+        return {"f1": 2.0, "f2": 3.0}
 
-    with patch("app.feature.cir_get_features") as mock_cir:
-        mock_cir.side_effect = side_effect
-        result = FeatureAgent().run(
-            pairs,
-            yaml_path=str(yaml_path),
-            n_jobs=1,
-            resampled_pixel_spacing=(0.5, 0.5, 0.5),
-        )
+    result = FeatureAgent(extractor=side_effect).run(
+        pairs,
+        yaml_path=str(yaml_path),
+        n_jobs=1,
+        resampled_pixel_spacing=(0.5, 0.5, 0.5),
+    )
 
     assert result["success"] is True
     assert result["settings_used"]["resampled_pixel_spacing"] == [0.5, 0.5, 0.5]
     assert received_yaml_path != str(yaml_path)
-    assert os.path.exists(received_yaml_path)
-    import yaml
-    with open(received_yaml_path, "r", encoding="utf-8") as f:
-        written = yaml.safe_load(f)
-    assert written["setting"]["resampledPixelSpacing"] == [0.5, 0.5, 0.5]
+    assert written_config is not None
+    assert written_config["setting"]["resampledPixelSpacing"] == [0.5, 0.5, 0.5]
 
 
 def test_feature_agent_invalid_resampled_pixel_spacing(tmp_path):
@@ -90,7 +94,7 @@ def test_feature_agent_invalid_resampled_pixel_spacing(tmp_path):
     yaml_path.write_text("setting:\n  resampledPixelSpacing: [0.35, 0.35, 0.35]\n")
     pairs = [_make_pair(tmp_path, "p1")]
 
-    result = FeatureAgent().run(
+    result = FeatureAgent(extractor=_mock_extractor).run(
         pairs,
         yaml_path=str(yaml_path),
         n_jobs=1,
@@ -110,15 +114,8 @@ def test_feature_agent_one_failing_pair(tmp_path):
         _make_pair(tmp_path, "p3"),
     ]
 
-    def side_effect(image_path, mask_path, yaml_path):
-        if "p3" in image_path:
-            raise RuntimeError("mock extraction failure")
-        if "p1" in image_path:
-            return {"f1": 1.0, "f2": 2.0}
-        return {"f1": 2.0, "f2": 3.0}
-
     with patch("app.feature.cir_get_features") as mock_cir:
-        mock_cir.side_effect = side_effect
+        mock_cir.side_effect = _mock_extractor
         result = FeatureAgent().run(pairs, yaml_path=str(yaml_path), n_jobs=1)
 
     assert result["success"] is True

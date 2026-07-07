@@ -28,6 +28,11 @@ def _prepare_yaml(
     if resampled_pixel_spacing is None:
         return yaml_path
 
+    if len(resampled_pixel_spacing) != 3:
+        raise ValueError(
+            f"resampledPixelSpacing 需要 3 个数值, 得到 {len(resampled_pixel_spacing)}: {resampled_pixel_spacing}"
+        )
+
     with open(yaml_path, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
 
@@ -50,10 +55,29 @@ def _prepare_yaml(
 
 
 class FeatureAgent:
-    def __init__(self, n_workers: int = -1, timeout_per_case: int = 300):
+    def __init__(
+        self,
+        n_workers: int = -1,
+        timeout_per_case: int = 300,
+        extractor=None,
+    ):
         import multiprocessing as mp
         self.n_workers = n_workers if n_workers > 0 else max(1, mp.cpu_count() - 1)
         self.timeout_per_case = timeout_per_case
+        self._extractor = extractor
+
+    def _get_extractor(self):
+        if self._extractor is not None:
+            return self._extractor
+        global cir_get_features
+        if cir_get_features is None:
+            try:
+                from DONGGUAN_NEW_Radiomic.Atsea_def import cir_get_features as _cir
+                cir_get_features = _cir
+            except Exception as e:
+                logger.warning("无法导入 cir_get_features: %s", e)
+                return None
+        return cir_get_features
 
     def run(
         self,
@@ -102,12 +126,6 @@ class FeatureAgent:
                         p = futures[future]
                         results.append((p["patient_id"], None, str(e)))
 
-        if tmp_yaml is not None:
-            try:
-                os.remove(tmp_yaml)
-            except OSError:
-                pass
-
         rows = []
         failed_ids = []
         for pid, feats, err in results:
@@ -118,6 +136,12 @@ class FeatureAgent:
                 row = {"patient_id": pid}
                 row.update(feats)
                 rows.append(row)
+
+        if tmp_yaml is not None:
+            try:
+                os.remove(tmp_yaml)
+            except OSError:
+                pass
 
         if not rows:
             return {"success": False, "message": "所有样本特征提取均失败"}
@@ -152,17 +176,11 @@ class FeatureAgent:
             "extraction_time_seconds": round(time.time() - t0, 2),
         }
 
-    @staticmethod
-    def _extract_single(args):
-        global cir_get_features
-        if cir_get_features is None:
-            try:
-                from DONGGUAN_NEW_Radiomic.Atsea_def import cir_get_features as _cir
-                cir_get_features = _cir
-            except Exception as e:
-                logger.warning("无法导入 cir_get_features: %s", e)
-                patient_id = args[0]
-                return patient_id, None, f"cir_get_features 不可用（导入失败: {e}）"
+    def _extract_single(self, args):
+        extractor = self._get_extractor()
+        if extractor is None:
+            patient_id = args[0]
+            return patient_id, None, "cir_get_features 不可用（导入失败）"
 
         patient_id, image_path, mask_path, yaml_path = args
         try:
@@ -170,7 +188,7 @@ class FeatureAgent:
                 return patient_id, None, f"影像不存在: {image_path}"
             if not os.path.exists(mask_path):
                 return patient_id, None, f"Mask 不存在: {mask_path}"
-            feats = cir_get_features(image_path, mask_path, yaml_path)
+            feats = extractor(image_path, mask_path, yaml_path)
             return patient_id, feats, None
         except Exception as e:
             return patient_id, None, str(e)

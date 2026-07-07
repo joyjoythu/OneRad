@@ -59,7 +59,7 @@ def test_smoke_pipeline(tmp_path, deterministic_rng, monkeypatch):
             "n_samples": len(clinical_df),
         }
 
-    def mock_feature_run(self, pairs, yaml_path, n_jobs=-1):
+    def mock_feature_run(self, pairs, yaml_path, n_jobs=-1, resampled_pixel_spacing=None):
         rows = []
         for p in pairs:
             pid = p["patient_id"]
@@ -82,7 +82,7 @@ def test_smoke_pipeline(tmp_path, deterministic_rng, monkeypatch):
             "feature_names": feature_df.columns.tolist(),
             "failed_ids": [],
             "zero_variance_features": [],
-            "settings_used": {},
+            "settings_used": {"resampled_pixel_spacing": resampled_pixel_spacing},
             "extraction_time_seconds": 0.1,
         }
 
