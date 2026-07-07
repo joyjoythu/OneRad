@@ -1,3 +1,4 @@
+import html
 import traceback
 from pathlib import Path
 from typing import Optional
@@ -87,7 +88,7 @@ def create_ui(store: Optional[ProjectStore] = None):
         analysis = project.get("analysis", {})
         return (
             project_id,
-            f"## 当前项目: {project['name']}",
+            f"## 当前项目: {html.escape(project['name'])}",
             analysis.get("image_dir", ""),
             analysis.get("clinical_path", ""),
             analysis.get("output_dir", "./outputs"),
