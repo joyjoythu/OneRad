@@ -138,10 +138,14 @@ def create_ui():
         gr.Markdown("# OneRad")
 
         current_project_id = gr.State("")
+        sidebar_visible = gr.State(True)
 
-        with gr.Row():
+        with gr.Row() as top_bar:
+            btn_toggle_sidebar = gr.Button("☰", size="sm", min_width=40)
+
+        with gr.Row() as main_row:
             # 左侧项目侧边栏
-            with gr.Column(scale=0, min_width=260):
+            with gr.Column(scale=0, min_width=260) as sidebar_col:
                 gr.Markdown("## 项目")
                 btn_new = gr.Button("+ 新建项目")
                 project_selector = gr.Dropdown(label="选择项目", choices=[], value=None)
@@ -157,7 +161,7 @@ def create_ui():
                 status_msg = gr.Textbox(label="状态", interactive=False, lines=1)
 
             # 右侧工作区
-            with gr.Column(scale=1):
+            with gr.Column(scale=1) as content_col:
                 project_title = gr.Markdown("## 当前项目: 未选择")
                 with gr.Row():
                     image_dir = gr.Textbox(label="影像文件夹路径")
@@ -176,6 +180,16 @@ def create_ui():
 
                 log = gr.Textbox(label="日志", lines=20, interactive=False)
                 report_file = gr.File(label="生成报告")
+
+        def toggle_sidebar(visible):
+            new_visible = not visible
+            return new_visible, gr.update(visible=new_visible)
+
+        btn_toggle_sidebar.click(
+            toggle_sidebar,
+            inputs=[sidebar_visible],
+            outputs=[sidebar_visible, sidebar_col],
+        )
 
         # 事件绑定
         demo.load(refresh_projects, outputs=[project_selector])
