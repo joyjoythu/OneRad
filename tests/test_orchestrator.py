@@ -309,9 +309,6 @@ def test_merge_data_overlapping_columns():
     assert "f1" in result["message"]
 
 
-from unittest.mock import patch, MagicMock
-
-
 def test_orchestrator_default_handlers_registration():
     orch = Orchestrator(image_dir="./data", clinical_path="./data/clinical.csv")
     from app.orchestrator import register_default_handlers

@@ -99,7 +99,12 @@ def merge_data(state: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _build_llm(state: Dict[str, Any]):
+def _build_llm(state: Dict[str, Any]) -> Optional["LLMClient"]:
+    """Build an LLM client from the state config if an API key is present.
+
+    Returns ``None`` when the API key is missing so callers can safely pass
+    the result to agents that accept optional LLM support.
+    """
     cfg = state["config"]["llm"]
     if not cfg.get("api_key"):
         return None
@@ -322,12 +327,12 @@ class Orchestrator:
         return self.state
 
 
-
 def register_default_handlers(orch: Orchestrator) -> None:
+    """Register the default stage handlers on an orchestrator instance."""
     from app import discovery, clinical, qc, feature, analysis, report
 
     orch.register_handler(PipelineStage.DISCOVERY, lambda state: discovery.DiscoveryAgent(
-        llm_client=_build_llm(state) if state["config"]["llm"].get("api_key") else None
+        llm_client=_build_llm(state)
     ).run(state["config"]["image_dir"]))
 
     orch.register_handler(PipelineStage.CLINICAL, lambda state: clinical.ClinicalAgent(
@@ -348,7 +353,7 @@ def register_default_handlers(orch: Orchestrator) -> None:
             "patient_id": row["patient_id"],
             "image_path": row["image_path"],
             "mask_path": row["mask_path"],
-            "modality": row.get("modality", state["config"].get("modality", "CT")),
+            "modality": row.get("modality") or state["config"].get("modality"),
         }
         for _, row in state["matching"]["matched_df"].iterrows()
     ]))
@@ -370,7 +375,7 @@ def register_default_handlers(orch: Orchestrator) -> None:
     orch.register_handler(PipelineStage.REPORT, lambda state: report.ReportAgent().run(
         analysis_result=state["analysis"],
         output_dir=state["config"]["output_dir"],
-        modality=state["config"].get("modality", "CT"),
+        modality=state["config"].get("modality"),
         n_features=len(state["feature"]["feature_names"]),
         covariates=state["config"].get("covariates", []),
         plot_paths=state["analysis"].get("plot_paths", []),
