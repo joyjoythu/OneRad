@@ -1,11 +1,11 @@
 import difflib
+import logging
 import os
 import re
 from typing import Optional, List, Dict, Any
 
 import pandas as pd
 
-import logging
 logger = logging.getLogger(__name__)
 
 
@@ -188,8 +188,8 @@ class ClinicalAgent:
                 "message": f"Label 列 '{label_col}' 值域非 0/1: {valid_labels.unique().tolist()}",
             }
 
-        # Normalize in-place to int 0/1 on a copy so the caller's DataFrame is
-        # not mutated.
+        # Normalize labels to int 0/1 on a copy of the DataFrame so the
+        # caller's DataFrame is not mutated.
         df = df.copy()
         df[label_col] = labels.map(lambda x: int(x) if pd.notna(x) else x)
 
@@ -306,7 +306,11 @@ def run_matching(discovery_pairs: List[Dict[str, Any]], clinical_df: pd.DataFram
         return {"success": False, "message": "无任何 ID 匹配成功"}
 
     # 构建 matched_df
-    norm_to_pair = {_normalize_id(p["patient_id"]): p for p in discovery_pairs}
+    norm_to_pair = {}
+    for p in discovery_pairs:
+        norm_id = _normalize_id(p["patient_id"])
+        if norm_id not in norm_to_pair:
+            norm_to_pair[norm_id] = p
     clinical_df = clinical_df.copy()
     clinical_df["__norm_id__"] = clinical_df[id_col].astype(str).apply(_normalize_id)
     norm_to_original = dict(zip(clinical_df["__norm_id__"], clinical_df[id_col].astype(str)))

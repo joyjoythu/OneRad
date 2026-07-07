@@ -127,3 +127,21 @@ def test_run_matching_duplicate_normalized_clinical_ids():
     assert result["success"] is False
     assert "临床 ID 列归一化后存在重复" in result["message"]
     assert "p001" in result["message"]
+
+
+def test_run_matching_retains_first_pair_for_duplicate_patient(caplog):
+    import logging
+    clinical_df = pd.DataFrame({
+        "PatientID": ["P001"],
+        "Label": [1],
+    })
+    pairs = [
+        {"patient_id": "P001", "image_path": "a.nii", "mask_path": "a_mask.nii"},
+        {"patient_id": "P001", "image_path": "b.nii", "mask_path": "b_mask.nii"},
+    ]
+    with caplog.at_level(logging.WARNING):
+        result = run_matching(pairs, clinical_df, "PatientID")
+    assert result["success"] is True
+    assert result["matched_ids"] == ["P001"]
+    assert result["matched_df"]["image_path"].iloc[0] == "a.nii"
+    assert "仅保留第一对" in caplog.text
