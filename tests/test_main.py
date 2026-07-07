@@ -27,6 +27,11 @@ def test_parse_args_covariates_parsing():
     assert args.covariates == "Age, Sex"
 
 
+def test_parse_args_resampled_pixel_spacing():
+    args = _parse_args(["--resampled-pixel-spacing", "0.5,0.5,0.5"])
+    assert args.resampled_pixel_spacing == "0.5,0.5,0.5"
+
+
 def test_parse_args_base_url_default():
     args = _parse_args([])
     assert args.base_url == "https://api.deepseek.com/v1"
@@ -49,6 +54,7 @@ def test_main_cli_pipeline_error(monkeypatch, capsys):
     mock_args.output_dir = "./out"
     mock_args.modality = "auto"
     mock_args.covariates = ""
+    mock_args.resampled_pixel_spacing = None
     mock_args.api_key = ""
     mock_args.base_url = "https://api.deepseek.com/v1"
     mock_args.model = "deepseek-chat"

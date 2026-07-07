@@ -34,7 +34,7 @@ def test_feature_agent_missing_yaml(tmp_path):
 
 def test_feature_agent_two_valid_pairs(tmp_path):
     yaml_path = tmp_path / "params.yaml"
-    yaml_path.write_text("")
+    yaml_path.write_text("setting:\n  resampledPixelSpacing: [0.35, 0.35, 0.35]\n")
     pairs = [_make_pair(tmp_path, "p1"), _make_pair(tmp_path, "p2")]
 
     def side_effect(image_path, mask_path, yaml_path):
@@ -51,6 +51,54 @@ def test_feature_agent_two_valid_pairs(tmp_path):
     assert list(result["feature_df"].index) == ["p1", "p2"]
     assert set(result["feature_names"]) == {"f1", "f2"}
     assert result["failed_ids"] == []
+    assert result["settings_used"]["yaml_path"] == str(yaml_path)
+
+
+def test_feature_agent_overrides_resampled_pixel_spacing(tmp_path):
+    yaml_path = tmp_path / "params.yaml"
+    yaml_path.write_text("setting:\n  resampledPixelSpacing: [0.35, 0.35, 0.35]\n")
+    pairs = [_make_pair(tmp_path, "p1")]
+
+    received_yaml_path = None
+
+    def side_effect(image_path, mask_path, yaml_path):
+        nonlocal received_yaml_path
+        received_yaml_path = yaml_path
+        return {"f1": 1.0}
+
+    with patch("app.feature.cir_get_features") as mock_cir:
+        mock_cir.side_effect = side_effect
+        result = FeatureAgent().run(
+            pairs,
+            yaml_path=str(yaml_path),
+            n_jobs=1,
+            resampled_pixel_spacing=(0.5, 0.5, 0.5),
+        )
+
+    assert result["success"] is True
+    assert result["settings_used"]["resampled_pixel_spacing"] == [0.5, 0.5, 0.5]
+    assert received_yaml_path != str(yaml_path)
+    assert os.path.exists(received_yaml_path)
+    import yaml
+    with open(received_yaml_path, "r", encoding="utf-8") as f:
+        written = yaml.safe_load(f)
+    assert written["setting"]["resampledPixelSpacing"] == [0.5, 0.5, 0.5]
+
+
+def test_feature_agent_invalid_resampled_pixel_spacing(tmp_path):
+    yaml_path = tmp_path / "params.yaml"
+    yaml_path.write_text("setting:\n  resampledPixelSpacing: [0.35, 0.35, 0.35]\n")
+    pairs = [_make_pair(tmp_path, "p1")]
+
+    result = FeatureAgent().run(
+        pairs,
+        yaml_path=str(yaml_path),
+        n_jobs=1,
+        resampled_pixel_spacing=(0.5, 0.5),  # wrong length
+    )
+
+    assert result["success"] is False
+    assert "准备 YAML 失败" in result["message"] or "需要 3 个数值" in result["message"]
 
 
 def test_feature_agent_one_failing_pair(tmp_path):
