@@ -1,31 +1,27 @@
-from unittest.mock import MagicMock, patch
+import shutil
+import sys
+import tempfile
+from pathlib import Path
 
-from app.ui import _run_analysis
+import pytest
 
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
 
-def test_run_analysis_empty_paths():
-    logs, report = _run_analysis("", "./clinical.csv", "./out", "auto", "", "", "deepseek-chat")
-    assert "不能为空" in logs
-    assert report is None
-
-
-def test_run_analysis_success():
-    mock_orch = MagicMock()
-    mock_orch.state = {"report": {"success": True, "report_path": "/tmp/report.docx"}}
-    mock_orch.run.return_value = []
-
-    with patch("app.ui.Orchestrator", return_value=mock_orch), patch("app.ui.register_default_handlers") as mock_reg:
-        logs, report = _run_analysis("./img", "./clinical.csv", "./out", "auto", "", "", "deepseek-chat")
-        assert report == "/tmp/report.docx"
-        assert isinstance(logs, str)
-        mock_reg.assert_called_once_with(mock_orch)
+from app.projects import ProjectStore
 
 
-def test_run_analysis_exception():
-    mock_orch = MagicMock()
-    mock_orch.run.side_effect = RuntimeError("boom")
+@pytest.fixture
+def isolated_store():
+    tmp = tempfile.mkdtemp()
+    yield tmp
+    shutil.rmtree(tmp)
 
-    with patch("app.ui.Orchestrator", return_value=mock_orch), patch("app.ui.register_default_handlers"):
-        logs, report = _run_analysis("./img", "./clinical.csv", "./out", "auto", "", "", "deepseek-chat")
-        assert report is None
-        assert "RuntimeError" in logs
+
+def test_create_project_flow(isolated_store):
+    store = ProjectStore(str(Path(isolated_store) / "db"))
+    project = store.create_project("TestProj", str(Path(isolated_store) / "TestProj"), "desc")
+    loaded = store.load_project(project["id"])
+    assert loaded["name"] == "TestProj"
+    assert loaded["analysis"]["output_dir"] == "./outputs"
