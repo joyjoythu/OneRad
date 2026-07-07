@@ -3,7 +3,7 @@ import logging
 import sys
 import traceback
 
-from app.utils import parse_covariates
+from app.utils import parse_covariates, parse_float_tuple
 
 
 logging.basicConfig(
@@ -19,6 +19,8 @@ def _parse_args(argv=None):
     parser.add_argument("--output-dir", default="./output")
     parser.add_argument("--modality", default="auto")
     parser.add_argument("--covariates", default="")
+    parser.add_argument("--resampled-pixel-spacing", default=None,
+                        help="覆盖 pyradiomics 的 resampledPixelSpacing, e.g. '0.5,0.5,0.5'")
     parser.add_argument("--api-key", default=None)
     parser.add_argument("--base-url", default="https://api.deepseek.com/v1")
     parser.add_argument("--model", default="deepseek-chat")
@@ -42,6 +44,7 @@ def main():
         output_dir=args.output_dir,
         modality=args.modality,
         covariates=parse_covariates(args.covariates),
+        resampled_pixel_spacing=parse_float_tuple(args.resampled_pixel_spacing),
         api_key=args.api_key,
         base_url=args.base_url,
         model=args.model,
