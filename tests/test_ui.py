@@ -3,6 +3,7 @@ import sys
 import tempfile
 from pathlib import Path
 
+import gradio as gr
 import pytest
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -28,26 +29,30 @@ def test_create_project_flow(isolated_store):
     assert loaded["analysis"]["output_dir"] == "./outputs"
 
 
+def _html_text(demo):
+    config = demo.get_config_file()
+    html_blocks = [c for c in config.get("components", []) if c.get("type") == "html"]
+    return " ".join(h.get("props", {}).get("value", "") for h in html_blocks)
+
+
 def test_create_ui_returns_blocks():
     demo = create_ui()
-    assert demo is not None
-    assert hasattr(demo, "launch")
+    assert isinstance(demo, gr.Blocks)
+    config = demo.get_config_file()
+    html_blocks = [c for c in config.get("components", []) if c.get("type") == "html"]
+    assert len(html_blocks) > 0
 
 
 def test_ui_contains_brand_header():
     demo = create_ui()
-    config = demo.get_config_file()
-    html_blocks = [c for c in config.get("components", []) if c.get("type") == "html"]
-    html_text = " ".join([h.get("props", {}).get("value", "") for h in html_blocks])
+    html_text = _html_text(demo)
     assert "OneRad" in html_text
     assert "医学影像智能分析平台" in html_text
 
 
 def test_ui_contains_key_sections():
     demo = create_ui()
-    config = demo.get_config_file()
-    html_blocks = [c for c in config.get("components", []) if c.get("type") == "html"]
-    html_text = " ".join([h.get("props", {}).get("value", "") for h in html_blocks])
+    html_text = _html_text(demo)
     assert "项目管理" in html_text
     assert "数据源" in html_text
     assert "分析配置" in html_text
