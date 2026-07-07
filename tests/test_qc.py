@@ -99,6 +99,33 @@ def test_qc_origin_direction_mismatch_resamples_mask(tmp_path):
     assert single["resampled_shape"] == (10, 10, 10)
 
 
+def test_qc_geometric_mismatch_persists_corrected_mask(tmp_path):
+    # Same array size but mismatched spacing -> mask is geometrically corrected
+    # and written to disk so downstream agents use the corrected mask.
+    img_arr = np.random.randint(0, 100, (10, 10, 10)).astype(np.int16)
+    mask_arr = np.zeros((10, 10, 10), dtype=np.uint8)
+    mask_arr[3:7, 3:7, 3:7] = 1
+    pair = _write_pair(
+        tmp_path, "P010", img_arr, mask_arr,
+        modality="CT", img_spacing=(1.0, 1.0, 1.0), mask_spacing=(0.5, 0.5, 0.5)
+    )
+
+    out_dir = tmp_path / "qc_out"
+    agent = QCAgent(output_dir=str(out_dir))
+    result = agent.run([pair])
+
+    assert result["passed"] == 1
+    corrected_mask_path = Path(result["passed_pairs"][0]["mask_path"])
+    assert corrected_mask_path.exists()
+    assert corrected_mask_path.parent == out_dir
+
+    corrected_mask = sitk.ReadImage(str(corrected_mask_path))
+    image = sitk.ReadImage(pair["image_path"])
+    assert np.allclose(corrected_mask.GetSpacing(), image.GetSpacing())
+    assert np.allclose(corrected_mask.GetOrigin(), image.GetOrigin())
+    assert np.allclose(corrected_mask.GetDirection(), image.GetDirection())
+
+
 def test_qc_target_spacing_resampling_and_file_output(tmp_path):
     img_arr = np.random.randint(-200, 400, (20, 20, 20)).astype(np.int16)
     mask_arr = np.zeros((20, 20, 20), dtype=np.uint8)

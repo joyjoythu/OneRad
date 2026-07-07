@@ -143,6 +143,11 @@ class QCAgent:
                     pair["patient_id"], spacing_aligned, origin_aligned, direction_aligned
                 )
                 mask = self._resample_to_reference(mask, image, is_mask=True)
+                self.output_dir.mkdir(parents=True, exist_ok=True)
+                modality = pair.get("modality", "unknown")
+                mask_out = self.output_dir / f"{pair['patient_id']}_{modality}_mask.nii.gz"
+                sitk.WriteImage(mask, str(mask_out))
+                result["resampled_mask_path"] = str(mask_out)
                 result["resampled"] = True
                 result["shape"] = image.GetSize()
                 result["resampled_shape"] = image.GetSize()
