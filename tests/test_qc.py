@@ -82,10 +82,21 @@ def test_qc_origin_direction_mismatch_resamples_mask(tmp_path):
     img_arr = np.random.randint(0, 100, (10, 10, 10)).astype(np.int16)
     mask_arr = np.zeros((10, 10, 10), dtype=np.uint8)
     mask_arr[3:7, 3:7, 3:7] = 1
+
+    # 5-degree rotation around the z-axis as a valid direction cosine matrix.
+    # This differs from identity by well more than the 1e-4 tolerance.
+    theta = np.deg2rad(5)
+    cos_t, sin_t = np.cos(theta), np.sin(theta)
+    rotated_direction = (
+        cos_t, -sin_t, 0.0,
+        sin_t, cos_t, 0.0,
+        0.0, 0.0, 1.0
+    )
+
     pair = _write_pair(
         tmp_path, "P003b", img_arr, mask_arr,
         modality="CT", mask_origin=(0.5, 0.5, 0.5),
-        mask_direction=(0.9999, 0.0, 0.0, 0.0, 0.9999, 0.0, 0.0, 0.0, 0.9999)
+        mask_direction=rotated_direction
     )
 
     agent = QCAgent()
