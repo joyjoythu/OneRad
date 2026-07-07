@@ -126,7 +126,8 @@ class Orchestrator:
         n_jobs: int = -1,
         target_spacing: Optional[Tuple[float, float, float]] = None,
         min_samples: int = 30,
-        yaml_path: str = "./DONGGUAN_NEW_Radiomic/Params_labels_qian.yaml",
+        yaml_path: str = "./config/Params_labels.yaml",
+        resampled_pixel_spacing: Optional[Tuple[float, float, float]] = None,
         api_key: Optional[str] = None,
         base_url: str = "https://api.deepseek.com/v1",
         model: str = "deepseek-chat",
@@ -146,6 +147,7 @@ class Orchestrator:
                 "target_spacing": target_spacing,
                 "min_samples": min_samples,
                 "yaml_path": yaml_path,
+                "resampled_pixel_spacing": resampled_pixel_spacing,
                 "llm": {
                     "api_key": api_key,
                     "base_url": base_url,
@@ -363,6 +365,7 @@ def register_default_handlers(orch: Orchestrator) -> None:
     ).run(
         state["qc"]["passed_pairs"],
         state["config"]["yaml_path"],
+        resampled_pixel_spacing=state["config"].get("resampled_pixel_spacing"),
     ))
 
     orch.register_handler(PipelineStage.MERGE, merge_data)
