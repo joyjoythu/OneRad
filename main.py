@@ -1,7 +1,9 @@
 import argparse
 
+from app.utils import parse_covariates
 
-def main():
+
+def _parse_args(argv=None):
     parser = argparse.ArgumentParser(description="AutoRadiomics Agent")
     parser.add_argument("--image-dir", default=None)
     parser.add_argument("--clinical", default=None)
@@ -12,7 +14,11 @@ def main():
     parser.add_argument("--base-url", default="https://api.deepseek.com/v1")
     parser.add_argument("--model", default="deepseek-chat")
     parser.add_argument("--ui", action="store_true", help="启动 Gradio UI")
-    args = parser.parse_args()
+    return parser.parse_args(argv)
+
+
+def main():
+    args = _parse_args()
 
     if args.ui or args.image_dir is None or args.clinical is None:
         from app.ui import create_ui
@@ -26,7 +32,7 @@ def main():
         clinical_path=args.clinical,
         output_dir=args.output_dir,
         modality=args.modality,
-        covariates=[c.strip() for c in args.covariates.split(",") if c.strip()],
+        covariates=parse_covariates(args.covariates),
         api_key=args.api_key,
         base_url=args.base_url,
         model=args.model,
