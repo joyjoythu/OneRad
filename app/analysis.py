@@ -113,8 +113,6 @@ class AnalysisAgent:
         if label_col not in merged_df.columns:
             return {"success": False, "message": f"Label 列 '{label_col}' 不存在"}
 
-        self.output_dir = output_dir or self.output_dir
-
         y = merged_df[label_col].values.astype(int)
         if not set(np.unique(y)).issubset({0, 1}):
             return {"success": False, "message": f"Label 值域非 0/1: {np.unique(y)}"}

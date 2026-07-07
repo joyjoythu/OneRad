@@ -128,3 +128,23 @@ def test_output_dir_constructor_saves_lasso_plots():
         for plot_path in result["plot_paths"]:
             assert os.path.exists(plot_path)
             assert os.path.dirname(plot_path) == tmpdir
+
+
+def test_output_dir_override_does_not_mutate_agent():
+    """A runtime output_dir override must not persist into subsequent run() calls."""
+    df = _make_df(n=50, n_signal=5, n_noise=5, seed=42)
+    with tempfile.TemporaryDirectory() as tmpdir_a, tempfile.TemporaryDirectory() as tmpdir_b:
+        agent = AnalysisAgent(covariates=[], output_dir=tmpdir_b)
+
+        result_a = agent.run(df, label_col="Label", output_dir=tmpdir_a)
+        assert result_a["success"] is True
+        assert len(result_a["plot_paths"]) == agent.n_splits
+        for plot_path in result_a["plot_paths"]:
+            assert os.path.dirname(plot_path) == tmpdir_a
+        assert agent.output_dir == tmpdir_b
+
+        result_b = agent.run(df, label_col="Label")
+        assert result_b["success"] is True
+        assert len(result_b["plot_paths"]) == agent.n_splits
+        for plot_path in result_b["plot_paths"]:
+            assert os.path.dirname(plot_path) == tmpdir_b
