@@ -127,6 +127,39 @@ def test_qc_geometric_mismatch_persists_corrected_mask(tmp_path):
     assert np.allclose(corrected_mask.GetDirection(), image.GetDirection())
 
 
+def test_qc_geometric_and_target_spacing_resample_once(tmp_path):
+    # Geometric mismatch + target_spacing: the mask should be resampled to the
+    # image grid in memory, then both image and mask are resampled to the target
+    # spacing, and only the final target-resampled files are written.
+    img_arr = np.random.randint(-200, 400, (20, 20, 20)).astype(np.int16)
+    mask_arr = np.zeros((20, 20, 20), dtype=np.uint8)
+    mask_arr[8:14, 8:14, 8:14] = 1
+    pair = _write_pair(
+        tmp_path, "P011", img_arr, mask_arr,
+        modality="CT", img_spacing=(1.0, 1.0, 1.0), mask_spacing=(0.5, 0.5, 0.5)
+    )
+
+    out_dir = tmp_path / "resampled"
+    agent = QCAgent(target_spacing=(2.0, 2.0, 2.0), output_dir=str(out_dir))
+    result = agent.run([pair])
+
+    assert result["passed"] == 1
+    assert result["resampled"] is True
+
+    expected_img = out_dir / "P011_CT_image.nii.gz"
+    expected_mask = out_dir / "P011_CT_mask.nii.gz"
+    assert expected_img.exists()
+    assert expected_mask.exists()
+
+    resampled_image = sitk.ReadImage(str(expected_img))
+    resampled_mask = sitk.ReadImage(str(expected_mask))
+    assert np.allclose(resampled_image.GetSpacing(), (2.0, 2.0, 2.0))
+    assert np.allclose(resampled_mask.GetSpacing(), (2.0, 2.0, 2.0))
+
+    assert Path(result["passed_pairs"][0]["mask_path"]) == expected_mask
+    assert Path(result["passed_pairs"][0]["image_path"]) == expected_img
+
+
 def test_qc_target_spacing_resampling_and_file_output(tmp_path):
     img_arr = np.random.randint(-200, 400, (20, 20, 20)).astype(np.int16)
     mask_arr = np.zeros((20, 20, 20), dtype=np.uint8)
