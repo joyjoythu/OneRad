@@ -3,3 +3,5 @@ __pycache__/
 docs/superpowers/plans/task_*.md
 output/
 pyradiomics-master/
+.worktrees/
+.superpowers/
