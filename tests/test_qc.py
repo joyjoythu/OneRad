@@ -66,7 +66,8 @@ def test_qc_spacing_mismatch_resamples_mask(tmp_path):
         modality="CT", img_spacing=(1.0, 1.0, 1.0), mask_spacing=(0.5, 0.5, 0.5)
     )
 
-    agent = QCAgent()
+    out_dir = tmp_path / "qc_out"
+    agent = QCAgent(output_dir=str(out_dir))
     result = agent.run([pair])
     assert result["passed"] == 1
     assert result["failed"] == 0
@@ -99,7 +100,8 @@ def test_qc_origin_direction_mismatch_resamples_mask(tmp_path):
         mask_direction=rotated_direction
     )
 
-    agent = QCAgent()
+    out_dir = tmp_path / "qc_out"
+    agent = QCAgent(output_dir=str(out_dir))
     result = agent.run([pair])
     assert result["passed"] == 1
     assert result["failed"] == 0
