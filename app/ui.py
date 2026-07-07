@@ -90,7 +90,7 @@ def create_ui():
 
     def on_delete_project(project_id):
         if not project_id:
-            return refresh_projects(), "请先选择一个项目", "", ""
+            return refresh_projects(), "请先选择一个项目", *[gr.update()] * 8
         try:
             store.delete_project(project_id)
             choices = [(p["name"], p["id"]) for p in store.list_projects()]
@@ -98,9 +98,16 @@ def create_ui():
                 gr.update(choices=choices if choices else [], value=None),
                 "项目已删除",
                 "",
+                "## 当前项目: 未选择",
+                "",
+                "",
+                "./outputs",
+                "auto",
+                "",
+                "deepseek-chat",
             )
         except Exception as e:
-            return refresh_projects(), f"删除项目失败: {e}", "", ""
+            return refresh_projects(), f"删除项目失败: {e}", *[gr.update()] * 8
 
     def on_save_config(project_id, image_dir, clinical_path, output_dir, modality, covariates, model):
         if not project_id:
@@ -221,7 +228,18 @@ def create_ui():
         btn_delete.click(
             on_delete_project,
             inputs=[current_project_id],
-            outputs=[project_selector, status_msg, project_title, project_title],
+            outputs=[
+                project_selector,
+                status_msg,
+                current_project_id,
+                project_title,
+                image_dir,
+                clinical_path,
+                output_dir,
+                modality,
+                covariates,
+                model,
+            ],
         )
 
         project_selector.change(
