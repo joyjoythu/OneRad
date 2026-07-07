@@ -1,5 +1,10 @@
 import logging
+import os
 from typing import List, Dict, Any, Optional
+
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 
 import numpy as np
 import pandas as pd
@@ -136,8 +141,9 @@ class AnalysisAgent:
         skf = StratifiedKFold(n_splits=self.n_splits, shuffle=True, random_state=self.random_state)
         val_probs = np.zeros(len(y))
         fold_selected_features = []
+        plot_paths = []
 
-        for train_idx, val_idx in skf.split(X, y):
+        for fold_idx, (train_idx, val_idx) in enumerate(skf.split(X, y)):
             X_train, X_val = X[train_idx], X[val_idx]
             y_train = y[train_idx]
 
@@ -150,6 +156,18 @@ class AnalysisAgent:
                 X_train_radio = X_train_s[:, :len(radiomic_cols)]
                 lasso = LassoCV(cv=3, random_state=self.random_state, max_iter=10000).fit(X_train_radio, y_train)
                 radio_mask = np.abs(lasso.coef_) > 1e-6
+                if output_dir and len(radiomic_cols) > 0:
+                    os.makedirs(output_dir, exist_ok=True)
+                    plt.figure(figsize=(6, 4))
+                    plt.semilogx(lasso.alphas_, lasso.coef_.T)
+                    plt.axvline(lasso.alpha_, color="black", linestyle="--")
+                    plt.xlabel("Alpha")
+                    plt.ylabel("Coefficient")
+                    plt.title(f"LASSO Path - Fold {fold_idx + 1}")
+                    plot_path = os.path.join(output_dir, f"lasso_path_fold{fold_idx + 1}.png")
+                    plt.savefig(plot_path, dpi=150, bbox_inches="tight")
+                    plt.close()
+                    plot_paths.append(plot_path)
             else:
                 radio_mask = np.zeros(len(radiomic_cols), dtype=bool)
 
@@ -245,4 +263,5 @@ class AnalysisAgent:
                                       [int(metrics_result.fn), int(metrics_result.tp)]],
             },
             "n_samples": len(y),
+            "plot_paths": plot_paths,
         }
