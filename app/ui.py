@@ -88,6 +88,20 @@ def create_ui():
         except Exception as e:
             return refresh_projects(), f"创建项目失败: {e}", "", ""
 
+    def on_delete_project(project_id):
+        if not project_id:
+            return refresh_projects(), "请先选择一个项目", "", ""
+        try:
+            store.delete_project(project_id)
+            choices = [(p["name"], p["id"]) for p in store.list_projects()]
+            return (
+                gr.update(choices=choices if choices else [], value=None),
+                "项目已删除",
+                "",
+            )
+        except Exception as e:
+            return refresh_projects(), f"删除项目失败: {e}", "", ""
+
     def on_save_config(project_id, image_dir, clinical_path, output_dir, modality, covariates, model):
         if not project_id:
             return "请先选择一个项目"
@@ -147,7 +161,9 @@ def create_ui():
             # 左侧项目侧边栏
             with gr.Column(scale=0, min_width=260) as sidebar_col:
                 gr.Markdown("## 项目")
-                btn_new = gr.Button("+ 新建项目")
+                with gr.Row():
+                    btn_new = gr.Button("+ 新建项目", scale=1)
+                    btn_delete = gr.Button("🗑 删除", scale=0, min_width=60)
                 project_selector = gr.Dropdown(label="选择项目", choices=[], value=None)
 
                 with gr.Row(visible=False) as new_project_row:
@@ -201,6 +217,12 @@ def create_ui():
             inputs=[new_name, new_path, new_description],
             outputs=[project_selector, status_msg, new_name, new_path],
         ).then(lambda: gr.update(visible=False), outputs=[new_project_row])
+
+        btn_delete.click(
+            on_delete_project,
+            inputs=[current_project_id],
+            outputs=[project_selector, status_msg, project_title, project_title],
+        )
 
         project_selector.change(
             on_project_select,
