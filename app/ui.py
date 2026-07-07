@@ -1,5 +1,6 @@
 import traceback
 from pathlib import Path
+from typing import Optional
 
 import gradio as gr
 
@@ -63,8 +64,8 @@ def _config_status_html(image_dir, clinical_path, is_save=False):
     return project_status_html("info", "等待配置", "请填写影像路径和临床表格")
 
 
-def create_ui():
-    store = ProjectStore()
+def create_ui(store: Optional[ProjectStore] = None):
+    store = store or ProjectStore()
 
     def refresh_projects():
         projects = store.list_projects()
@@ -206,13 +207,13 @@ def create_ui():
 
         current_project_id = gr.State("")
 
-        with gr.Row() as main_row:
+        with gr.Row():
             # 左侧项目侧边栏
             with gr.Column(scale=0, min_width=320, elem_classes="onerad-card") as sidebar_col:
                 gr.HTML(section_title_html(ICON_FOLDER, "项目管理"))
                 with gr.Row():
                     btn_new = gr.Button("+ 新建项目", scale=1, elem_classes="onerad-btn-new")
-                    btn_delete = gr.Button("🗑 删除", scale=0, min_width=60)
+                    btn_delete = gr.Button("删除", scale=0, min_width=60)
 
                 project_selector = gr.Dropdown(label="选择项目", choices=[], value=None)
 

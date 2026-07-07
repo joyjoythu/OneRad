@@ -14,7 +14,7 @@ openai>=1.0.0
 
 # Report & UI
 python-docx>=1.1.0
-gradio>=4.0.0
+gradio~=6.19.0
 
 # Utils
 openpyxl>=3.1.0
