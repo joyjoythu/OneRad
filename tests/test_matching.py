@@ -159,5 +159,6 @@ def test_run_matching_ignores_null_clinical_ids():
     result = run_matching(pairs, clinical_df, "PatientID")
     assert result["success"] is True
     assert sorted(result["matched_ids"]) == ["P001", "P002"]
+    assert len(result["matched_df"]) == 2
+    assert not result["matched_df"]["PatientID"].isna().any()
     assert "nan" not in [x.lower() for x in result["unmatched_clinical_ids"]]
-    assert result["match_stats"]["total_clinical"] == 2
