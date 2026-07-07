@@ -6,6 +6,9 @@ from docx import Document
 from docx.shared import Pt, Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 class ReportAgent:
     """Generate a Word report from a radiomics analysis result."""

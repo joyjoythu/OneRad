@@ -5,6 +5,9 @@ from typing import Optional, List, Dict, Any
 
 import pandas as pd
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 class ClinicalAgent:
     """Agent for identifying and validating clinical data table columns."""

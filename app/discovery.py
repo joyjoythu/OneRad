@@ -5,6 +5,9 @@ from typing import List, Tuple, Optional
 
 from app.llm import build_id_inference_prompt
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 SUPPORTED_EXTENSIONS = (".nii.gz", ".nii", ".nrrd", ".mha", ".mhd", ".dcm", ".img", ".hdr")
 MASK_KEYWORDS = ("mask", "seg", "segmentation", "label", "roi", "gt", "annotation", "tumor")

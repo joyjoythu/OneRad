@@ -1,8 +1,15 @@
 import argparse
+import logging
 import sys
 import traceback
 
 from app.utils import parse_covariates
+
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+)
 
 
 def _parse_args(argv=None):
