@@ -66,6 +66,7 @@ class ClinicalAgent:
         if isinstance(validated, dict) and not validated.get("success", True):
             return validated
 
+        df = validated["df"]
         id_col = validated["id_col"]
         id_series = df[id_col]
         id_dtype = "int" if pd.api.types.is_integer_dtype(id_series) else "str"
@@ -187,11 +188,14 @@ class ClinicalAgent:
                 "message": f"Label 列 '{label_col}' 值域非 0/1: {valid_labels.unique().tolist()}",
             }
 
-        # Normalize in-place to int 0/1
+        # Normalize in-place to int 0/1 on a copy so the caller's DataFrame is
+        # not mutated.
+        df = df.copy()
         df[label_col] = labels.map(lambda x: int(x) if pd.notna(x) else x)
 
         return {
             "success": True,
+            "df": df,
             "id_col": id_col,
             "label_col": label_col,
             "feature_cols": feature_cols,
@@ -217,6 +221,10 @@ def run_matching(discovery_pairs: List[Dict[str, Any]], clinical_df: pd.DataFram
     records any image -> clinical normalized-ID mappings produced by fuzzy
     matching.
 
+    When ``DiscoveryAgent`` finds more than one image/mask pair for the same
+    normalized patient ID, only the first pair is retained; a warning is
+    logged for each duplicated patient.
+
     Args:
         discovery_pairs: List of dicts with ``patient_id``, ``image_path`` and
             ``mask_path``.
@@ -239,6 +247,7 @@ def run_matching(discovery_pairs: List[Dict[str, Any]], clinical_df: pd.DataFram
 
     image_ids = set()
     img_norm_to_orig = {}
+    norm_counts = {}
     for p in discovery_pairs:
         pid = p.get("patient_id")
         if pid is None:
@@ -246,6 +255,11 @@ def run_matching(discovery_pairs: List[Dict[str, Any]], clinical_df: pd.DataFram
         norm = _normalize_id(pid)
         image_ids.add(norm)
         img_norm_to_orig[norm] = pid
+        norm_counts[norm] = norm_counts.get(norm, 0) + 1
+
+    for norm, count in norm_counts.items():
+        if count > 1:
+            logger.warning("患者 %s 在 Discovery 中存在多对影像，Matching 阶段仅保留第一对", img_norm_to_orig[norm])
 
     clinical_norm_series = clinical_df[id_col].astype(str).apply(_normalize_id)
 
