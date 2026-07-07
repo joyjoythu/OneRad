@@ -1,4 +1,3 @@
-import os
 import traceback
 from pathlib import Path
 
@@ -12,7 +11,6 @@ from app.ui_style import (
     section_title_html,
     project_status_html,
     ICON_FOLDER,
-    ICON_FILE_TEXT,
     ICON_SETTINGS,
     ICON_GLOBE,
     ICON_FILE_CODE,
@@ -137,7 +135,7 @@ def create_ui():
             choices = [(p["name"], p["id"]) for p in store.list_projects()]
             return (
                 gr.update(choices=choices if choices else [], value=None),
-                _config_status_html("", ""),
+                project_status_html("info", "未选择项目", "请从左侧选择或新建项目"),
                 "",
                 "## 当前项目: 未选择",
                 "",
@@ -203,7 +201,7 @@ def create_ui():
         store.record_run_end(run_id, status, summary, report_path or "")
         return logs, report_path
 
-    with gr.Blocks(title="OneRad", css=CUSTOM_CSS) as demo:
+    with gr.Blocks(title="OneRad") as demo:
         gr.HTML(header_html())
 
         current_project_id = gr.State("")
@@ -254,7 +252,7 @@ def create_ui():
                     btn_run = gr.Button("运行分析", elem_classes="onerad-btn-primary")
 
                 gr.HTML(section_title_html(ICON_FILE_CODE, "运行日志"))
-                log = gr.Textbox(label="日志", lines=20, interactive=False)
+                log = gr.Textbox(label="日志", lines=20, interactive=False, elem_classes="onerad-logs")
                 report_file = gr.File(label="生成报告")
 
         # 事件绑定
@@ -321,4 +319,4 @@ def create_ui():
 
 if __name__ == "__main__":
     demo = create_ui()
-    demo.launch()
+    demo.launch(css=CUSTOM_CSS)
