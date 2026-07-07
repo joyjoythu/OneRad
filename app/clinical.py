@@ -254,13 +254,15 @@ def run_matching(discovery_pairs: List[Dict[str, Any]], clinical_df: pd.DataFram
             return {"success": False, "message": "pair 缺少 patient_id"}
         norm = _normalize_id(pid)
         image_ids.add(norm)
-        img_norm_to_orig[norm] = pid
+        if norm not in img_norm_to_orig:
+            img_norm_to_orig[norm] = pid
         norm_counts[norm] = norm_counts.get(norm, 0) + 1
 
     for norm, count in norm_counts.items():
         if count > 1:
             logger.warning("患者 %s 在 Discovery 中存在多对影像，Matching 阶段仅保留第一对", img_norm_to_orig[norm])
 
+    clinical_df = clinical_df.dropna(subset=[id_col])
     clinical_norm_series = clinical_df[id_col].astype(str).apply(_normalize_id)
 
     # Detect distinct original clinical IDs that collapse to the same normalized key.
@@ -335,7 +337,6 @@ def run_matching(discovery_pairs: List[Dict[str, Any]], clinical_df: pd.DataFram
         rows.append(row)
 
     matched_df = pd.DataFrame(rows)
-    matched_df = matched_df.drop_duplicates(subset=["patient_id"], keep="first")
 
     unmatched_image_ids = sorted({img_norm_to_orig[n] for n in unmatched_img})
     unmatched_clinical_ids = sorted({clinical_norm_to_orig[n] for n in unmatched_cli})

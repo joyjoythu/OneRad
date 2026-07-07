@@ -145,3 +145,19 @@ def test_run_matching_retains_first_pair_for_duplicate_patient(caplog):
     assert result["matched_ids"] == ["P001"]
     assert result["matched_df"]["image_path"].iloc[0] == "a.nii"
     assert "仅保留第一对" in caplog.text
+
+
+def test_run_matching_ignores_null_clinical_ids():
+    clinical_df = pd.DataFrame({
+        "PatientID": ["P001", None, "P002"],
+        "Label": [1, 0, 0],
+    })
+    pairs = [
+        {"patient_id": "P001", "image_path": "a.nii", "mask_path": "a_mask.nii"},
+        {"patient_id": "P002", "image_path": "b.nii", "mask_path": "b_mask.nii"},
+    ]
+    result = run_matching(pairs, clinical_df, "PatientID")
+    assert result["success"] is True
+    assert sorted(result["matched_ids"]) == ["P001", "P002"]
+    assert "nan" not in [x.lower() for x in result["unmatched_clinical_ids"]]
+    assert result["match_stats"]["total_clinical"] == 2
