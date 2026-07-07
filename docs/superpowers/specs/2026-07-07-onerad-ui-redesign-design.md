@@ -117,8 +117,8 @@
 
 ### 7. Gradio 实现要点
 
-- 使用 `gr.Blocks(title="OneRad")` 创建主界面，**不通过 `css` 参数注入样式**。
-- 在启动时通过 `demo.launch(css=CUSTOM_CSS)` 传入全局自定义 CSS。
+- 使用 `gr.Blocks(title="OneRad")` 创建主界面，**不在 `gr.Blocks()` 构造函数中通过 `css` 参数注入样式**。
+- 在启动时通过 `demo.launch(css=CUSTOM_CSS)` 的 `css` 参数传入全局自定义 CSS。
 - 通过 `elem_classes` 为卡片、输入框、按钮等组件添加自定义类名。
 - 品牌头部和区块标题使用 `gr.HTML` 渲染带图标的 HTML。
 - 保持现有的事件绑定：项目选择、新建/删除项目、保存配置、运行分析。
