@@ -46,7 +46,10 @@ def test_feature_agent_two_valid_pairs(tmp_path):
     yaml_path.write_text("setting:\n  resampledPixelSpacing: [0.35, 0.35, 0.35]\n")
     pairs = [_make_pair(tmp_path, "p1"), _make_pair(tmp_path, "p2")]
 
-    result = FeatureAgent(extractor=_mock_extractor).run(pairs, yaml_path=str(yaml_path), n_jobs=1)
+    out_dir = tmp_path / "features"
+    result = FeatureAgent(extractor=_mock_extractor).run(
+        pairs, yaml_path=str(yaml_path), n_jobs=1, output_dir=str(out_dir)
+    )
 
     assert result["success"] is True
     assert result["feature_df"].shape == (2, 2)
@@ -54,6 +57,9 @@ def test_feature_agent_two_valid_pairs(tmp_path):
     assert set(result["feature_names"]) == {"f1", "f2"}
     assert result["failed_ids"] == []
     assert result["settings_used"]["yaml_path"] == str(yaml_path)
+    assert result["feature_path"] == str(out_dir / "radiomics_features.csv")
+    assert os.path.exists(result["feature_path"])
+    assert result["failed_path"] is None
 
 
 def test_feature_agent_overrides_resampled_pixel_spacing(tmp_path):
@@ -114,14 +120,19 @@ def test_feature_agent_one_failing_pair(tmp_path):
         _make_pair(tmp_path, "p3"),
     ]
 
+    out_dir = tmp_path / "features"
     with patch("app.feature.cir_get_features") as mock_cir:
         mock_cir.side_effect = _mock_extractor
-        result = FeatureAgent().run(pairs, yaml_path=str(yaml_path), n_jobs=1)
+        result = FeatureAgent().run(pairs, yaml_path=str(yaml_path), n_jobs=1, output_dir=str(out_dir))
 
     assert result["success"] is True
     assert result["feature_df"].shape == (2, 2)
     assert set(result["feature_df"].index) == {"p1", "p2"}
     assert result["failed_ids"] == ["p3"]
+    assert result["feature_path"] == str(out_dir / "radiomics_features.csv")
+    assert os.path.exists(result["feature_path"])
+    assert result["failed_path"] == str(out_dir / "failed_feature_cases.csv")
+    assert os.path.exists(result["failed_path"])
 
 
 def test_feature_agent_all_pairs_failing(tmp_path):

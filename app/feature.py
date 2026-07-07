@@ -57,9 +57,11 @@ class FeatureAgent:
         self,
         timeout_per_case: int = 300,
         extractor=None,
+        output_dir: Optional[str] = None,
     ):
         self.timeout_per_case = timeout_per_case
         self._extractor = extractor
+        self.output_dir = output_dir
 
     def _get_extractor(self):
         if self._extractor is not None:
@@ -72,6 +74,7 @@ class FeatureAgent:
         yaml_path: str = "",
         n_jobs: int = -1,
         resampled_pixel_spacing: Optional[Tuple[float, float, float]] = None,
+        output_dir: Optional[str] = None,
     ) -> Dict[str, Any]:
         if not pairs:
             return {"success": False, "message": "pairs 为空"}
@@ -139,6 +142,18 @@ class FeatureAgent:
         if resampled_pixel_spacing is not None:
             settings_used["resampled_pixel_spacing"] = list(resampled_pixel_spacing)
 
+        save_dir = output_dir or self.output_dir
+        feature_path = None
+        failed_path = None
+        if save_dir:
+            os.makedirs(save_dir, exist_ok=True)
+            feature_path = os.path.join(save_dir, "radiomics_features.csv")
+            df.to_csv(feature_path)
+            if failed_ids:
+                failed_path = os.path.join(save_dir, "failed_feature_cases.csv")
+                pd.DataFrame({"patient_id": failed_ids}).to_csv(failed_path, index=False)
+            logger.info("特征矩阵已保存: %s", feature_path)
+
         return {
             "success": True,
             "message": f"特征提取完成: {len(df)}/{len(pairs)} 成功, {len(df.columns)} 特征",
@@ -148,6 +163,8 @@ class FeatureAgent:
             "zero_variance_features": zero_var,
             "settings_used": settings_used,
             "extraction_time_seconds": round(time.time() - t0, 2),
+            "feature_path": feature_path,
+            "failed_path": failed_path,
         }
 
     def _extract_single(self, args):
