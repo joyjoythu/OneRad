@@ -1,3 +1,4 @@
+import os
 import traceback
 from enum import Enum, auto
 from typing import Dict, Any, Optional, Callable, List, Tuple, Generator
@@ -96,6 +97,14 @@ def merge_data(state: Dict[str, Any]) -> Dict[str, Any]:
         "n_samples": len(merged),
         "n_features": len(feature_df.columns),
     }
+
+
+def _build_llm(state: Dict[str, Any]):
+    cfg = state["config"]["llm"]
+    if not cfg.get("api_key"):
+        return None
+    from app.llm import LLMClient
+    return LLMClient(api_key=cfg["api_key"], base_url=cfg["base_url"], model=cfg["model"])
 
 
 class Orchestrator:
@@ -311,3 +320,59 @@ class Orchestrator:
 
         yield self._yield_event(self._make_event("error", f"未知决策: {user_decision}"))
         return self.state
+
+
+
+def register_default_handlers(orch: Orchestrator) -> None:
+    from app import discovery, clinical, qc, feature, analysis, report
+
+    orch.register_handler(PipelineStage.DISCOVERY, lambda state: discovery.DiscoveryAgent(
+        llm_client=_build_llm(state) if state["config"]["llm"].get("api_key") else None
+    ).run(state["config"]["image_dir"]))
+
+    orch.register_handler(PipelineStage.CLINICAL, lambda state: clinical.ClinicalAgent(
+        llm_client=_build_llm(state)
+    ).run(state["config"]["clinical_path"], state["user_request"]))
+
+    orch.register_handler(PipelineStage.MATCHING, lambda state: clinical.run_matching(
+        state["discovery"]["pairs"],
+        state["clinical"]["df"],
+        state["clinical"]["id_col"],
+    ))
+
+    orch.register_handler(PipelineStage.QC, lambda state: qc.QCAgent(
+        target_spacing=state["config"].get("target_spacing"),
+        output_dir=os.path.join(state["config"]["output_dir"], "qc_resampled"),
+    ).run([
+        {
+            "patient_id": row["patient_id"],
+            "image_path": row["image_path"],
+            "mask_path": row["mask_path"],
+            "modality": row.get("modality", state["config"].get("modality", "CT")),
+        }
+        for _, row in state["matching"]["matched_df"].iterrows()
+    ]))
+
+    orch.register_handler(PipelineStage.FEATURE, lambda state: feature.FeatureAgent(
+        n_workers=state["config"].get("n_jobs", -1),
+    ).run(
+        state["qc"]["passed_pairs"],
+        state["config"]["yaml_path"],
+    ))
+
+    orch.register_handler(PipelineStage.MERGE, merge_data)
+
+    orch.register_handler(PipelineStage.ANALYSIS, lambda state: analysis.AnalysisAgent(
+        output_dir=state["config"]["output_dir"],
+        covariates=state["config"].get("covariates", [])
+    ).run(state["merged"]["df"], state["clinical"]["label_col"]))
+
+    orch.register_handler(PipelineStage.REPORT, lambda state: report.ReportAgent().run(
+        analysis_result=state["analysis"],
+        output_dir=state["config"]["output_dir"],
+        modality=state["config"].get("modality", "CT"),
+        n_features=len(state["feature"]["feature_names"]),
+        covariates=state["config"].get("covariates", []),
+        plot_paths=state["analysis"].get("plot_paths", []),
+        llm_client=_build_llm(state),
+    ))

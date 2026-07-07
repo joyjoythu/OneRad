@@ -307,3 +307,15 @@ def test_merge_data_overlapping_columns():
     assert result["n_features"] == 0
     assert "特征列与临床表列名冲突" in result["message"]
     assert "f1" in result["message"]
+
+
+from unittest.mock import patch, MagicMock
+
+
+def test_orchestrator_default_handlers_registration():
+    orch = Orchestrator(image_dir="./data", clinical_path="./data/clinical.csv")
+    from app.orchestrator import register_default_handlers
+    register_default_handlers(orch)
+    assert PipelineStage.DISCOVERY in orch._stage_handlers
+    for stage in STAGE_ORDER:
+        assert stage in orch._stage_handlers
