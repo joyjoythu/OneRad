@@ -4,7 +4,7 @@ from app.orchestrator import Orchestrator, register_default_handlers
 from app.utils import parse_covariates
 
 
-def _run_analysis(img_dir, clinical, out_dir, mod, covs, key, m, url):
+def _run_analysis(img_dir, clinical, out_dir, mod, covs, key, m, url="https://api.deepseek.com/v1"):
     if not img_dir or not img_dir.strip() or not clinical or not clinical.strip():
         return "错误：影像文件夹路径和临床表格路径不能为空", None
 
@@ -55,18 +55,17 @@ def create_ui():
         with gr.Row():
             api_key = gr.Textbox(label="DeepSeek API Key", type="password")
             model = gr.Textbox(label="模型", value="deepseek-chat")
-            base_url = gr.Textbox(label="Base URL", value="https://api.deepseek.com/v1")
 
         run_btn = gr.Button("运行分析")
         log = gr.Textbox(label="日志", lines=20, interactive=False)
         report_file = gr.File(label="生成报告")
 
-        def run_analysis(img_dir, clinical, out_dir, mod, covs, key, m, url):
-            return _run_analysis(img_dir, clinical, out_dir, mod, covs, key, m, url)
+        def run_analysis(img_dir, clinical, out_dir, mod, covs, key, m):
+            return _run_analysis(img_dir, clinical, out_dir, mod, covs, key, m)
 
         run_btn.click(
             fn=run_analysis,
-            inputs=[image_dir, clinical_path, output_dir, modality, covariates, api_key, model, base_url],
+            inputs=[image_dir, clinical_path, output_dir, modality, covariates, api_key, model],
             outputs=[log, report_file],
         )
 
