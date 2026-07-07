@@ -1,5 +1,7 @@
 """OneRad UI 样式、图标与 HTML 片段资源。"""
 
+import html
+
 
 # ---------------------------------------------------------------------------
 # SVG 图标（内联，可在 gr.HTML 或 CSS data URI 中使用）
@@ -101,6 +103,7 @@ CUSTOM_CSS = """
 }
 
 /* 隐藏 Gradio 默认标题栏，改由自定义 HTML 头部替代 */
+/* 注意：以下选择器基于 gradio==6.19.0 的 DOM 结构验证，升级后可能失效 */
 .gradio-container > .main > .wrap > .contain > .tabs,
 .gradio-container > .main > .wrap > .contain > h1,
 .gradio-container > .main > .wrap > .contain > h2 {
@@ -274,7 +277,7 @@ def section_title_html(icon_svg: str, title: str) -> str:
     return f"""
     <div class="onerad-section-title">
       {_inline_svg(icon_svg)}
-      <span>{title}</span>
+      <span>{html.escape(title)}</span>
     </div>
     """.strip()
 
@@ -293,8 +296,8 @@ def project_status_html(status: str, title: str, description: str) -> str:
     <div class="onerad-status {css_class}">
       <div class="onerad-status-title">
         {_inline_svg(icon)}
-        <span>{title}</span>
+        <span>{html.escape(title)}</span>
       </div>
-      <div class="onerad-status-desc">{description}</div>
+      <div class="onerad-status-desc">{html.escape(description)}</div>
     </div>
     """.strip()
