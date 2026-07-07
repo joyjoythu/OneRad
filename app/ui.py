@@ -50,8 +50,8 @@ def create_ui():
 
     def refresh_projects():
         projects = store.list_projects()
-        choices = {p["name"]: p["id"] for p in projects}
-        return gr.update(choices=choices if choices else None, value=None)
+        choices = [(p["name"], p["id"]) for p in projects]
+        return gr.update(choices=choices if choices else [], value=None)
 
     def on_project_select(project_id):
         if not project_id:
@@ -78,7 +78,7 @@ def create_ui():
             return refresh_projects(), "项目名称和路径不能为空", "", ""
         try:
             project = store.create_project(name.strip(), path.strip(), description or "")
-            choices = {p["name"]: p["id"] for p in store.list_projects()}
+            choices = [(p["name"], p["id"]) for p in store.list_projects()]
             return (
                 gr.update(choices=choices, value=project["id"]),
                 f"已创建项目: {project['name']}",
@@ -144,7 +144,7 @@ def create_ui():
             with gr.Column(scale=0, min_width=260):
                 gr.Markdown("## 项目")
                 btn_new = gr.Button("+ 新建项目")
-                project_selector = gr.Radio(label="选择项目", choices={})
+                project_selector = gr.Dropdown(label="选择项目", choices=[], value=None)
 
                 with gr.Row(visible=False) as new_project_row:
                     with gr.Column():
