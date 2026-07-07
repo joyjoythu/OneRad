@@ -1,12 +1,47 @@
 import traceback
 
-import gradio as gr
-
 from app.orchestrator import Orchestrator, register_default_handlers
 from app.utils import parse_covariates
 
 
+def _run_analysis(img_dir, clinical, out_dir, mod, covs, key, m, url):
+    if not img_dir or not img_dir.strip() or not clinical or not clinical.strip():
+        return "错误：影像文件夹路径和临床表格路径不能为空", None
+
+    try:
+        orch = Orchestrator(
+            image_dir=img_dir,
+            clinical_path=clinical,
+            output_dir=out_dir,
+            modality=mod,
+            covariates=parse_covariates(covs),
+            api_key=key,
+            base_url=url,
+            model=m,
+        )
+        register_default_handlers(orch)
+
+        logs = []
+        def emitter(event):
+            logs.append(f"[{event.get('stage', '')}] {event['type']}: {event['message']}")
+
+        orch.set_sse_emitter(emitter)
+        for _ in orch.run():
+            pass
+
+        report = orch.state.get("report")
+        if not report or report.get("success") is False:
+            return "\n".join(logs) + "\n错误：流水线执行失败，未能生成报告", None
+
+        report_path = report.get("report_path")
+        return "\n".join(logs), report_path
+    except Exception:
+        return traceback.format_exc(), None
+
+
 def create_ui():
+    import gradio as gr
+
     with gr.Blocks(title="AutoRadiomics Agent") as demo:
         gr.Markdown("# AutoRadiomics Agent")
 
@@ -27,38 +62,7 @@ def create_ui():
         report_file = gr.File(label="生成报告")
 
         def run_analysis(img_dir, clinical, out_dir, mod, covs, key, m, url):
-            if not img_dir or not img_dir.strip() or not clinical or not clinical.strip():
-                return "错误：影像文件夹路径和临床表格路径不能为空", None
-
-            try:
-                orch = Orchestrator(
-                    image_dir=img_dir,
-                    clinical_path=clinical,
-                    output_dir=out_dir,
-                    modality=mod,
-                    covariates=parse_covariates(covs),
-                    api_key=key,
-                    base_url=url,
-                    model=m,
-                )
-                register_default_handlers(orch)
-
-                logs = []
-                def emitter(event):
-                    logs.append(f"[{event.get('stage', '')}] {event['type']}: {event['message']}")
-
-                orch.set_sse_emitter(emitter)
-                for _ in orch.run():
-                    pass
-
-                report = orch.state.get("report")
-                if not report or report.get("success") is False:
-                    return "\n".join(logs) + "\n错误：流水线执行失败，未能生成报告", None
-
-                report_path = report.get("report_path")
-                return "\n".join(logs), report_path
-            except Exception:
-                return traceback.format_exc(), None
+            return _run_analysis(img_dir, clinical, out_dir, mod, covs, key, m, url)
 
         run_btn.click(
             fn=run_analysis,

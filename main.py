@@ -1,4 +1,6 @@
 import argparse
+import sys
+import traceback
 
 from app.utils import parse_covariates
 
@@ -38,8 +40,13 @@ def main():
         model=args.model,
     )
     register_default_handlers(orch)
-    for event in orch.run():
-        print(event)
+    try:
+        for event in orch.run():
+            print(event)
+    except Exception as e:
+        print(f"流水线执行失败: {e}", file=sys.stderr)
+        traceback.print_exc()
+        sys.exit(1)
     print(f"Report: {orch.state.get('report', {}).get('report_path')}")
 
 
