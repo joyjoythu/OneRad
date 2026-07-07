@@ -2,3 +2,4 @@ __pycache__/
 *.pyc
 docs/superpowers/plans/task_*.md
 output/
+pyradiomics-master/

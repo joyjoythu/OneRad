@@ -1,9 +1,9 @@
 import json
 import re
 import os
+import string
 from typing import Optional, Dict, Any, List, Tuple
 
-from langchain.prompts import PromptTemplate
 from openai import OpenAI
 
 
@@ -140,6 +140,5 @@ class LLMClient:
         return None
 
     def render_prompt(self, template: str, **kwargs) -> str:
-        """Render a Jinja2-style prompt template with the supplied keyword variables."""
-        prompt = PromptTemplate.from_template(template)
-        return prompt.format(**kwargs)
+        """Render a brace-style prompt template with the supplied keyword variables."""
+        return template.format(**kwargs)
