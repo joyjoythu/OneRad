@@ -16,6 +16,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+# 创建非 root 用户并保证数据目录可写
+RUN groupadd -r appuser && useradd -r -g appuser appuser && \
+    mkdir -p /app/data /app/output && \
+    chown -R appuser:appuser /app/data /app/output
+USER appuser
+
 EXPOSE 7860
 
-CMD ["python", "main.py", "--ui"]
+CMD ["sh", "-c", "python main.py --ui --base-url ${BASE_URL:-https://api.deepseek.com/v1} --model ${MODEL:-deepseek-chat}"]

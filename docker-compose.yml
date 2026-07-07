@@ -1,4 +1,3 @@
-version: '3.8'
 services:
   autoradiomics:
     build: .
@@ -9,3 +8,7 @@ services:
       - ./output:/app/output
     environment:
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - GRADIO_SERVER_NAME=0.0.0.0
+      - GRADIO_SERVER_PORT=7860
+      - BASE_URL=${BASE_URL:-https://api.deepseek.com/v1}
+      - MODEL=${MODEL:-deepseek-chat}
