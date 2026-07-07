@@ -360,9 +360,7 @@ def register_default_handlers(orch: Orchestrator) -> None:
         for _, row in state["matching"]["matched_df"].iterrows()
     ]))
 
-    orch.register_handler(PipelineStage.FEATURE, lambda state: feature.FeatureAgent(
-        n_workers=state["config"].get("n_jobs", -1),
-    ).run(
+    orch.register_handler(PipelineStage.FEATURE, lambda state: feature.FeatureAgent().run(
         state["qc"]["passed_pairs"],
         state["config"]["yaml_path"],
         resampled_pixel_spacing=state["config"].get("resampled_pixel_spacing"),

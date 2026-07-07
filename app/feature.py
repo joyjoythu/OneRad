@@ -3,15 +3,13 @@ import tempfile
 import time
 import logging
 from typing import List, Dict, Any, Tuple, Optional
-from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import pandas as pd
 import yaml
 
-logger = logging.getLogger(__name__)
+from app.cir_features import cir_get_features
 
-# Lazy-loaded by _extract_single on first use in each process.
-cir_get_features = None
+logger = logging.getLogger(__name__)
 
 
 def _prepare_yaml(
@@ -57,26 +55,15 @@ def _prepare_yaml(
 class FeatureAgent:
     def __init__(
         self,
-        n_workers: int = -1,
         timeout_per_case: int = 300,
         extractor=None,
     ):
-        import multiprocessing as mp
-        self.n_workers = n_workers if n_workers > 0 else max(1, mp.cpu_count() - 1)
         self.timeout_per_case = timeout_per_case
         self._extractor = extractor
 
     def _get_extractor(self):
         if self._extractor is not None:
             return self._extractor
-        global cir_get_features
-        if cir_get_features is None:
-            try:
-                from DONGGUAN_NEW_Radiomic.Atsea_def import cir_get_features as _cir
-                cir_get_features = _cir
-            except Exception as e:
-                logger.warning("无法导入 cir_get_features: %s", e)
-                return None
         return cir_get_features
 
     def run(
@@ -108,23 +95,10 @@ class FeatureAgent:
             return {"success": False, "message": f"准备 YAML 失败: {e}"}
 
         t0 = time.time()
-        n_workers = n_jobs if n_jobs > 0 else self.n_workers
-
-        if n_workers == 1 or len(pairs) == 1:
-            results = [self._extract_single((p["patient_id"], p["image_path"], p["mask_path"], effective_yaml)) for p in pairs]
-        else:
-            results = []
-            with ProcessPoolExecutor(max_workers=n_workers) as executor:
-                futures = {
-                    executor.submit(self._extract_single, (p["patient_id"], p["image_path"], p["mask_path"], effective_yaml)): p
-                    for p in pairs
-                }
-                for future in as_completed(futures):
-                    try:
-                        results.append(future.result(timeout=self.timeout_per_case))
-                    except Exception as e:
-                        p = futures[future]
-                        results.append((p["patient_id"], None, str(e)))
+        results = [
+            self._extract_single((p["patient_id"], p["image_path"], p["mask_path"], effective_yaml))
+            for p in pairs
+        ]
 
         rows = []
         failed_ids = []

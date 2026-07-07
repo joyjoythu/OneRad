@@ -168,3 +168,11 @@ def test_feature_agent_malformed_pair(tmp_path):
     assert result["success"] is False
     assert "pair 缺少必要字段" in result["message"]
     assert "mask_path" in result["message"]
+
+
+def test_get_extractor_imports_real_cir_get_features():
+    """The default extractor must be importable without patching."""
+    agent = FeatureAgent()
+    extractor = agent._get_extractor()
+    assert extractor is not None
+    assert callable(extractor)
