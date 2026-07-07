@@ -127,10 +127,10 @@ def test_qc_geometric_mismatch_persists_corrected_mask(tmp_path):
     assert np.allclose(corrected_mask.GetDirection(), image.GetDirection())
 
 
-def test_qc_geometric_and_target_spacing_resample_once(tmp_path):
+def test_qc_combined_resampling_writes_final_outputs(tmp_path):
     # Geometric mismatch + target_spacing: the mask should be resampled to the
     # image grid in memory, then both image and mask are resampled to the target
-    # spacing, and only the final target-resampled files are written.
+    # spacing, and only the final target-resampled files are written once.
     img_arr = np.random.randint(-200, 400, (20, 20, 20)).astype(np.int16)
     mask_arr = np.zeros((20, 20, 20), dtype=np.uint8)
     mask_arr[8:14, 8:14, 8:14] = 1
@@ -144,6 +144,7 @@ def test_qc_geometric_and_target_spacing_resample_once(tmp_path):
     result = agent.run([pair])
 
     assert result["passed"] == 1
+    assert result["failed"] == 0
     assert result["resampled"] is True
 
     expected_img = out_dir / "P011_CT_image.nii.gz"
@@ -155,6 +156,9 @@ def test_qc_geometric_and_target_spacing_resample_once(tmp_path):
     resampled_mask = sitk.ReadImage(str(expected_mask))
     assert np.allclose(resampled_image.GetSpacing(), (2.0, 2.0, 2.0))
     assert np.allclose(resampled_mask.GetSpacing(), (2.0, 2.0, 2.0))
+    assert resampled_image.GetSize() == resampled_mask.GetSize()
+    assert resampled_image.GetSize() == (10, 10, 10)
+    assert np.any(sitk.GetArrayFromImage(resampled_mask) > 0)
 
     assert Path(result["passed_pairs"][0]["mask_path"]) == expected_mask
     assert Path(result["passed_pairs"][0]["image_path"]) == expected_img
