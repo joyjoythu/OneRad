@@ -51,6 +51,16 @@ def remove_mask_suffix(name: str) -> str:
     return re.sub(pattern, "", name, flags=re.IGNORECASE)
 
 
+def remove_channel_suffix(name: str) -> str:
+    """Remove nnU-Net style trailing modality channel suffixes like ``_0000``.
+
+    Examples:
+        * ``P001_0000`` → ``P001``
+        * ``case_01_0001`` → ``case_01``
+    """
+    return re.sub(r"_\d{4}$", "", name)
+
+
 def extract_patient_id(base_name: str, id_pattern: Optional[str] = None) -> str:
     """Extract a patient identifier from a file base name.
 
@@ -61,6 +71,7 @@ def extract_patient_id(base_name: str, id_pattern: Optional[str] = None) -> str:
     4. The cleaned base name, falling back to the original base name.
     """
     clean = remove_mask_suffix(base_name).strip("_-")
+    clean = remove_channel_suffix(clean).strip("_-")
     if id_pattern:
         m = re.search(id_pattern, clean)
         if m:
@@ -134,6 +145,19 @@ class DiscoveryAgent:
             return {"success": False, "message": "未找到 Image 文件", "pairs": []}
 
         pairs, unpaired_images, unpaired_masks = self._pair_images_masks(images, masks)
+
+        if not pairs:
+            return {
+                "success": False,
+                "message": (
+                    f"未找到可配对的影像/掩码：发现 {len(images)} 个 image，"
+                    f"{len(masks)} 个 mask。请检查文件名是否包含 image/mask 对应关系，"
+                    f"且患者 ID 一致。未配对 image: {unpaired_images}"
+                ),
+                "pairs": [],
+                "unpaired_images": unpaired_images,
+                "unpaired_masks": unpaired_masks,
+            }
 
         return {
             "success": True,
@@ -209,18 +233,21 @@ class DiscoveryAgent:
                 "patient_id": pid,
                 "modality": modality,
             }
-            if self._is_mask_name(base):
+            if self._is_mask_name(base, f):
                 masks.append(entry)
             else:
                 images.append(entry)
         return images, masks
 
-    def _is_mask_name(self, name: str) -> bool:
-        """Return True when *name* contains a mask keyword as a filename suffix.
+    def _is_mask_name(self, name: str, path: Optional[Path] = None) -> bool:
+        """Return True when *name* or its parent directory indicates a mask.
 
         A keyword counts as a mask indicator when it is at the end of the base name
         (e.g. ``brain_mask``) or when it is followed by a known modality token
-        (e.g. ``brain_mask_T1``). This avoids false positives such as
+        (e.g. ``brain_mask_T1``). Files placed in a folder named ``Label``,
+        ``labels``, ``mask``, ``masks``, ``seg``, ``segs``, ``segmentation``,
+        ``segmentations``, ``gt``, ``gts``, ``annotation`` or ``annotations`` are
+        also treated as masks. This avoids false positives such as
         ``tumor_volume`` where an anatomical word happens to be in the keyword list.
         """
         name_lower = name.lower()
@@ -239,6 +266,18 @@ class DiscoveryAgent:
             name_lower,
         ):
             return True
+
+        # Folder-based heuristic for nnU-Net style datasets: masks live in a
+        # dedicated label/mask/segmentation folder without mask keywords in the
+        # filename itself.
+        if path is not None:
+            parent_lower = path.parent.name.lower()
+            if parent_lower in {
+                "label", "labels", "mask", "masks", "seg", "segs",
+                "segmentation", "segmentations", "gt", "gts",
+                "annotation", "annotations",
+            }:
+                return True
 
         return False
 
