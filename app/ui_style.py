@@ -1,6 +1,7 @@
 """OneRad UI 样式、图标与 HTML 片段资源。"""
 
 import html
+from typing import Any, Dict, List
 
 
 # ---------------------------------------------------------------------------
@@ -295,10 +296,15 @@ CUSTOM_CSS = """
     font-size: 16px;
     line-height: 1;
     margin-left: 8px;
+    cursor: pointer;
 }
 .onerad-project-delete:hover {
     background: rgba(220, 38, 38, 0.1);
     color: #dc2626;
+}
+.onerad-project-item-active .onerad-project-delete:hover {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.2);
 }
 .onerad-empty-state {
     padding: 20px 12px;
@@ -365,3 +371,38 @@ def project_status_html(status: str, title: str, description: str) -> str:
       <div class="onerad-status-desc">{html.escape(description)}</div>
     </div>
     """.strip()
+
+
+def project_list_html(projects: List[Dict[str, Any]], selected_id: str = "") -> str:
+    """渲染左侧项目列表 HTML，含选择/删除交互所需的 data 属性。"""
+    if not projects:
+        return '<div class="onerad-empty-state">暂无项目，点击上方按钮创建</div>'
+
+    select_onclick = (
+        "var input=document.getElementById('project-select-bridge');"
+        "if(!input)return;input.value=this.getAttribute('data-project-id');"
+        "input.dispatchEvent(new Event('input',{bubbles:true}));"
+    )
+    delete_onclick = (
+        "event.stopPropagation();"
+        "if(!confirm('确定要删除该项目吗？'))return;"
+        "var input=document.getElementById('project-delete-bridge');"
+        "if(!input)return;input.value=this.getAttribute('data-project-id');"
+        "input.dispatchEvent(new Event('input',{bubbles:true}));"
+    )
+
+    items = []
+    for p in projects:
+        active_class = " onerad-project-item-active" if p["id"] == selected_id else ""
+        pid = html.escape(p["id"])
+        pname = html.escape(p["name"])
+        items.append(f"""
+        <div class="onerad-project-item{active_class}" data-project-id="{pid}" onclick="{select_onclick}">
+            <span>📁</span>
+            <span class="onerad-project-name">{pname}</span>
+            <span class="onerad-project-delete" data-project-id="{pid}" onclick="{delete_onclick}">×</span>
+        </div>
+        """)
+
+    list_html = "".join(items)
+    return f'<div class="onerad-project-list">{list_html}</div>'
