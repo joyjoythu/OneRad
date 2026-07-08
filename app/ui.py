@@ -12,6 +12,7 @@ from app.ui_style import (
     header_html,
     section_title_html,
     project_status_html,
+    project_list_html,
     ICON_FOLDER,
     ICON_SETTINGS,
     ICON_GLOBE,
@@ -68,12 +69,7 @@ def _config_status_html(image_dir, clinical_path, is_save=False):
 def create_ui(store: Optional[ProjectStore] = None):
     store = store or ProjectStore()
 
-    def refresh_projects():
-        projects = store.list_projects()
-        choices = [(p["name"], p["id"]) for p in projects]
-        return gr.update(choices=choices if choices else [], value=None)
-
-    def on_project_select(project_id):
+    def _on_project_select(project_id):
         if not project_id:
             return [gr.update()] * 9 + [
                 _config_status_html("", ""),
@@ -100,59 +96,122 @@ def create_ui(store: Optional[ProjectStore] = None):
             None,
         )
 
-    def on_create_project(name, path, description):
-        if not name or not name.strip() or not path or not path.strip():
-            return (
-                refresh_projects(),
-                project_status_html("error", "创建失败", "项目名称和路径不能为空"),
-                "",
-                "",
-            )
-        try:
-            project = store.create_project(name.strip(), path.strip(), description or "")
-            choices = [(p["name"], p["id"]) for p in store.list_projects()]
-            return (
-                gr.update(choices=choices, value=project["id"]),
-                _config_status_html("", ""),
-                "",
-                "",
-            )
-        except Exception as e:
-            return (
-                refresh_projects(),
-                project_status_html("error", "创建项目失败", str(e)),
-                "",
-                "",
-            )
+    def _refresh_project_list(selected_id: str = ""):
+        projects = store.list_projects()
+        return gr.update(value=project_list_html(projects, selected_id))
 
-    def on_delete_project(project_id):
+    def _on_select_bridge(project_id):
+        if not project_id:
+            # 9 个 gr.update() 对应 select_bridge.change 的 9 个 outputs：
+            # current_project_id 之后的 9 个组件（project_title, image_dir,
+            # clinical_path, output_dir, modality, covariates, model, api_key,
+            # status_msg），最后 report_file 固定为 None。
+            return [gr.update()] * 9 + [
+                _config_status_html("", ""),
+                None,
+            ]
+        return _on_project_select(project_id)
+
+    def _on_delete_bridge(project_id, current_id):
         if not project_id:
             return (
-                refresh_projects(),
-                project_status_html("error", "请先选择一个项目", "删除前需要选择项目"),
-                *[gr.update()] * 9,
+                gr.update(),  # project_list
+                gr.update(),  # current_project_id
+                gr.update(),  # project_title
+                gr.update(),  # image_dir
+                gr.update(),  # clinical_path
+                gr.update(),  # output_dir
+                gr.update(),  # modality
+                gr.update(),  # covariates
+                gr.update(),  # model
+                gr.update(),  # api_key
+                project_status_html("error", "删除失败", "未获取到项目 ID"),
+                gr.update(),  # report_file
             )
         try:
             store.delete_project(project_id)
-            choices = [(p["name"], p["id"]) for p in store.list_projects()]
+        except Exception as e:
             return (
-                gr.update(choices=choices if choices else [], value=None),
-                project_status_html("info", "未选择项目", "请从左侧选择或新建项目"),
+                gr.update(),  # project_list
+                gr.update(),  # current_project_id
+                gr.update(),  # project_title
+                gr.update(),  # image_dir
+                gr.update(),  # clinical_path
+                gr.update(),  # output_dir
+                gr.update(),  # modality
+                gr.update(),  # covariates
+                gr.update(),  # model
+                gr.update(),  # api_key
+                project_status_html("error", "删除项目失败", str(e)),
+                gr.update(),  # report_file
+            )
+
+        projects = store.list_projects()
+        if not projects:
+            # 删除后无项目，清空右侧
+            return (
+                _refresh_project_list(""),
                 "",
                 "## 当前项目: 未选择",
-                "",
-                "",
-                "./outputs",
-                "auto",
-                "",
-                "deepseek-chat",
-                "",
+                "", "", "./outputs", "auto", "", "deepseek-chat", "",
+                project_status_html("info", "未选择项目", "请从左侧选择或新建项目"),
+                None,
+            )
+
+        # 如果被删的是当前项目，自动选择第一个；否则保持当前项目
+        next_id = projects[0]["id"] if project_id == current_id else current_id
+        select_updates = list(_on_project_select(next_id))
+        return (
+            _refresh_project_list(next_id),
+            *select_updates,
+        )
+
+    def on_create_project(name, path, description):
+        if not name or not name.strip() or not path or not path.strip():
+            return (
+                _refresh_project_list(""),
+                "",  # current_project_id
+                "## 当前项目: 未选择",  # project_title
+                "",  # image_dir
+                "",  # clinical_path
+                "./outputs",  # output_dir
+                "auto",  # modality
+                "",  # covariates
+                "deepseek-chat",  # model
+                "",  # api_key
+                project_status_html("error", "创建失败", "项目名称和路径不能为空"),
+                None,  # report_file
+                "",  # new_name
+                "",  # new_path
+                "",  # new_description
+            )
+        try:
+            project = store.create_project(name.strip(), path.strip(), description or "")
+            select_updates = list(_on_project_select(project["id"]))
+            return (
+                _refresh_project_list(project["id"]),
+                *select_updates,
+                "",  # new_name
+                "",  # new_path
+                "",  # new_description
             )
         except Exception as e:
             return (
-                refresh_projects(),
-                project_status_html("error", "删除项目失败", str(e)),
-                *[gr.update()] * 9,
+                _refresh_project_list(""),
+                "",  # current_project_id
+                "## 当前项目: 未选择",  # project_title
+                "",  # image_dir
+                "",  # clinical_path
+                "./outputs",  # output_dir
+                "auto",  # modality
+                "",  # covariates
+                "deepseek-chat",  # model
+                "",  # api_key
+                project_status_html("error", "创建项目失败", str(e)),
+                None,  # report_file
+                "",  # new_name
+                "",  # new_path
+                "",  # new_description
             )
 
     def on_save_config(project_id, image_dir, clinical_path, output_dir, modality, covariates, model, api_key):
@@ -211,12 +270,10 @@ def create_ui(store: Optional[ProjectStore] = None):
         with gr.Row():
             # 左侧项目侧边栏
             with gr.Column(scale=0, min_width=320, elem_classes="onerad-card") as sidebar_col:
-                gr.HTML(section_title_html(ICON_FOLDER, "项目管理"))
+                gr.HTML(section_title_html(ICON_FOLDER, "项目"))
+
                 with gr.Row():
                     btn_new = gr.Button("+ 新建项目", scale=1, elem_classes="onerad-btn-new")
-                    btn_delete = gr.Button("删除", scale=0, min_width=60)
-
-                project_selector = gr.Dropdown(label="选择项目", choices=[], value=None)
 
                 with gr.Row(visible=False) as new_project_row:
                     with gr.Column():
@@ -226,6 +283,13 @@ def create_ui(store: Optional[ProjectStore] = None):
                         with gr.Row():
                             btn_create_confirm = gr.Button("创建")
                             btn_create_cancel = gr.Button("取消")
+
+                # 项目列表（HTML 自定义）
+                project_list = gr.HTML(value=project_list_html(store.list_projects(), ""), elem_classes="onerad-project-list-container")
+
+                # JS 事件桥：隐藏在页面中
+                select_bridge = gr.Textbox(elem_id="project-select-bridge", visible=False)
+                delete_bridge = gr.Textbox(elem_id="project-delete-bridge", visible=False)
 
                 status_msg = gr.HTML()
 
@@ -258,22 +322,15 @@ def create_ui(store: Optional[ProjectStore] = None):
                 report_file = gr.File(label="生成报告")
 
         # 事件绑定
-        demo.load(refresh_projects, outputs=[project_selector])
+        demo.load(_refresh_project_list, outputs=[project_list])
 
         btn_new.click(lambda: gr.update(visible=True), outputs=[new_project_row])
         btn_create_cancel.click(lambda: gr.update(visible=False), outputs=[new_project_row])
         btn_create_confirm.click(
             on_create_project,
             inputs=[new_name, new_path, new_description],
-            outputs=[project_selector, status_msg, new_name, new_path],
-        ).then(lambda: gr.update(visible=False), outputs=[new_project_row])
-
-        btn_delete.click(
-            on_delete_project,
-            inputs=[current_project_id],
             outputs=[
-                project_selector,
-                status_msg,
+                project_list,
                 current_project_id,
                 project_title,
                 image_dir,
@@ -283,12 +340,36 @@ def create_ui(store: Optional[ProjectStore] = None):
                 covariates,
                 model,
                 api_key,
+                status_msg,
+                report_file,
+                new_name,
+                new_path,
+                new_description,
+            ],
+        ).then(lambda: gr.update(visible=False), outputs=[new_project_row])
+
+        delete_bridge.change(
+            _on_delete_bridge,
+            inputs=[delete_bridge, current_project_id],
+            outputs=[
+                project_list,
+                current_project_id,
+                project_title,
+                image_dir,
+                clinical_path,
+                output_dir,
+                modality,
+                covariates,
+                model,
+                api_key,
+                status_msg,
+                report_file,
             ],
         )
 
-        project_selector.change(
-            on_project_select,
-            inputs=[project_selector],
+        select_bridge.change(
+            _on_select_bridge,
+            inputs=[select_bridge],
             outputs=[
                 current_project_id,
                 project_title,

@@ -5,6 +5,13 @@ from typing import Any, Dict, List
 
 
 # ---------------------------------------------------------------------------
+# 项目列表 JS bridge 输入框 ID（与 app/ui.py 保持一致）
+# ---------------------------------------------------------------------------
+PROJECT_SELECT_BRIDGE_ID = "project-select-bridge"
+PROJECT_DELETE_BRIDGE_ID = "project-delete-bridge"
+
+
+# ---------------------------------------------------------------------------
 # SVG 图标（内联，可在 gr.HTML 或 CSS data URI 中使用）
 # ---------------------------------------------------------------------------
 
@@ -376,7 +383,11 @@ def project_status_html(status: str, title: str, description: str) -> str:
 def project_list_html(projects: List[Dict[str, Any]], selected_id: str = "") -> str:
     """渲染左侧项目列表 HTML，含选择/删除交互所需的 data 属性。"""
     if not projects:
-        return '<div class="onerad-empty-state">暂无项目，点击上方按钮创建</div>'
+        return """
+        <div class="onerad-project-list">
+          <div class="onerad-empty-state">暂无项目，点击上方按钮创建</div>
+        </div>
+        """.strip()
 
     select_onclick = (
         "var input=document.getElementById('project-select-bridge');"
@@ -394,8 +405,8 @@ def project_list_html(projects: List[Dict[str, Any]], selected_id: str = "") -> 
     items = []
     for p in projects:
         active_class = " onerad-project-item-active" if p["id"] == selected_id else ""
-        pid = html.escape(p["id"])
-        pname = html.escape(p["name"])
+        pid = html.escape(p["id"], quote=True)
+        pname = html.escape(p["name"], quote=True)
         items.append(f"""
         <div class="onerad-project-item{active_class}" data-project-id="{pid}" onclick="{select_onclick}">
             <span>📁</span>
@@ -405,4 +416,6 @@ def project_list_html(projects: List[Dict[str, Any]], selected_id: str = "") -> 
         """)
 
     list_html = "".join(items)
-    return f'<div class="onerad-project-list">{list_html}</div>'
+    return f"""
+    <div class="onerad-project-list">{list_html}</div>
+    """.strip()
