@@ -12,7 +12,7 @@ if str(_PROJECT_ROOT) not in sys.path:
 
 from app.projects import ProjectStore
 from app.ui import create_ui
-from app.ui_style import CUSTOM_CSS, project_list_html, PROJECT_SELECT_BRIDGE_ID, PROJECT_DELETE_BRIDGE_ID
+from app.ui_style import CUSTOM_CSS, project_list_html
 
 
 @pytest.fixture
@@ -70,6 +70,7 @@ def test_project_list_css_classes():
     assert ".onerad-project-item-active" in CUSTOM_CSS
     assert ".onerad-project-delete" in CUSTOM_CSS
     assert ".onerad-empty-state" in CUSTOM_CSS
+    assert ".onerad-sidebar" in CUSTOM_CSS
 
 
 def test_project_list_html_renders_projects():
@@ -108,32 +109,20 @@ def test_ui_renders_project_list(isolated_store):
     store.create_project("TestProj", str(Path(isolated_store) / "TestProj"), "desc")
     demo = create_ui(store=store)
     config = demo.get_config_file()
-    textboxes = [c for c in config.get("components", []) if c.get("type") == "textbox"]
-    html_blocks = [c for c in config.get("components", []) if c.get("type") == "html"]
 
-    # 找到事件桥文本框
-    select_bridges = [t for t in textboxes if t.get("props", {}).get("elem_id") == PROJECT_SELECT_BRIDGE_ID]
-    delete_bridges = [t for t in textboxes if t.get("props", {}).get("elem_id") == PROJECT_DELETE_BRIDGE_ID]
-    assert len(select_bridges) == 1
-    assert len(delete_bridges) == 1
-
-    # HTML 中包含项目列表和项目名称
-    html_text = _html_text(demo)
-    assert "onerad-project-list" in html_text
-    assert "TestProj" in html_text
+    # 使用原生 Button 列表：查找 value 中包含项目名称的按钮
+    buttons = [c for c in config.get("components", []) if c.get("type") == "button"]
+    values = [b.get("props", {}).get("value", "") for b in buttons]
+    assert any("TestProj" in str(v) for v in values)
 
 
-def test_delete_project_refreshes_list(isolated_store):
+def test_project_list_html_reflects_deletion(isolated_store):
     store = ProjectStore(str(Path(isolated_store) / "db"))
     project = store.create_project("ToDelete", str(Path(isolated_store) / "ToDelete"), "")
-    demo = create_ui(store=store)
-
-    html_text = _html_text(demo)
+    html_text = project_list_html(store.list_projects(), "")
     assert "ToDelete" in html_text
 
-    # 通过调用底层 store 删除，验证 UI 不再渲染（测试 HTML 渲染逻辑）
     store.delete_project(project["id"])
-    projects = store.list_projects()
-    html_after = project_list_html(projects, "")
+    html_after = project_list_html(store.list_projects(), "")
     assert "ToDelete" not in html_after
     assert "onerad-empty-state" in html_after

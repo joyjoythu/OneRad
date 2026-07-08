@@ -5,7 +5,7 @@ from typing import Any, Dict, List
 
 
 # ---------------------------------------------------------------------------
-# 项目列表 JS bridge 输入框 ID（与 app/ui.py 保持一致）
+# 项目列表 JS bridge 输入框 ID（与旧版 HTML 列表兼容，测试仍引用）
 # ---------------------------------------------------------------------------
 PROJECT_SELECT_BRIDGE_ID = "project-select-bridge"
 PROJECT_DELETE_BRIDGE_ID = "project-delete-bridge"
@@ -125,6 +125,12 @@ CUSTOM_CSS = """
     padding: 20px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
     height: 100%;
+}
+.onerad-sidebar,
+.onerad-sidebar > div,
+.onerad-sidebar > div > div {
+    overflow: visible !important;
+    max-height: none !important;
 }
 
 /* 品牌头部 */
@@ -258,9 +264,22 @@ CUSTOM_CSS = """
     display: flex;
     flex-direction: column;
     gap: 6px;
-    max-height: calc(100vh - 300px);
-    overflow-y: auto;
     padding-right: 4px;
+}
+/* 每行两个按钮高度拉伸对齐 */
+.onerad-project-list [class*="row"],
+.onerad-project-list > .wrap > [class*="row"] {
+    align-items: stretch !important;
+    gap: 6px !important;
+    margin-bottom: 0 !important;
+}
+.onerad-project-item,
+.onerad-project-item button,
+.onerad-project-item > div,
+.onerad-project-item span {
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
 }
 .onerad-project-item {
     display: flex;
@@ -273,6 +292,27 @@ CUSTOM_CSS = """
     font-size: 14px;
     cursor: pointer;
     transition: background-color 0.15s ease, color 0.15s ease;
+    text-align: left !important;
+    min-height: 38px !important;
+}
+/* 空项目行（value 为空）隐藏，避免占位 */
+.onerad-project-item:empty,
+.onerad-project-item span:empty,
+.onerad-project-delete:empty,
+.onerad-project-delete span:empty {
+    display: none !important;
+    min-height: 0 !important;
+    height: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+}
+.onerad-project-list .gr-row:has(.onerad-project-item span:empty),
+.onerad-project-list [class*="row"]:has(.onerad-project-item span:empty) {
+    display: none !important;
+    min-height: 0 !important;
+    height: 0 !important;
+    margin: 0 !important;
+    gap: 0 !important;
 }
 .onerad-project-item:hover {
     background: #f3f4f6;
@@ -292,26 +332,34 @@ CUSTOM_CSS = """
     white-space: nowrap;
     margin-left: 8px;
 }
-.onerad-project-delete {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 22px;
-    height: 22px;
-    border-radius: 4px;
-    color: #9ca3af;
-    font-size: 16px;
-    line-height: 1;
-    margin-left: 8px;
-    cursor: pointer;
+.onerad-project-delete,
+.onerad-project-delete button,
+.onerad-project-delete > div {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    min-width: 40px !important;
+    width: 40px !important;
+    min-height: 38px !important;
+    height: 100% !important;
+    padding: 0 !important;
+    border-radius: 8px !important;
+    color: #9ca3af !important;
+    font-size: 22px !important;
+    line-height: 1 !important;
+    cursor: pointer !important;
 }
-.onerad-project-delete:hover {
-    background: rgba(220, 38, 38, 0.1);
-    color: #dc2626;
+.onerad-project-delete:hover,
+.onerad-project-delete:hover button,
+.onerad-project-delete:hover > div {
+    background: rgba(220, 38, 38, 0.1) !important;
+    color: #dc2626 !important;
 }
-.onerad-project-item-active .onerad-project-delete:hover {
-    color: #ffffff;
-    background: rgba(255, 255, 255, 0.2);
+.onerad-project-item-active .onerad-project-delete:hover,
+.onerad-project-item-active .onerad-project-delete:hover button,
+.onerad-project-item-active .onerad-project-delete:hover > div {
+    color: #ffffff !important;
+    background: rgba(255, 255, 255, 0.2) !important;
 }
 .onerad-empty-state {
     padding: 20px 12px;
