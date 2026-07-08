@@ -4,6 +4,7 @@ import sys
 import traceback
 
 from app.utils import parse_covariates, parse_float_tuple
+from app.ui_style import CUSTOM_CSS
 
 
 logging.basicConfig(
@@ -34,7 +35,7 @@ def main():
     if args.ui or args.image_dir is None or args.clinical is None:
         from app.ui import create_ui
         demo = create_ui()
-        demo.launch()
+        demo.launch(css=CUSTOM_CSS)
         return
 
     from app.orchestrator import Orchestrator, register_default_handlers
