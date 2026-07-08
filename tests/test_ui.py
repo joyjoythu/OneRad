@@ -61,3 +61,12 @@ def test_ui_contains_key_sections(isolated_store):
     assert "分析配置" in html_text
     assert "AI 模型配置" in html_text
     assert "运行日志" in html_text
+
+
+def test_project_list_css_classes(isolated_store):
+    from app.ui_style import CUSTOM_CSS
+    assert ".onerad-project-list" in CUSTOM_CSS
+    assert ".onerad-project-item" in CUSTOM_CSS
+    assert ".onerad-project-item-active" in CUSTOM_CSS
+    assert ".onerad-project-delete" in CUSTOM_CSS
+    assert ".onerad-empty-state" in CUSTOM_CSS

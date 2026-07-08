@@ -244,6 +244,70 @@ CUSTOM_CSS = """
     padding: 12px;
     min-height: 160px;
 }
+
+/* 项目列表 */
+.onerad-project-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: calc(100vh - 300px);
+    overflow-y: auto;
+    padding-right: 4px;
+}
+.onerad-project-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: #f9fafb;
+    color: #4b5563;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+.onerad-project-item:hover {
+    background: #f3f4f6;
+}
+.onerad-project-item-active,
+.onerad-project-item-active:hover {
+    background: #2563eb;
+    color: #ffffff;
+}
+.onerad-project-item-active .onerad-project-delete {
+    color: #ffffff;
+}
+.onerad-project-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-left: 8px;
+}
+.onerad-project-delete {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 4px;
+    color: #9ca3af;
+    font-size: 16px;
+    line-height: 1;
+    margin-left: 8px;
+}
+.onerad-project-delete:hover {
+    background: rgba(220, 38, 38, 0.1);
+    color: #dc2626;
+}
+.onerad-empty-state {
+    padding: 20px 12px;
+    text-align: center;
+    color: #9ca3af;
+    font-size: 13px;
+    background: #f9fafb;
+    border-radius: 8px;
+}
 """.strip()
 
 
