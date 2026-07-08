@@ -295,6 +295,25 @@ CUSTOM_CSS = """
     text-align: left !important;
     min-height: 38px !important;
 }
+/* 空项目行（value 为空）隐藏，避免占位 */
+.onerad-project-item:empty,
+.onerad-project-item span:empty,
+.onerad-project-delete:empty,
+.onerad-project-delete span:empty {
+    display: none !important;
+    min-height: 0 !important;
+    height: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+}
+.onerad-project-list .gr-row:has(.onerad-project-item span:empty),
+.onerad-project-list [class*="row"]:has(.onerad-project-item span:empty) {
+    display: none !important;
+    min-height: 0 !important;
+    height: 0 !important;
+    margin: 0 !important;
+    gap: 0 !important;
+}
 .onerad-project-item:hover {
     background: #f3f4f6;
 }

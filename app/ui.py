@@ -12,13 +12,16 @@ from app.ui_style import (
     header_html,
     section_title_html,
     project_status_html,
-    project_list_html,
     ICON_FOLDER,
     ICON_SETTINGS,
     ICON_GLOBE,
     ICON_FILE_CODE,
 )
 from app.utils import parse_covariates
+
+
+# 侧边栏最多同时显示的项目行数
+MAX_PROJECTS = 20
 
 
 def _run_analysis(img_dir, clinical, out_dir, mod, covs, key, m, yaml_path):
@@ -66,10 +69,6 @@ def _config_status_html(image_dir, clinical_path, is_save=False):
     return project_status_html("info", "等待配置", "请填写影像路径和临床表格")
 
 
-def _error_html(msg: str) -> str:
-    return f'<div style="color:#dc2626;font-size:13px;margin-top:6px;">{html.escape(msg)}</div>'
-
-
 def create_ui(store: Optional[ProjectStore] = None):
     store = store or ProjectStore()
 
@@ -106,115 +105,85 @@ def create_ui(store: Optional[ProjectStore] = None):
             None,
         )
 
+    def _refresh_buttons(projects, selected_id: str = ""):
+        """根据项目列表生成 20 行按钮的更新序列（不再更新 visible，空行由 CSS 隐藏）。"""
+        n = len(projects)
+        updates = []
+        for i in range(MAX_PROJECTS):
+            if i < n:
+                is_active = projects[i]["id"] == selected_id
+                variant = "primary" if is_active else "secondary"
+                updates.append(gr.update(value=projects[i]["name"], variant=variant))
+                updates.append(gr.update(value="×"))
+            else:
+                updates.append(gr.update(value=""))
+                updates.append(gr.update(value=""))
+            # Row 始终可见，占位保持布局稳定
+            updates.append(gr.update())
+        return updates
+
     def _refresh_project_list(selected_id: str = ""):
-        return gr.update(value=project_list_html(store.list_projects(), selected_id))
+        projects = store.list_projects()
+        ids = [p["id"] for p in projects]
+        return [gr.update(value=ids)] + _refresh_buttons(projects, selected_id)
 
-    def _on_select_bridge(project_id):
-        if not project_id:
-            return (
-                "",
-                "## 当前项目: 未选择",
-                "", "", "./outputs", "auto", "", "deepseek-chat", "",
-                _config_status_html("", ""),
-                None,
-            )
-        return _on_project_select(project_id)
+    def _on_select_by_index(ids, idx):
+        if idx >= len(ids):
+            return [gr.update()] * 11
+        return _on_project_select(ids[idx])
 
-    def _on_delete_bridge(project_id, current_id):
-        if not project_id:
-            return (
-                gr.update(),  # project_list
-                gr.update(),  # current_project_id
-                gr.update(),  # project_title
-                gr.update(),  # image_dir
-                gr.update(),  # clinical_path
-                gr.update(),  # output_dir
-                gr.update(),  # modality
-                gr.update(),  # covariates
-                gr.update(),  # model
-                gr.update(),  # api_key
-                project_status_html("error", "删除失败", "未获取到项目 ID"),
-                gr.update(),  # report_file
-            )
+    def _on_delete_by_index(ids, idx, current_id):
+        if idx >= len(ids):
+            updates = [gr.update() for _ in range(72)]
+            updates[70] = project_status_html("error", "删除失败", "项目索引无效")
+            return tuple(updates)
+        project_id = ids[idx]
         try:
             store.delete_project(project_id)
         except Exception as e:
-            return (
-                gr.update(),  # project_list
-                gr.update(),  # current_project_id
-                gr.update(),  # project_title
-                gr.update(),  # image_dir
-                gr.update(),  # clinical_path
-                gr.update(),  # output_dir
-                gr.update(),  # modality
-                gr.update(),  # covariates
-                gr.update(),  # model
-                gr.update(),  # api_key
-                project_status_html("error", "删除项目失败", str(e)),
-                gr.update(),  # report_file
-            )
+            updates = [gr.update() for _ in range(72)]
+            updates[70] = project_status_html("error", "删除项目失败", str(e))
+            return tuple(updates)
 
         projects = store.list_projects()
-        if not projects:
-            return (
-                _refresh_project_list(""),
-                "",
-                "## 当前项目: 未选择",
-                "", "", "./outputs", "auto", "", "deepseek-chat", "",
-                project_status_html("info", "未选择项目", "请从左侧选择或新建项目"),
-                None,
-            )
-
-        # 如果被删的是当前项目，自动选择第一个；否则保持当前项目
-        next_id = projects[0]["id"] if project_id == current_id else current_id
+        new_ids = [p["id"] for p in projects]
+        next_id = projects[0]["id"] if projects and project_id == current_id else current_id
         select_updates = list(_on_project_select(next_id))
         return (
-            _refresh_project_list(next_id),
+            gr.update(value=new_ids),
+            *_refresh_buttons(projects, next_id),
             *select_updates,
         )
 
     def on_create_project(name, path, description):
+        error_html = lambda msg: f'<div style="color:#dc2626;font-size:13px;margin-top:6px;">{html.escape(msg)}</div>'
         if not name or not name.strip() or not path or not path.strip():
-            return (
-                _refresh_project_list(""),
-                "",  # current_project_id
-                "## 当前项目: 未选择",  # project_title
-                "", "", "./outputs", "auto", "", "deepseek-chat", "",  # 表单字段
-                project_status_html("error", "创建失败", "项目名称和路径不能为空"),
-                None,  # report_file
-                "", "", "",  # new_name, new_path, new_description
-                gr.update(visible=True, value=_error_html("项目名称和路径不能为空")),  # create_error_msg
-            )
+            error_updates = [gr.update() for _ in range(76)]
+            error_updates[70] = project_status_html("error", "创建失败", "项目名称和路径不能为空")
+            error_updates[75] = gr.update(visible=True, value=error_html("项目名称和路径不能为空"))
+            return tuple(error_updates)
         if any(p["name"] == name.strip() for p in store.list_projects()):
-            return (
-                _refresh_project_list(""),
-                "",
-                "## 当前项目: 未选择",
-                "", "", "./outputs", "auto", "", "deepseek-chat", "",
-                project_status_html("error", "创建失败", "项目名称已存在"),
-                None,
-                "", "", "",
-                gr.update(visible=True, value=_error_html("项目名称已存在，请使用其他名称")),
-            )
+            error_updates = [gr.update() for _ in range(76)]
+            error_updates[70] = project_status_html("error", "创建失败", "项目名称已存在")
+            error_updates[75] = gr.update(visible=True, value=error_html("项目名称已存在，请使用其他名称"))
+            return tuple(error_updates)
         try:
             project = store.create_project(name.strip(), path.strip(), description or "")
         except Exception as e:
-            return (
-                _refresh_project_list(""),
-                "",
-                "## 当前项目: 未选择",
-                "", "", "./outputs", "auto", "", "deepseek-chat", "",
-                project_status_html("error", "创建项目失败", str(e)),
-                None,
-                "", "", "",
-                gr.update(visible=True, value=_error_html(str(e))),
-            )
+            error_updates = [gr.update() for _ in range(76)]
+            error_updates[70] = project_status_html("error", "创建项目失败", str(e))
+            error_updates[75] = gr.update(visible=True, value=error_html(str(e)))
+            return tuple(error_updates)
 
+        projects = store.list_projects()
         select_updates = list(_on_project_select(project["id"]))
         return (
-            _refresh_project_list(project["id"]),
+            gr.update(value=[p["id"] for p in projects]),
+            *_refresh_buttons(projects, project["id"]),
             *select_updates,
-            "", "", "",  # new_name, new_path, new_description
+            "",  # new_name
+            "",  # new_path
+            "",  # new_description
             gr.update(visible=False, value=""),  # create_error_msg
         )
 
@@ -289,15 +258,31 @@ def create_ui(store: Optional[ProjectStore] = None):
                             btn_create_confirm = gr.Button("创建")
                             btn_create_cancel = gr.Button("取消")
 
-                # 项目列表：使用 HTML 自定义渲染，项目数量动态变化，无空行占位
-                project_list = gr.HTML(
-                    value=project_list_html(store.list_projects(), ""),
-                    elem_classes="onerad-project-list",
-                )
+                # 项目 ID 状态，供按钮索引查找
+                project_ids_state = gr.State([p["id"] for p in store.list_projects()])
 
-                # JS 事件桥：隐藏在页面中，供 HTML 列表触发选择/删除
-                select_bridge = gr.Textbox(elem_id="project-select-bridge", visible=False)
-                delete_bridge = gr.Textbox(elem_id="project-delete-bridge", visible=False)
+                # 项目列表：使用原生 Button，每行一个选择按钮 + 一个删除按钮
+                # 所有行初始可见，空行通过 CSS 隐藏，避免 Gradio 动态 visible 更新不生效
+                project_select_btns = []
+                project_delete_btns = []
+                project_rows = []
+                projects_initial = store.list_projects()
+                with gr.Column(elem_classes="onerad-project-list"):
+                    for i in range(MAX_PROJECTS):
+                        if i < len(projects_initial):
+                            btn_value = projects_initial[i]["name"]
+                            btn_variant = "secondary"
+                            delete_value = "×"
+                        else:
+                            btn_value = ""
+                            btn_variant = "secondary"
+                            delete_value = ""
+                        with gr.Row(visible=True) as row:
+                            select_btn = gr.Button(btn_value, scale=4, variant=btn_variant, elem_classes="onerad-project-item")
+                            delete_btn = gr.Button(delete_value, scale=0, min_width=40, elem_classes="onerad-project-delete")
+                            project_rows.append(row)
+                            project_select_btns.append(select_btn)
+                            project_delete_btns.append(delete_btn)
 
             # 右侧工作区
             with gr.Column(scale=1, elem_classes="onerad-card"):
@@ -330,62 +315,59 @@ def create_ui(store: Optional[ProjectStore] = None):
                 report_file = gr.File(label="生成报告")
 
         # 事件绑定
-        demo.load(_refresh_project_list, outputs=[project_list])
+        all_project_outputs = [project_ids_state]
+        for i in range(MAX_PROJECTS):
+            all_project_outputs.extend([project_select_btns[i], project_delete_btns[i], project_rows[i]])
 
-        btn_new.click(
-            lambda: [gr.update(visible=True), gr.update(visible=False, value="")],
-            outputs=[new_project_row, create_error_msg],
-        )
-        btn_create_cancel.click(
-            lambda: [gr.update(visible=False), gr.update(visible=False, value="")],
-            outputs=[new_project_row, create_error_msg],
-        )
+        demo.load(_refresh_project_list, outputs=all_project_outputs)
+
+        create_outputs = list(all_project_outputs)
+        create_outputs.extend([
+            current_project_id,
+            project_title,
+            image_dir,
+            clinical_path,
+            output_dir,
+            modality,
+            covariates,
+            model,
+            api_key,
+            status_msg,
+            report_file,
+            new_name,
+            new_path,
+            new_description,
+            create_error_msg,
+        ])
         btn_create_confirm.click(
             on_create_project,
             inputs=[new_name, new_path, new_description],
-            outputs=[
-                project_list,
-                current_project_id,
-                project_title,
-                image_dir,
-                clinical_path,
-                output_dir,
-                modality,
-                covariates,
-                model,
-                api_key,
-                status_msg,
-                report_file,
-                new_name,
-                new_path,
-                new_description,
-                create_error_msg,
-            ],
+            outputs=create_outputs,
         ).then(lambda: gr.update(visible=False), outputs=[new_project_row])
 
-        select_bridge.change(
-            _on_select_bridge,
-            inputs=[select_bridge],
-            outputs=[
-                current_project_id,
-                project_title,
-                image_dir,
-                clinical_path,
-                output_dir,
-                modality,
-                covariates,
-                model,
-                api_key,
-                status_msg,
-                report_file,
-            ],
-        )
+        btn_new.click(lambda: [gr.update(visible=True), gr.update(visible=False, value="")], outputs=[new_project_row, create_error_msg])
+        btn_create_cancel.click(lambda: [gr.update(visible=False), gr.update(visible=False, value="")], outputs=[new_project_row, create_error_msg])
 
-        delete_bridge.change(
-            _on_delete_bridge,
-            inputs=[delete_bridge, current_project_id],
-            outputs=[
-                project_list,
+        for i in range(MAX_PROJECTS):
+            project_select_btns[i].click(
+                lambda ids, idx=i: _on_select_by_index(ids, idx),
+                inputs=[project_ids_state],
+                outputs=[
+                    current_project_id,
+                    project_title,
+                    image_dir,
+                    clinical_path,
+                    output_dir,
+                    modality,
+                    covariates,
+                    model,
+                    api_key,
+                    status_msg,
+                    report_file,
+                ],
+            )
+            delete_outputs = list(all_project_outputs)
+            delete_outputs.extend([
                 current_project_id,
                 project_title,
                 image_dir,
@@ -397,8 +379,13 @@ def create_ui(store: Optional[ProjectStore] = None):
                 api_key,
                 status_msg,
                 report_file,
-            ],
-        )
+            ])
+            project_delete_btns[i].click(
+                lambda ids, cid, idx=i: _on_delete_by_index(ids, idx, cid),
+                inputs=[project_ids_state, current_project_id],
+                outputs=delete_outputs,
+                js="() => confirm('确定要删除该项目吗？')",
+            )
 
         btn_save.click(
             on_save_config,
