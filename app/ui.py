@@ -73,6 +73,9 @@ def create_ui(store: Optional[ProjectStore] = None):
         choices = [(p["name"], p["id"]) for p in projects]
         return gr.update(choices=choices if choices else [], value=None)
 
+    def toggle_sidebar(visible):
+        return not visible, gr.update(visible=not visible)
+
     def on_project_select(project_id):
         if not project_id:
             return [gr.update()] * 9 + [
@@ -207,27 +210,33 @@ def create_ui(store: Optional[ProjectStore] = None):
         gr.HTML(header_html())
 
         current_project_id = gr.State("")
+        sidebar_visible = gr.State(True)
 
         with gr.Row():
             # 左侧项目侧边栏
             with gr.Column(scale=0, min_width=320, elem_classes="onerad-card") as sidebar_col:
-                gr.HTML(section_title_html(ICON_FOLDER, "项目管理"))
-                with gr.Row():
-                    btn_new = gr.Button("+ 新建项目", scale=1, elem_classes="onerad-btn-new")
-                    btn_delete = gr.Button("删除", scale=0, min_width=60)
+                btn_toggle_sidebar = gr.Button(
+                    section_title_html(ICON_FOLDER, "项目管理"),
+                    elem_classes="onerad-btn-new",
+                )
 
-                project_selector = gr.Dropdown(label="选择项目", choices=[], value=None)
+                with gr.Column(visible=True) as sidebar_content:
+                    with gr.Row():
+                        btn_new = gr.Button("+ 新建项目", scale=1, elem_classes="onerad-btn-new")
+                        btn_delete = gr.Button("删除", scale=0, min_width=60)
 
-                with gr.Row(visible=False) as new_project_row:
-                    with gr.Column():
-                        new_name = gr.Textbox(label="名称", elem_classes="onerad-input")
-                        new_path = gr.Textbox(label="目录路径", elem_classes="onerad-input")
-                        new_description = gr.Textbox(label="描述", elem_classes="onerad-input")
-                        with gr.Row():
-                            btn_create_confirm = gr.Button("创建")
-                            btn_create_cancel = gr.Button("取消")
+                    project_selector = gr.Dropdown(label="选择项目", choices=[], value=None)
 
-                status_msg = gr.HTML()
+                    with gr.Row(visible=False) as new_project_row:
+                        with gr.Column():
+                            new_name = gr.Textbox(label="名称", elem_classes="onerad-input")
+                            new_path = gr.Textbox(label="目录路径", elem_classes="onerad-input")
+                            new_description = gr.Textbox(label="描述", elem_classes="onerad-input")
+                            with gr.Row():
+                                btn_create_confirm = gr.Button("创建")
+                                btn_create_cancel = gr.Button("取消")
+
+                    status_msg = gr.HTML()
 
             # 右侧工作区
             with gr.Column(scale=1, elem_classes="onerad-card") as content_col:
@@ -259,6 +268,12 @@ def create_ui(store: Optional[ProjectStore] = None):
 
         # 事件绑定
         demo.load(refresh_projects, outputs=[project_selector])
+
+        btn_toggle_sidebar.click(
+            toggle_sidebar,
+            inputs=[sidebar_visible],
+            outputs=[sidebar_visible, sidebar_content],
+        )
 
         btn_new.click(lambda: gr.update(visible=True), outputs=[new_project_row])
         btn_create_cancel.click(lambda: gr.update(visible=False), outputs=[new_project_row])

@@ -31,8 +31,8 @@ def test_create_project_flow(isolated_store):
 
 def _html_text(demo):
     config = demo.get_config_file()
-    html_blocks = [c for c in config.get("components", []) if c.get("type") == "html"]
-    return " ".join(h.get("props", {}).get("value", "") for h in html_blocks)
+    blocks = [c for c in config.get("components", []) if c.get("type") in ("html", "button")]
+    return " ".join(h.get("props", {}).get("value", "") for h in blocks)
 
 
 def test_create_ui_returns_blocks(isolated_store):
