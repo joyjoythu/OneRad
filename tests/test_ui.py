@@ -110,10 +110,12 @@ def test_ui_renders_project_list(isolated_store):
     demo = create_ui(store=store)
     config = demo.get_config_file()
 
-    # 使用原生 Button 列表：查找 value 中包含项目名称的按钮
-    buttons = [c for c in config.get("components", []) if c.get("type") == "button"]
-    values = [b.get("props", {}).get("value", "") for b in buttons]
-    assert any("TestProj" in str(v) for v in values)
+    # 使用 HTML 列表：查找 value 中包含项目名称的 HTML 组件
+    html_blocks = [c for c in config.get("components", []) if c.get("type") == "html"]
+    values = " ".join(h.get("props", {}).get("value", "") for h in html_blocks)
+    assert "TestProj" in values
+    # 确认项目列表 HTML 包含交互所需的 data 属性
+    assert "data-project-id" in values
 
 
 def test_project_list_html_reflects_deletion(isolated_store):
@@ -126,3 +128,21 @@ def test_project_list_html_reflects_deletion(isolated_store):
     html_after = project_list_html(store.list_projects(), "")
     assert "ToDelete" not in html_after
     assert "onerad-empty-state" in html_after
+
+
+def test_project_list_html_no_empty_placeholders():
+    """HTML 项目列表只渲染实际项目，不应出现空占位行。"""
+    projects = [{"id": "proj-1", "name": "OnlyOne"}]
+    html_text = project_list_html(projects, "")
+    # 只应有一个项目项
+    assert html_text.count('class="onerad-project-item') == 1
+    # 不应包含空状态
+    assert "onerad-empty-state" not in html_text
+
+
+def test_project_list_html_empty_state_no_placeholders():
+    """无项目时显示空状态提示，而不是空占位行。"""
+    html_text = project_list_html([], "")
+    assert "onerad-empty-state" in html_text
+    assert "暂无项目" in html_text
+    assert 'class="onerad-project-item' not in html_text
