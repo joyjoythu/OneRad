@@ -2,7 +2,7 @@ import os
 import shutil
 import sqlite3
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -70,7 +70,6 @@ class ProjectStore:
                 )
                 """
             )
-            conn.commit()
         finally:
             conn.close()
 
@@ -299,7 +298,7 @@ class ProjectStore:
         try:
             conn.execute(
                 """
-                INSERT INTO sse_events (scope, scope_id, event_id, data, created_at)
+                INSERT OR IGNORE INTO sse_events (scope, scope_id, event_id, data, created_at)
                 VALUES (?, ?, ?, ?, ?)
                 """,
                 (scope, scope_id, event_id, data, self._now()),
@@ -328,14 +327,41 @@ class ProjectStore:
         finally:
             conn.close()
 
+    def delete_sse_events(self, scope: str, scope_id: str) -> None:
+        conn = sqlite3.connect(str(self.db_path))
+        try:
+            conn.execute(
+                "DELETE FROM sse_events WHERE scope = ? AND scope_id = ?",
+                (scope, scope_id),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
     def has_running_run(self, project_id: str) -> bool:
         conn = sqlite3.connect(str(self.db_path))
         try:
             conn.row_factory = sqlite3.Row
-            row = conn.execute(
-                "SELECT 1 FROM runs WHERE project_id = ? AND status = ? LIMIT 1",
+            rows = conn.execute(
+                "SELECT id, started_at FROM runs WHERE project_id = ? AND status = ?",
                 (project_id, "running"),
-            ).fetchone()
-            return row is not None
+            ).fetchall()
+            now = datetime.now(timezone.utc)
+            stale_run_ids = []
+            active = False
+            for row in rows:
+                started_at = datetime.fromisoformat(row["started_at"])
+                if now - started_at > timedelta(hours=24):
+                    stale_run_ids.append(row["id"])
+                else:
+                    active = True
+            if stale_run_ids:
+                placeholders = ",".join("?" * len(stale_run_ids))
+                conn.execute(
+                    f"UPDATE runs SET status = 'failed' WHERE id IN ({placeholders})",
+                    stale_run_ids,
+                )
+                conn.commit()
+            return active
         finally:
             conn.close()
