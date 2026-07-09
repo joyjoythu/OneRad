@@ -114,9 +114,36 @@ def test_validate_plan_respects_overwrite_flag(tmp_path):
 def test_validate_plan_rejects_invalid_source_target_type(tmp_path):
     sandbox = Sandbox(tmp_path)
     plan = [{"action": "copy", "source": 123, "target": "b.txt"}]
-    with pytest.raises(ValueError, match="source/target must be a path string"):
+    with pytest.raises(ValueError, match="source/target must be a string or Path"):
         validate_plan(plan, sandbox)
 
     plan = [{"action": "copy", "source": "a.txt", "target": ["list"]}]
-    with pytest.raises(ValueError, match="source/target must be a path string"):
+    with pytest.raises(ValueError, match="source/target must be a string or Path"):
+        validate_plan(plan, sandbox)
+
+
+def test_validate_plan_rejects_non_list(tmp_path):
+    sandbox = Sandbox(tmp_path)
+    with pytest.raises(ValueError, match="Plan must be a list"):
+        validate_plan({"action": "mkdir", "target": "new_dir"}, sandbox)
+
+
+def test_validate_plan_rejects_non_dict_item(tmp_path):
+    sandbox = Sandbox(tmp_path)
+    plan = ["not a dict"]
+    with pytest.raises(ValueError, match="Item 0: must be a dictionary"):
+        validate_plan(plan, sandbox)
+
+
+def test_validate_plan_mkdir_missing_target(tmp_path):
+    sandbox = Sandbox(tmp_path)
+    plan = [{"action": "mkdir"}]
+    with pytest.raises(ValueError, match="'mkdir' requires target"):
+        validate_plan(plan, sandbox)
+
+
+def test_validate_plan_rejects_non_bool_overwrite(tmp_path):
+    sandbox = Sandbox(tmp_path)
+    plan = [{"action": "copy", "source": "a.txt", "target": "b.txt", "overwrite": "yes"}]
+    with pytest.raises(ValueError, match="'overwrite' must be a boolean"):
         validate_plan(plan, sandbox)

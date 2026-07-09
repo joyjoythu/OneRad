@@ -33,7 +33,7 @@ class Sandbox:
         try:
             self.resolve(path)
             return True
-        except (ValueError, FileNotFoundError):
+        except ValueError:
             return False
 
 
@@ -47,6 +47,9 @@ def validate_plan(plan: List[Dict[str, Any]], sandbox: Sandbox) -> List[Dict[str
 
     validated = []
     for idx, item in enumerate(plan):
+        if not isinstance(item, dict):
+            raise ValueError(f"Item {idx}: must be a dictionary")
+
         action = item.get("action")
         if action not in ALLOWED_ACTIONS:
             raise ValueError(f"Item {idx}: unsupported action '{action}'")
@@ -55,9 +58,13 @@ def validate_plan(plan: List[Dict[str, Any]], sandbox: Sandbox) -> List[Dict[str
         target = item.get("target")
 
         if source is not None and not isinstance(source, (str, Path)):
-            raise ValueError(f"Item {idx}: source/target must be a path string")
+            raise ValueError(f"Item {idx}: source/target must be a string or Path")
         if target is not None and not isinstance(target, (str, Path)):
-            raise ValueError(f"Item {idx}: source/target must be a path string")
+            raise ValueError(f"Item {idx}: source/target must be a string or Path")
+
+        overwrite = item.get("overwrite", False)
+        if not isinstance(overwrite, bool):
+            raise ValueError(f"Item {idx}: 'overwrite' must be a boolean")
 
         if action in {"move", "copy", "rename"}:
             if not source or not target:
@@ -74,6 +81,6 @@ def validate_plan(plan: List[Dict[str, Any]], sandbox: Sandbox) -> List[Dict[str
             "source": source,
             "target": target,
             "reason": item.get("reason", ""),
-            "overwrite": item.get("overwrite", False),
+            "overwrite": overwrite,
         })
     return validated
