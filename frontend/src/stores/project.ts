@@ -7,9 +7,15 @@ export const useProjectStore = defineStore('project', () => {
   const projects = ref<Project[]>([])
   const currentProject = ref<Project | null>(null)
   const currentConfig = ref<AnalysisConfig | null>(null)
+  const loading = ref(false)
 
   async function loadProjects(): Promise<void> {
-    projects.value = await api.listProjects()
+    loading.value = true
+    try {
+      projects.value = await api.listProjects()
+    } finally {
+      loading.value = false
+    }
   }
 
   function selectProject(projectId: string): void {
@@ -19,18 +25,28 @@ export const useProjectStore = defineStore('project', () => {
   }
 
   async function createProject(payload: api.CreateProjectRequest): Promise<Project> {
-    const project = await api.createProject(payload)
-    projects.value.unshift(project)
-    selectProject(project.id)
-    return project
+    loading.value = true
+    try {
+      const project = await api.createProject(payload)
+      projects.value.unshift(project)
+      selectProject(project.id)
+      return project
+    } finally {
+      loading.value = false
+    }
   }
 
   async function deleteProject(projectId: string): Promise<void> {
-    await api.deleteProject(projectId)
-    projects.value = projects.value.filter((p) => p.id !== projectId)
-    if (currentProject.value?.id === projectId) {
-      currentProject.value = null
-      currentConfig.value = null
+    loading.value = true
+    try {
+      await api.deleteProject(projectId)
+      projects.value = projects.value.filter((p) => p.id !== projectId)
+      if (currentProject.value?.id === projectId) {
+        currentProject.value = null
+        currentConfig.value = null
+      }
+    } finally {
+      loading.value = false
     }
   }
 
@@ -38,22 +54,28 @@ export const useProjectStore = defineStore('project', () => {
     projectId: string,
     config: AnalysisConfig
   ): Promise<Project> {
-    const updated = await api.updateConfig(projectId, config)
-    const idx = projects.value.findIndex((p) => p.id === projectId)
-    if (idx >= 0) {
-      projects.value[idx] = updated
+    loading.value = true
+    try {
+      const updated = await api.updateConfig(projectId, config)
+      const idx = projects.value.findIndex((p) => p.id === projectId)
+      if (idx >= 0) {
+        projects.value[idx] = updated
+      }
+      if (currentProject.value?.id === projectId) {
+        currentProject.value = updated
+        currentConfig.value = { ...updated.analysis }
+      }
+      return updated
+    } finally {
+      loading.value = false
     }
-    if (currentProject.value?.id === projectId) {
-      currentProject.value = updated
-      currentConfig.value = { ...updated.analysis }
-    }
-    return updated
   }
 
   return {
     projects,
     currentProject,
     currentConfig,
+    loading,
     loadProjects,
     selectProject,
     createProject,

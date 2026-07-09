@@ -50,6 +50,16 @@ describe('useProjectStore', () => {
     expect(store.projects[0].id).toBe('1')
   })
 
+  it('tracks loading state while fetching projects', async () => {
+    vi.mocked(api.listProjects).mockResolvedValue([mockProject('1')])
+    const store = useProjectStore()
+
+    const promise = store.loadProjects()
+    expect(store.loading).toBe(true)
+    await promise
+    expect(store.loading).toBe(false)
+  })
+
   it('selects a project and clones its analysis config', () => {
     const store = useProjectStore()
     store.projects = [mockProject('1')]

@@ -1,4 +1,5 @@
 import client from './client'
+import { API_BASE } from './client'
 
 export interface AgentMessage {
   role: string
@@ -48,7 +49,7 @@ export const createThread = async (
 export const getThread = async (
   threadId: string
 ): Promise<AgentState & { thread_id: string }> => {
-  const res = await client.get(`/agent/threads/${threadId}`)
+  const res = await client.get(`/agent/threads/${encodeURIComponent(threadId)}`)
   return res.data
 }
 
@@ -58,7 +59,10 @@ export const sendMessage = async (
   content: string
 ): Promise<{ thread_id: string }> => {
   const payload: MessageRequest = { role, content }
-  const res = await client.post(`/agent/threads/${threadId}/messages`, payload)
+  const res = await client.post(
+    `/agent/threads/${encodeURIComponent(threadId)}/messages`,
+    payload
+  )
   return res.data
 }
 
@@ -67,17 +71,20 @@ export const updatePlan = async (
   plan: Record<string, unknown>
 ): Promise<AgentState> => {
   const payload: UpdatePlanRequest = { plan }
-  const res = await client.put(`/agent/threads/${threadId}/plan`, payload)
+  const res = await client.put(
+    `/agent/threads/${encodeURIComponent(threadId)}/plan`,
+    payload
+  )
   return res.data
 }
 
 export const confirm = async (threadId: string): Promise<{ thread_id: string }> => {
-  const res = await client.post(`/agent/threads/${threadId}/confirm`)
+  const res = await client.post(`/agent/threads/${encodeURIComponent(threadId)}/confirm`)
   return res.data
 }
 
 export const cancel = async (threadId: string): Promise<{ thread_id: string }> => {
-  const res = await client.post(`/agent/threads/${threadId}/cancel`)
+  const res = await client.post(`/agent/threads/${encodeURIComponent(threadId)}/cancel`)
   return res.data
 }
 
@@ -85,14 +92,16 @@ export const connectAgentEvents = (
   threadId: string,
   callbacks: AgentEventCallbacks = {}
 ): EventSource => {
-  const es = new EventSource(`/api/agent/threads/${threadId}/events`)
+  const es = new EventSource(
+    `${API_BASE}/agent/threads/${encodeURIComponent(threadId)}/events`
+  )
 
   es.addEventListener('agent', (event: MessageEvent) => {
     try {
       const data = JSON.parse(event.data) as AgentState
       callbacks.onState?.(data)
-    } catch {
-      // Ignore malformed SSE payloads.
+    } catch (err) {
+      console.error('Failed to parse agent SSE payload', err)
     }
   })
 
@@ -100,6 +109,9 @@ export const connectAgentEvents = (
     callbacks.onEnd?.()
   })
 
+  // Keep the connection open on transient errors; the browser will reconnect
+  // automatically per the EventSource spec. close() is only called from the
+  // consumer when the stream is truly finished.
   es.onerror = () => {
     callbacks.onError?.({ message: 'EventSource error' })
   }

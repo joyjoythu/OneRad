@@ -1,4 +1,5 @@
 import client from './client'
+import { API_BASE } from './client'
 import type { AnalysisConfig } from './projects'
 
 export interface RunRecord {
@@ -32,12 +33,12 @@ export const startRun = async (
   projectId: string,
   config: AnalysisConfig
 ): Promise<StartRunResponse> => {
-  const res = await client.post(`/projects/${projectId}/runs`, config)
+  const res = await client.post(`/projects/${encodeURIComponent(projectId)}/runs`, config)
   return res.data
 }
 
 export const getRun = async (runId: string): Promise<RunRecord> => {
-  const res = await client.get(`/runs/${runId}`)
+  const res = await client.get(`/runs/${encodeURIComponent(runId)}`)
   return res.data
 }
 
@@ -45,7 +46,9 @@ export const connectRunEvents = (
   runId: string,
   callbacks: RunEventCallbacks = {}
 ): EventSource => {
-  const es = new EventSource(`/api/runs/${runId}/events`)
+  const es = new EventSource(
+    `${API_BASE}/runs/${encodeURIComponent(runId)}/events`
+  )
 
   es.addEventListener('pipeline', (event: MessageEvent) => {
     try {
@@ -57,12 +60,12 @@ export const connectRunEvents = (
       } else if (data.type === 'pipeline_complete') {
         getRun(runId)
           .then((run) => callbacks.onComplete?.(run))
-          .catch(() => {})
+          .catch((err) => console.error('Failed to fetch completed run', err))
       } else if (data.type === 'pipeline_error') {
         callbacks.onError?.(data)
       }
-    } catch {
-      // Ignore malformed SSE payloads.
+    } catch (err) {
+      console.error('Failed to parse pipeline SSE payload', err)
     }
   })
 
@@ -70,11 +73,14 @@ export const connectRunEvents = (
     try {
       const data = JSON.parse(event.data) as Record<string, unknown>
       callbacks.onEvent?.(data)
-    } catch {
-      // Ignore malformed SSE payloads.
+    } catch (err) {
+      console.error('Failed to parse run SSE payload', err)
     }
   })
 
+  // Keep the connection open on transient errors; the browser will reconnect
+  // automatically per the EventSource spec. close() is only called from the
+  // consumer when the stream is truly finished.
   es.onerror = () => {
     callbacks.onError?.({ message: 'EventSource error' })
   }

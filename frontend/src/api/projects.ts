@@ -34,7 +34,7 @@ export const listProjects = async (): Promise<Project[]> => {
 }
 
 export const getProject = async (projectId: string): Promise<Project> => {
-  const res = await client.get(`/projects/${projectId}`)
+  const res = await client.get(`/projects/${encodeURIComponent(projectId)}`)
   return res.data
 }
 
@@ -47,10 +47,10 @@ export const updateConfig = async (
   projectId: string,
   config: UpdateConfigRequest
 ): Promise<Project> => {
-  const res = await client.put(`/projects/${projectId}/config`, config)
+  const res = await client.put(`/projects/${encodeURIComponent(projectId)}/config`, config)
   return res.data
 }
 
 export const deleteProject = async (projectId: string): Promise<void> => {
-  await client.delete(`/projects/${projectId}`)
+  await client.delete(`/projects/${encodeURIComponent(projectId)}`)
 }

@@ -4,7 +4,7 @@
       <h1>OneRad</h1>
     </header>
     <main class="app-main">
-      <router-view />
+      <p>Loading...</p>
     </main>
   </div>
 </template>
