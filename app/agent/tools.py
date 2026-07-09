@@ -53,15 +53,12 @@ def build_tools(project_path: str, llm):
 
     @tool
     def execute_python_script(description: str, code: str) -> str:
-        """生成 Python 脚本并在项目虚拟环境中运行。中高风险脚本需确认。"""
+        """生成 Python 脚本并在项目虚拟环境中运行。高风险脚本会被拒绝，中低风险脚本均需用户确认后执行。"""
         risk_level = classify_risk(code)
         if risk_level == "high":
             return json.dumps({"error": "脚本被判定为高风险，拒绝执行", "risk_level": "high"})
         meta = prepare_script(code, description, project_path)
-        if risk_level == "medium":
-            return json.dumps({"_pending_tool": "execute_python_script", "script": meta})
-        result = execute_script_if_safe(meta, project_path)
-        return json.dumps(result)
+        return json.dumps({"_pending_tool": "execute_python_script", "script": meta})
 
     tools["list_directory"] = list_directory
     tools["find_files"] = find_files

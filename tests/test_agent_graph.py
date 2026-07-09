@@ -232,6 +232,46 @@ def test_graph_interrupts_on_python_script(tmp_path):
     mock_execute.assert_called_once()
 
 
+def test_graph_interrupts_on_low_risk_python_script(tmp_path):
+    """低风险 Python 脚本也会触发中断，确认后执行并返回结果。"""
+    project = {"path": str(tmp_path), "analysis": {"api_key": "fake", "model": "deepseek-chat"}}
+    state = build_initial_state(project)
+    state["messages"] = [HumanMessage(content="say hello")]
+
+    graph = create_agent_graph()
+    config = {"configurable": {"thread_id": "test-low-risk-python-script"}}
+
+    with patch("app.agent.nodes.ChatOpenAI") as mock_llm_class:
+        mock_llm = MagicMock()
+        mock_llm.bind_tools.return_value = mock_llm
+        mock_llm.invoke.side_effect = [
+            AIMessage(
+                content="",
+                tool_calls=[{
+                    "name": "execute_python_script",
+                    "args": {
+                        "description": "say hello",
+                        "code": "print('hello')",
+                    },
+                    "id": "call_low_script",
+                }],
+            ),
+            AIMessage(content="Done"),
+        ]
+        mock_llm_class.return_value = mock_llm
+
+        events = list(graph.stream(state, config))
+        assert any("__interrupt__" in e for e in events)
+
+        final = graph.invoke(Command(resume={"action": "confirm"}), config)
+
+    tool_msg = _find_tool_message(final["messages"], tool_call_id="call_low_script")
+    assert tool_msg is not None
+    parsed = json.loads(tool_msg.content)
+    assert parsed["returncode"] == 0
+    assert "hello" in parsed["stdout"]
+
+
 def test_graph_non_dict_resume_defaults_to_cancel(tmp_path):
     """非字典的 resume 值应被视为取消，不产生副作用。"""
     project = {"path": str(tmp_path), "analysis": {"api_key": "fake", "model": "deepseek-chat"}}

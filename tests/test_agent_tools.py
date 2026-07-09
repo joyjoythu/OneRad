@@ -47,7 +47,7 @@ def test_execute_python_script_returns_medium_pending(tmp_path):
     assert data["script"]["risk_level"] == "medium"
 
 
-def test_execute_python_script_runs_low_risk(tmp_path):
+def test_execute_python_script_returns_low_pending(tmp_path):
     fake_llm = MagicMock()
     tools = build_tools(str(tmp_path), fake_llm)
     code = "print('hello from agent tool')"
@@ -55,5 +55,5 @@ def test_execute_python_script_runs_low_risk(tmp_path):
         {"description": "low risk test", "code": code}
     )
     data = __import__("json").loads(result)
-    assert data["success"] is True
-    assert "hello from agent tool" in data["stdout"]
+    assert data["_pending_tool"] == "execute_python_script"
+    assert data["script"]["risk_level"] == "low"
