@@ -8,14 +8,39 @@ export interface AgentMessage {
   tool_call_id?: string
 }
 
+export interface PlanItem {
+  action: string
+  source?: string
+  target?: string
+  reason?: string
+}
+
+export interface PendingPlan {
+  tool_call_id: string
+  plan: PlanItem[]
+}
+
+export interface PendingCommand {
+  tool_call_id: string
+  _pending_tool: string
+  args: Record<string, unknown>
+}
+
+export interface PendingScript {
+  tool_call_id: string
+  code: string
+  risk_level: 'low' | 'medium' | 'high'
+  explanation: string
+}
+
 export interface AgentState {
   thread_id?: string
   messages: AgentMessage[]
   interrupt_type: string | null
   operation_log: string[]
-  pending_plan: Record<string, unknown> | null
-  pending_command: Record<string, unknown> | null
-  pending_script: Record<string, unknown> | null
+  pending_plan: PendingPlan | null
+  pending_command: PendingCommand | null
+  pending_script: PendingScript | null
 }
 
 export interface CreateThreadResponse {
@@ -28,7 +53,7 @@ export interface MessageRequest {
 }
 
 export interface UpdatePlanRequest {
-  plan: Record<string, unknown>
+  plan: PendingPlan
 }
 
 export interface AgentEventCallbacks {
@@ -68,7 +93,7 @@ export const sendMessage = async (
 
 export const updatePlan = async (
   threadId: string,
-  plan: Record<string, unknown>
+  plan: PendingPlan
 ): Promise<AgentState> => {
   const payload: UpdatePlanRequest = { plan }
   const res = await client.put(

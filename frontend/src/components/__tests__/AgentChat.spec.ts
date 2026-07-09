@@ -1,0 +1,142 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { mount, flushPromises } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
+import ElementPlus from 'element-plus'
+import AgentChat from '../AgentChat.vue'
+import { useAgentStore } from '@/stores/agent'
+import { useProjectStore } from '@/stores/project'
+import type { Project } from '@/api/projects'
+
+const mockProject = (): Project => ({
+  id: 'proj-1',
+  name: '测试项目',
+  path: '/tmp/proj-1',
+  description: '',
+  created_at: new Date().toISOString(),
+  updated_at: new Date().toISOString(),
+  analysis: {
+    image_dir: '',
+    clinical_path: '',
+    output_dir: './outputs',
+    modality: 'auto',
+    covariates: '',
+    model: 'deepseek-v4-pro',
+    api_key: '',
+  },
+})
+
+function setupWrapper() {
+  return mount(AgentChat, {
+    global: {
+      plugins: [ElementPlus],
+    },
+  })
+}
+
+describe('AgentChat', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
+  it('renders placeholder when no project is selected', async () => {
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    expect(wrapper.find('.el-empty').exists()).toBe(true)
+    expect(wrapper.text()).toContain('请先选择一个项目')
+  })
+
+  it('renders messages with correct role styles', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.threadId = 'thread-1'
+    agentStore.messages = [
+      { role: 'user', content: 'Hello' },
+      { role: 'assistant', content: 'Hi there' },
+      { role: 'tool', content: 'result', tool_call_id: 'call-1' },
+    ]
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    const rows = wrapper.findAll('.message-row')
+    expect(rows).toHaveLength(3)
+
+    expect(rows[0].classes()).toContain('message-row--user')
+    expect(rows[0].find('.message-bubble--user').exists()).toBe(true)
+    expect(rows[0].text()).toContain('Hello')
+
+    expect(rows[1].classes()).toContain('message-row--assistant')
+    expect(rows[1].find('.message-bubble--assistant').exists()).toBe(true)
+    expect(rows[1].text()).toContain('Hi there')
+
+    expect(rows[2].classes()).toContain('message-row--tool')
+    expect(rows[2].find('.message-bubble--tool').exists()).toBe(true)
+    expect(rows[2].text()).toContain('result')
+  })
+
+  it('sends a message when clicking the send button', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.threadId = 'thread-1'
+    vi.spyOn(agentStore, 'sendMessage').mockResolvedValue(undefined)
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    const textarea = wrapper.find('textarea')
+    await textarea.setValue('Test message')
+
+    const sendButton = wrapper
+      .findAll('button')
+      .find((b) => b.text().includes('发送'))
+    expect(sendButton).toBeDefined()
+    await sendButton!.trigger('click')
+    await flushPromises()
+
+    expect(agentStore.sendMessage).toHaveBeenCalledWith('Test message', 'user')
+    expect((textarea.element as HTMLTextAreaElement).value).toBe('')
+  })
+
+  it('sends a message when pressing Enter', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.threadId = 'thread-1'
+    vi.spyOn(agentStore, 'sendMessage').mockResolvedValue(undefined)
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    const textarea = wrapper.find('textarea')
+    await textarea.setValue('Enter message')
+    await textarea.trigger('keydown', { key: 'Enter', shiftKey: false })
+    await flushPromises()
+
+    expect(agentStore.sendMessage).toHaveBeenCalledWith('Enter message', 'user')
+  })
+
+  it('inserts a newline on Shift+Enter', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.threadId = 'thread-1'
+    vi.spyOn(agentStore, 'sendMessage').mockResolvedValue(undefined)
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    const textarea = wrapper.find('textarea')
+    await textarea.setValue('Line 1')
+    await textarea.trigger('keydown', { key: 'Enter', shiftKey: true })
+    await flushPromises()
+
+    expect(agentStore.sendMessage).not.toHaveBeenCalled()
+  })
+})

@@ -1,13 +1,22 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import * as api from '@/api/agent'
-import type { AgentState, AgentMessage } from '@/api/agent'
+import type {
+  AgentState,
+  AgentMessage,
+  PendingPlan,
+  PendingCommand,
+  PendingScript,
+} from '@/api/agent'
 
 export const useAgentStore = defineStore('agent', () => {
   const threadId = ref<string | null>(null)
   const messages = ref<AgentMessage[]>([])
   const interrupt = ref<string | null>(null)
   const operationLog = ref<string[]>([])
+  const pendingPlan = ref<PendingPlan | null>(null)
+  const pendingCommand = ref<PendingCommand | null>(null)
+  const pendingScript = ref<PendingScript | null>(null)
 
   let es: EventSource | null = null
 
@@ -20,6 +29,15 @@ export const useAgentStore = defineStore('agent', () => {
     }
     if (state.operation_log) {
       operationLog.value = state.operation_log
+    }
+    if (state.pending_plan !== undefined) {
+      pendingPlan.value = state.pending_plan
+    }
+    if (state.pending_command !== undefined) {
+      pendingCommand.value = state.pending_command
+    }
+    if (state.pending_script !== undefined) {
+      pendingScript.value = state.pending_script
     }
   }
 
@@ -62,7 +80,7 @@ export const useAgentStore = defineStore('agent', () => {
     connect()
   }
 
-  async function updatePlan(plan: Record<string, unknown>): Promise<void> {
+  async function updatePlan(plan: PendingPlan): Promise<void> {
     if (!threadId.value) {
       throw new Error('No active agent thread')
     }
@@ -93,16 +111,31 @@ export const useAgentStore = defineStore('agent', () => {
     }
   }
 
+  function resetThread(): void {
+    disconnect()
+    threadId.value = null
+    messages.value = []
+    interrupt.value = null
+    operationLog.value = []
+    pendingPlan.value = null
+    pendingCommand.value = null
+    pendingScript.value = null
+  }
+
   return {
     threadId,
     messages,
     interrupt,
     operationLog,
+    pendingPlan,
+    pendingCommand,
+    pendingScript,
     ensureThread,
     sendMessage,
     updatePlan,
     confirm,
     cancel,
     disconnect,
+    resetThread,
   }
 })
