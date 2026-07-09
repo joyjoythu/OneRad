@@ -3,24 +3,19 @@ import argparse
 import pandas as pd
 import pytest
 
-from main import _parse_args
+from main import _parse_args, _should_run_server
 
 
 def test_parse_args_with_image_dir_and_clinical():
     args = _parse_args(["--image-dir", "./img", "--clinical", "./cli.csv"])
-    assert args.ui is False
+    assert _should_run_server(args) is False
     assert args.image_dir == "./img"
     assert args.clinical == "./cli.csv"
 
 
-def test_parse_args_ui_flag():
-    args = _parse_args(["--ui"])
-    assert args.ui is True
-
-
-def test_parse_args_no_args_defaults_to_ui():
+def test_parse_args_no_args_defaults_to_server():
     args = _parse_args([])
-    assert args.ui is False
+    assert _should_run_server(args) is True
     assert args.image_dir is None
     assert args.clinical is None
 
@@ -45,13 +40,42 @@ def test_parse_args_model_default():
     assert args.model == "deepseek-v4-pro"
 
 
+def test_parse_args_host_port_defaults():
+    args = _parse_args([])
+    assert args.host == "0.0.0.0"
+    assert args.port == 8000
+
+
+def test_parse_args_help_includes_host_and_port(capsys):
+    with pytest.raises(SystemExit) as exc_info:
+        _parse_args(["--help"])
+    assert exc_info.value.code == 0
+    captured = capsys.readouterr()
+    assert "--host" in captured.out
+    assert "--port" in captured.out
+
+
+def test_should_run_server_no_args():
+    args = _parse_args([])
+    assert _should_run_server(args) is True
+
+
+def test_should_run_server_with_image_dir():
+    args = _parse_args(["--image-dir", "foo"])
+    assert _should_run_server(args) is False
+
+
+def test_should_run_server_with_feature_csv():
+    args = _parse_args(["--feature-csv", "foo.csv"])
+    assert _should_run_server(args) is False
+
+
 def test_main_cli_pipeline_error(monkeypatch, capsys):
     from unittest.mock import MagicMock, patch
 
     from main import main
 
     mock_args = MagicMock()
-    mock_args.ui = False
     mock_args.image_dir = "./img"
     mock_args.clinical = "./cli.csv"
     mock_args.feature_csv = None
@@ -65,6 +89,8 @@ def test_main_cli_pipeline_error(monkeypatch, capsys):
     mock_args.api_key = ""
     mock_args.base_url = "https://api.deepseek.com/v1"
     mock_args.model = "deepseek-v4-pro"
+    mock_args.host = "0.0.0.0"
+    mock_args.port = 8000
     monkeypatch.setattr("main._parse_args", lambda argv=None: mock_args)
 
     mock_orch = MagicMock()
@@ -107,7 +133,6 @@ def test_main_feature_csv_direct_analysis(tmp_path, monkeypatch):
     output_dir = tmp_path / "out"
 
     monkeypatch.setattr("main._parse_args", lambda argv=None: argparse.Namespace(
-        ui=False,
         image_dir=None,
         clinical=str(clinical_csv),
         feature_csv=str(feature_csv),
@@ -121,6 +146,8 @@ def test_main_feature_csv_direct_analysis(tmp_path, monkeypatch):
         api_key=None,
         base_url="https://api.deepseek.com/v1",
         model="deepseek-v4-pro",
+        host="0.0.0.0",
+        port=8000,
     ))
 
     main()
@@ -157,7 +184,6 @@ def test_main_uses_cached_features_csv_when_available(tmp_path, monkeypatch):
     clinical_df.to_csv(clinical_csv, index=False)
 
     monkeypatch.setattr("main._parse_args", lambda argv=None: argparse.Namespace(
-        ui=False,
         image_dir="./nonexistent_images",  # should not be touched
         clinical=str(clinical_csv),
         feature_csv=None,
@@ -171,6 +197,8 @@ def test_main_uses_cached_features_csv_when_available(tmp_path, monkeypatch):
         api_key=None,
         base_url="https://api.deepseek.com/v1",
         model="deepseek-v4-pro",
+        host="0.0.0.0",
+        port=8000,
     ))
 
     main()
