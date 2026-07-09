@@ -135,10 +135,28 @@ def test_run_script_blocks_bytes_path_traversal(tmp_path, monkeypatch):
         "open(parts, 'wb').write(b'x')"
     )
     meta = prepare_script(code, "bytes escape", str(tmp_path))
-    assert meta["risk_level"] == "low"
+    # 'wb' 写模式被归类为中危，注入沙箱头后在运行时被拦截
+    assert meta["risk_level"] == "medium"
     result = execute_script_if_safe(meta, str(tmp_path))
     assert result["success"] is False
     assert "PermissionError" in result["stderr"]
+
+
+def test_low_risk_script_runs_without_header(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "app.code_runner.find_venv_python", lambda project_path: Path(sys.executable)
+    )
+    code = "print('hello_from_low_risk')"
+    meta = prepare_script(code, "low risk", str(tmp_path))
+    assert meta["risk_level"] == "low"
+    script_path = Path(meta["script_path"])
+    original_content = script_path.read_text(encoding="utf-8")
+
+    result = execute_script_if_safe(meta, str(tmp_path))
+    assert result["success"] is True
+    assert "hello_from_low_risk" in result["stdout"]
+    # 低危脚本不注入沙箱头，原始文件内容保持不变
+    assert script_path.read_text(encoding="utf-8") == original_content
 
 
 def test_run_script_blocks_dynamic_pathlib(tmp_path, monkeypatch):
@@ -173,10 +191,18 @@ def test_run_script_header_does_not_expose_os(tmp_path, monkeypatch):
     monkeypatch.setattr(
         "app.code_runner.find_venv_python", lambda project_path: Path(sys.executable)
     )
-    code = "os.system('echo exposed')"
-    meta = prepare_script(code, "exposed os", str(tmp_path))
-    # 静态扫描会把 os.system 判定为高危，直接拒绝执行
-    assert meta["risk_level"] == "high"
+    # 中危脚本（文件写入）才会注入沙箱头；注入后内部别名应已被删除
+    code = (
+        "open('x.txt', 'w').write('x')\n"
+        "try:\n"
+        "    _ = _os\n"
+        "    print('_os_exposed')\n"
+        "except NameError:\n"
+        "    print('_os_deleted')\n"
+    )
+    meta = prepare_script(code, "header aliases deleted", str(tmp_path))
+    assert meta["risk_level"] == "medium"
     result = execute_script_if_safe(meta, str(tmp_path))
-    assert result["success"] is False
-    assert "拒绝执行" in result["error"]
+    assert result["success"] is True
+    assert "_os_deleted" in result["stdout"]
+    assert (tmp_path / "x.txt").read_text(encoding="utf-8") == "x"
