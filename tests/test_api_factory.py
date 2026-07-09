@@ -18,7 +18,7 @@ def app(monkeypatch, tmp_path):
 
 def test_stub_routes_return_501(app):
     with TestClient(app) as client:
-        for path in ["/api/projects", "/api/runs", "/api/agent"]:
+        for path in ["/api/runs", "/api/agent"]:
             response = client.get(path)
             assert response.status_code == 501, (
                 f"{path} expected 501, got {response.status_code}"
@@ -44,5 +44,7 @@ def test_project_store_dependency_override(app, tmp_path):
     app.dependency_overrides[get_project_store] = lambda: store
     with TestClient(app) as client:
         response = client.get("/api/projects")
-    assert response.status_code == 501
-    assert response.json() == {"detail": "not implemented"}
+    assert response.status_code == 200
+    projects = response.json()
+    assert len(projects) == 1
+    assert projects[0]["name"] == "Override"

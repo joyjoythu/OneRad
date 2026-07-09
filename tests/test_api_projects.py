@@ -104,6 +104,11 @@ def test_delete_project(client, temp_db):
     assert store.load_project(project["id"]) is None
 
 
+def test_delete_missing_project_returns_404(client, temp_db):
+    response = client.delete("/api/projects/non-existent-id")
+    assert response.status_code == 404
+
+
 def test_list_runs(client, temp_db):
     store, root = temp_db
     project = store.create_project("A", str(root / "a"), "")

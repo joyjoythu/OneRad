@@ -106,6 +106,8 @@ def update_config(
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_project(project_id: str, store: ProjectStore = Depends(get_project_store)):
     """Delete a project and its associated runs."""
+    if store.load_project(project_id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="项目不存在")
     store.delete_project(project_id)
     return None
 
