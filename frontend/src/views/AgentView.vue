@@ -73,7 +73,9 @@ const interruptTag = computed(() => {
 })
 
 async function initThread(projectId: string): Promise<void> {
-  if (!agentStore.threadId) {
+  if (agentStore.threadId) {
+    await agentStore.reconnect()
+  } else {
     await agentStore.ensureThread(projectId)
   }
 }

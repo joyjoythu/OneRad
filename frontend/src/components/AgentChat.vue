@@ -46,6 +46,7 @@
           :rows="3"
           resize="none"
           placeholder="请输入消息，Enter 发送，Shift+Enter 换行"
+          aria-label="消息输入"
           :disabled="!agentStore.threadId"
           @keydown="handleKeydown"
         />
@@ -63,7 +64,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick } from 'vue'
+import { ref, computed, watchEffect, nextTick } from 'vue'
 import { Promotion } from '@element-plus/icons-vue'
 import { useAgentStore } from '@/stores/agent'
 import { useProjectStore } from '@/stores/project'
@@ -78,13 +79,12 @@ const canSend = computed(() => {
   return agentStore.threadId && input.value.trim().length > 0
 })
 
-watch(
-  () => agentStore.messages.length,
-  async () => {
+watchEffect(async () => {
+  if (agentStore.messages.length) {
     await nextTick()
     scrollToBottom()
   }
-)
+})
 
 function scrollToBottom(): void {
   if (messageContainer.value) {
@@ -93,6 +93,7 @@ function scrollToBottom(): void {
 }
 
 function handleKeydown(event: KeyboardEvent): void {
+  if (event.isComposing) return
   if (event.key === 'Enter' && !event.shiftKey) {
     event.preventDefault()
     handleSend()

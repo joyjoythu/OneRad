@@ -44,7 +44,7 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="操作" width="120" align="center">
+        <el-table-column label="管理" width="120" align="center">
           <template #default="{ $index }">
             <el-button
               link
@@ -62,7 +62,6 @@
         <el-button type="primary" plain :icon="Plus" @click="addItem">
           添加步骤
         </el-button>
-        <el-button :icon="Rank" @click="reorder">重新排序</el-button>
         <el-button
           type="success"
           :icon="Check"
@@ -82,7 +81,7 @@
 
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
-import { Check, Plus, Delete, Rank, CircleCheck, Close } from '@element-plus/icons-vue'
+import { Check, Plus, Delete, CircleCheck, Close } from '@element-plus/icons-vue'
 import { useAgentStore } from '@/stores/agent'
 import type { PlanItem, PendingPlan } from '@/api/agent'
 
@@ -113,14 +112,6 @@ function addItem(): void {
 
 function removeItem(index: number): void {
   localPlan.value.splice(index, 1)
-}
-
-function reorder(): void {
-  // 简单的重新排序示例：将最后一条移到最前面。
-  // 实际场景中可以替换为拖拽排序或弹窗编辑顺序。
-  if (localPlan.value.length < 2) return
-  const last = localPlan.value.pop()!
-  localPlan.value.unshift(last)
 }
 
 async function handleUpdate(): Promise<void> {

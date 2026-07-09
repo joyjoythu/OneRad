@@ -121,7 +121,26 @@ describe('AgentChat', () => {
     expect(agentStore.sendMessage).toHaveBeenCalledWith('Enter message', 'user')
   })
 
-  it('inserts a newline on Shift+Enter', async () => {
+  it('does not send on Enter while IME is composing', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.threadId = 'thread-1'
+    vi.spyOn(agentStore, 'sendMessage').mockResolvedValue(undefined)
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    const textarea = wrapper.find('textarea')
+    await textarea.setValue('Composing')
+    await textarea.trigger('keydown', { key: 'Enter', shiftKey: false, isComposing: true })
+    await flushPromises()
+
+    expect(agentStore.sendMessage).not.toHaveBeenCalled()
+  })
+
+  it('does not send on Shift+Enter', async () => {
     const projectStore = useProjectStore()
     projectStore.currentProject = mockProject()
 

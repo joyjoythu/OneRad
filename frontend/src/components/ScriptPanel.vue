@@ -9,7 +9,7 @@
       </template>
 
       <div v-if="script" class="script-body">
-        <pre class="script-code"><code>{{ script.code }}</code></pre>
+        <pre class="script-code" tabindex="0"><code>{{ script.code }}</code></pre>
 
         <div v-if="script.explanation" class="script-explanation">
           <div class="script-section-title">说明</div>

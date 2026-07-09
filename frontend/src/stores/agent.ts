@@ -111,6 +111,11 @@ export const useAgentStore = defineStore('agent', () => {
     }
   }
 
+  async function reconnect(): Promise<void> {
+    await syncThread()
+    connect()
+  }
+
   function resetThread(): void {
     disconnect()
     threadId.value = null
@@ -122,6 +127,11 @@ export const useAgentStore = defineStore('agent', () => {
     pendingScript.value = null
   }
 
+  async function reconnect(): Promise<void> {
+    await syncThread()
+    connect()
+  }
+
   return {
     threadId,
     messages,
@@ -131,6 +141,7 @@ export const useAgentStore = defineStore('agent', () => {
     pendingCommand,
     pendingScript,
     ensureThread,
+    reconnect,
     sendMessage,
     updatePlan,
     confirm,

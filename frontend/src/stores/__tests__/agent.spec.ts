@@ -90,4 +90,23 @@ describe('useAgentStore', () => {
     expect(store.messages).toEqual([{ role: 'assistant', content: 'Hi' }])
     expect(store.operationLog).toEqual(['step 1'])
   })
+
+  it('reconnect syncs state and reopens the event stream', async () => {
+    const store = useAgentStore()
+    await store.ensureThread('project-1')
+    store.disconnect()
+    MockEventSource.instances = []
+
+    vi.mocked(client.get).mockResolvedValue({
+      data: {
+        thread_id: 'thread-1',
+        ...mockState({ messages: [{ role: 'assistant', content: 'Welcome back' }] }),
+      },
+    })
+
+    await store.reconnect()
+
+    expect(store.messages).toEqual([{ role: 'assistant', content: 'Welcome back' }])
+    expect(MockEventSource.instances).toHaveLength(1)
+  })
 })
