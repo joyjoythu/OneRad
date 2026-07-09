@@ -212,7 +212,8 @@ class ProjectStore:
                 "modality": analysis_config.get("modality", "auto"),
                 "covariates": analysis_config.get("covariates", ""),
                 "model": analysis_config.get("model", "deepseek-v4-pro"),
-                "api_key": analysis_config.get("api_key", ""),
+                # api_key is intentionally never persisted to disk.
+                "api_key": "",
             },
         }
         with open(yaml_path, "w", encoding="utf-8") as f:

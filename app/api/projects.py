@@ -1,3 +1,5 @@
+import os
+from pathlib import Path
 from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -7,6 +9,38 @@ from app.api.deps import get_project_store
 from app.projects import ProjectStore
 
 router = APIRouter()
+
+ONERAD_DATA_DIR = Path(
+    os.environ.get("ONERAD_DATA_DIR", str(Path.home() / ".onerad"))
+).resolve()
+
+
+def _resolve_project_path(path: str) -> Path:
+    """Resolve a user-supplied project path inside ONERAD_DATA_DIR.
+
+    Rejects paths that contain '..' as a path component or that resolve
+    outside the allowed ONERAD_DATA_DIR root. Relative paths are resolved
+    relative to ONERAD_DATA_DIR.
+    """
+    parsed = Path(path)
+    if ".." in parsed.parts:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid project path"
+        )
+
+    if parsed.is_absolute():
+        resolved = parsed.resolve()
+    else:
+        resolved = (ONERAD_DATA_DIR / parsed).resolve()
+
+    try:
+        resolved.relative_to(ONERAD_DATA_DIR)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid project path"
+        )
+
+    return resolved
 
 
 class CreateProjectRequest(BaseModel):
@@ -38,8 +72,9 @@ def list_projects(store: ProjectStore = Depends(get_project_store)):
 @router.post("/", status_code=status.HTTP_201_CREATED, response_model=Dict[str, Any])
 def create_project(payload: CreateProjectRequest, store: ProjectStore = Depends(get_project_store)):
     """Create a new project with the given name, path and description."""
+    project_path = _resolve_project_path(payload.path)
     try:
-        return store.create_project(payload.name, payload.path, payload.description)
+        return store.create_project(payload.name, str(project_path), payload.description)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
@@ -60,10 +95,12 @@ def update_config(
     store: ProjectStore = Depends(get_project_store),
 ):
     """Update the analysis configuration for a project."""
+    if store.load_project(project_id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="项目不存在")
     try:
         return store.save_project_config(project_id, payload.model_dump())
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
 
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -79,4 +116,6 @@ def list_project_runs(
     store: ProjectStore = Depends(get_project_store),
 ):
     """List analysis runs associated with a project."""
+    if store.load_project(project_id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="项目不存在")
     return store.list_runs(project_id)
