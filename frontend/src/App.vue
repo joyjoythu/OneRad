@@ -52,8 +52,4 @@ import ProjectList from '@/components/ProjectList.vue'
   padding: 1.5rem 2rem;
   overflow-y: auto;
 }
-
-.placeholder {
-  color: #909399;
-}
 </style>
