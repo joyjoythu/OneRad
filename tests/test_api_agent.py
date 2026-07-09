@@ -25,7 +25,7 @@ def client(app):
 
 def _create_project(client):
     response = client.post(
-        "/api/projects/",
+        "/api/projects",
         json={"name": "AgentTest", "path": "agent-test", "description": ""},
     )
     assert response.status_code == 201, response.text

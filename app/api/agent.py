@@ -161,7 +161,7 @@ def _start_stream(
     )
 
 
-@router.get("/", status_code=status.HTTP_501_NOT_IMPLEMENTED)
+@router.get("", status_code=status.HTTP_501_NOT_IMPLEMENTED)
 def agent_root():
     return {"detail": "not implemented"}
 

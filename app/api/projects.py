@@ -65,13 +65,13 @@ class UpdateConfigRequest(BaseModel):
     api_key: str = ""
 
 
-@router.get("/", response_model=List[Dict[str, Any]])
+@router.get("", response_model=List[Dict[str, Any]])
 def list_projects(store: ProjectStore = Depends(get_project_store)):
     """List all projects ordered by most recently updated."""
     return store.list_projects()
 
 
-@router.post("/", status_code=status.HTTP_201_CREATED, response_model=Dict[str, Any])
+@router.post("", status_code=status.HTTP_201_CREATED, response_model=Dict[str, Any])
 def create_project(payload: CreateProjectRequest, store: ProjectStore = Depends(get_project_store)):
     """Create a new project with the given name, path and description."""
     project_path = _resolve_project_path(payload.path)

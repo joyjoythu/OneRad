@@ -44,7 +44,7 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="OneRad API", lifespan=lifespan)
+    app = FastAPI(title="OneRad API", lifespan=lifespan, redirect_slashes=False)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[

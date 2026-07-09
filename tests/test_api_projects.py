@@ -46,7 +46,7 @@ def test_create_and_list_project(client, temp_db):
     _store, root = temp_db
     project_path = root / "new-project"
     response = client.post(
-        "/api/projects/",
+        "/api/projects",
         json={"name": "new-project", "path": str(project_path), "description": "test"},
     )
     assert response.status_code == 201
@@ -54,7 +54,7 @@ def test_create_and_list_project(client, temp_db):
     assert data["name"] == "new-project"
     assert data["description"] == "test"
 
-    response = client.get("/api/projects/")
+    response = client.get("/api/projects")
     assert response.status_code == 200
     projects = response.json()
     assert len(projects) == 1
@@ -125,7 +125,7 @@ def test_list_runs(client, temp_db):
 
 def test_create_project_rejects_path_traversal(client, temp_db):
     response = client.post(
-        "/api/projects/",
+        "/api/projects",
         json={"name": "evil", "path": "../evil", "description": "test"},
     )
     assert response.status_code == 400
@@ -136,13 +136,13 @@ def test_create_project_rejects_duplicate_name(client, temp_db):
     _store, root = temp_db
     project_path = root / "dup-project"
     response = client.post(
-        "/api/projects/",
+        "/api/projects",
         json={"name": "dup-project", "path": str(project_path), "description": "first"},
     )
     assert response.status_code == 201
 
     response = client.post(
-        "/api/projects/",
+        "/api/projects",
         json={
             "name": "dup-project",
             "path": str(root / "dup-project-2"),
