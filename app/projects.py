@@ -58,6 +58,19 @@ class ProjectStore:
                 """
             )
             conn.commit()
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS sse_events (
+                    scope TEXT NOT NULL,
+                    scope_id TEXT NOT NULL,
+                    event_id INTEGER NOT NULL,
+                    data TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (scope, scope_id, event_id)
+                )
+                """
+            )
+            conn.commit()
         finally:
             conn.close()
 
@@ -278,5 +291,51 @@ class ProjectStore:
                 (project_id, limit),
             ).fetchall()
             return [dict(row) for row in rows]
+        finally:
+            conn.close()
+
+    def record_sse_event(self, scope: str, scope_id: str, event_id: int, data: str) -> None:
+        conn = sqlite3.connect(str(self.db_path))
+        try:
+            conn.execute(
+                """
+                INSERT INTO sse_events (scope, scope_id, event_id, data, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (scope, scope_id, event_id, data, self._now()),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def list_sse_events(
+        self, scope: str, scope_id: str, after_event_id: int = 0, limit: int = 200
+    ) -> List[Dict[str, Any]]:
+        conn = sqlite3.connect(str(self.db_path))
+        try:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                """
+                SELECT scope, scope_id, event_id, data, created_at
+                FROM sse_events
+                WHERE scope = ? AND scope_id = ? AND event_id > ?
+                ORDER BY event_id ASC
+                LIMIT ?
+                """,
+                (scope, scope_id, after_event_id, limit),
+            ).fetchall()
+            return [dict(row) for row in rows]
+        finally:
+            conn.close()
+
+    def has_running_run(self, project_id: str) -> bool:
+        conn = sqlite3.connect(str(self.db_path))
+        try:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                "SELECT 1 FROM runs WHERE project_id = ? AND status = ? LIMIT 1",
+                (project_id, "running"),
+            ).fetchone()
+            return row is not None
         finally:
             conn.close()
