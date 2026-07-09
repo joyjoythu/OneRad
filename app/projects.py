@@ -327,6 +327,21 @@ class ProjectStore:
         finally:
             conn.close()
 
+    def get_max_event_id(self, scope: str, scope_id: str) -> int:
+        conn = sqlite3.connect(str(self.db_path))
+        try:
+            row = conn.execute(
+                """
+                SELECT COALESCE(MAX(event_id), 0)
+                FROM sse_events
+                WHERE scope = ? AND scope_id = ?
+                """,
+                (scope, scope_id),
+            ).fetchone()
+            return int(row[0])
+        finally:
+            conn.close()
+
     def delete_sse_events(self, scope: str, scope_id: str) -> None:
         conn = sqlite3.connect(str(self.db_path))
         try:

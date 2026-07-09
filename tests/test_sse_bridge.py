@@ -63,3 +63,42 @@ async def test_unsubscribe_removes_queue(bridge):
     await asyncio.sleep(0)
 
     assert queue.empty()
+
+
+@pytest.mark.anyio
+async def test_concurrent_publish_no_duplicate_ids(bridge):
+    async def publisher(publisher_id: int):
+        for i in range(10):
+            await bridge.publish("run", "run-1", {"publisher": publisher_id, "index": i})
+
+    await asyncio.gather(*[publisher(p) for p in range(5)])
+
+    events = bridge.store.list_sse_events("run", "run-1", limit=10_000_000)
+    event_ids = [e["event_id"] for e in events]
+    assert len(event_ids) == 50
+    assert len(set(event_ids)) == 50
+    assert sorted(event_ids) == list(range(1, 51))
+
+
+@pytest.mark.anyio
+async def test_subscribe_does_not_lose_events_during_replay(bridge):
+    # Pre-publish a few events so the subscriber definitely has historical replay work.
+    for i in range(5):
+        await bridge.publish("run", "run-1", {"index": i})
+
+    async def publisher():
+        for i in range(5, 20):
+            await bridge.publish("run", "run-1", {"index": i})
+            # Yield control so subscribe can interleave with publishing.
+            await asyncio.sleep(0)
+
+    async def subscriber():
+        queue = await bridge.subscribe("run", "run-1", last_event_id=0)
+        received = []
+        for _ in range(20):
+            event = await asyncio.wait_for(queue.get(), timeout=2.0)
+            received.append(event["event_id"])
+        return received
+
+    _, received = await asyncio.gather(publisher(), subscriber())
+    assert received == list(range(1, 21))

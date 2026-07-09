@@ -12,33 +12,34 @@ class EventBridge:
     def __init__(self, db_path: Optional[str] = None):
         self.store = ProjectStore(db_path)
         self._queues: Dict[str, Dict[int, asyncio.Queue]] = {}
-        self._lock = asyncio.Lock()
+        self._locks: Dict[str, asyncio.Lock] = {}
 
     @staticmethod
     def _key(scope: str, scope_id: str) -> str:
         return f"{scope}:{scope_id}"
 
+    def _scope_lock(self, scope: str, scope_id: str) -> asyncio.Lock:
+        key = self._key(scope, scope_id)
+        return self._locks.setdefault(key, asyncio.Lock())
+
     async def next_event_id(self, scope: str, scope_id: str) -> int:
-        events = await run_in_threadpool(
-            self.store.list_sse_events, scope, scope_id, limit=10_000_000
+        max_id = await run_in_threadpool(
+            self.store.get_max_event_id, scope, scope_id
         )
-        if not events:
-            return 1
-        return max(event["event_id"] for event in events) + 1
+        return max_id + 1
 
     async def publish(self, scope: str, scope_id: str, data: Any) -> int:
-        event_id = await self.next_event_id(scope, scope_id)
         payload = json.dumps(data, ensure_ascii=False)
-        await run_in_threadpool(
-            self.store.record_sse_event, scope, scope_id, event_id, payload
-        )
-
+        lock = self._scope_lock(scope, scope_id)
         key = self._key(scope, scope_id)
-        async with self._lock:
-            subscribers = list(self._queues.get(key, {}).values())
 
-        for queue in subscribers:
-            await queue.put({"event_id": event_id, "data": data})
+        async with lock:
+            event_id = await self.next_event_id(scope, scope_id)
+            await run_in_threadpool(
+                self.store.record_sse_event, scope, scope_id, event_id, payload
+            )
+            for queue in self._queues.get(key, {}).values():
+                await queue.put({"event_id": event_id, "data": data})
 
         return event_id
 
@@ -47,10 +48,10 @@ class EventBridge:
     ) -> asyncio.Queue:
         queue: asyncio.Queue = asyncio.Queue()
         key = self._key(scope, scope_id)
+        lock = self._scope_lock(scope, scope_id)
 
-        max_event_id = await self.next_event_id(scope, scope_id) - 1
-
-        async with self._lock:
+        async with lock:
+            max_event_id = await self.next_event_id(scope, scope_id) - 1
             self._queues.setdefault(key, {})[id(queue)] = queue
 
         historical = await run_in_threadpool(
@@ -71,7 +72,9 @@ class EventBridge:
 
     async def unsubscribe(self, scope: str, scope_id: str, queue: asyncio.Queue) -> None:
         key = self._key(scope, scope_id)
-        async with self._lock:
+        lock = self._scope_lock(scope, scope_id)
+
+        async with lock:
             subscribers = self._queues.get(key)
             if subscribers is None:
                 return
