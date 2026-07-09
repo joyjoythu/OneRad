@@ -127,11 +127,6 @@ export const useAgentStore = defineStore('agent', () => {
     pendingScript.value = null
   }
 
-  async function reconnect(): Promise<void> {
-    await syncThread()
-    connect()
-  }
-
   return {
     threadId,
     messages,
