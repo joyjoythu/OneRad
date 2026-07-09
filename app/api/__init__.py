@@ -12,6 +12,7 @@ from starlette.responses import FileResponse
 from app.api import agent, projects, runs
 from app.api.sse import EventBridge
 from app.projects import ProjectStore
+from app.agent import create_agent_graph
 
 
 def _data_dir() -> Path:
@@ -26,10 +27,13 @@ async def lifespan(app: FastAPI):
     app.state.project_store = ProjectStore(db_path=str(data_dir / "projects.db"))
     app.state.event_bridge = EventBridge(str(app.state.project_store.db_path))
     app.state.pipeline_tasks = set()
+    app.state.active_agent_streams = set()
+    app.state.agent_api_keys = {}
     async with AsyncSqliteSaver.from_conn_string(
         str(data_dir / "checkpoints.db")
     ) as saver:
         app.state.checkpointer = saver
+        app.state.agent_graph = create_agent_graph(checkpointer=saver)
         yield
 
     remaining = list(app.state.pipeline_tasks)

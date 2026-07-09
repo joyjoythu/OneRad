@@ -12,7 +12,6 @@ def build_initial_state(project: dict) -> AgentState:
     return {
         "messages": [],
         "project_path": project["path"],
-        "api_key": analysis.get("api_key", ""),
         "base_url": "https://api.deepseek.com/v1",
         "model": analysis.get("model", "deepseek-v4-pro"),
         "interrupt_type": None,

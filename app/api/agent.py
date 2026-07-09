@@ -1,7 +1,7 @@
 import asyncio
 import json
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from langchain_core.messages import (
@@ -11,13 +11,12 @@ from langchain_core.messages import (
     SystemMessage,
     ToolMessage,
 )
-from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.types import Command
 from pydantic import BaseModel
 from starlette.responses import StreamingResponse
 
 from app.agent import build_initial_state, create_agent_graph
-from app.api.deps import get_checkpointer, get_project_store
+from app.api.deps import get_project_store
 from app.api.runner import get_bridge
 from app.projects import ProjectStore
 
@@ -27,7 +26,7 @@ router = APIRouter()
 class MessageRequest(BaseModel):
     """A user message sent into an agent thread."""
 
-    role: str
+    role: Literal["user", "assistant", "system"]
     content: str
 
 
@@ -37,8 +36,10 @@ class UpdatePlanRequest(BaseModel):
     plan: Dict[str, Any]
 
 
-def _thread_config(thread_id: str) -> Dict[str, Any]:
-    return {"configurable": {"thread_id": thread_id}}
+def _agent_config(thread_id: str, app) -> Dict[str, Any]:
+    """Build the RunnableConfig for a thread, including the api_key from app state."""
+    api_key = getattr(app.state, "agent_api_keys", {}).get(thread_id, "")
+    return {"configurable": {"thread_id": thread_id, "api_key": api_key}}
 
 
 def _render_messages(values: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -105,9 +106,9 @@ def _make_message(role: str, content: str) -> BaseMessage:
     )
 
 
-def get_agent_graph(checkpointer: AsyncSqliteSaver = Depends(get_checkpointer)):
-    """Compile the agent graph with the application checkpointer."""
-    return create_agent_graph(checkpointer=checkpointer)
+def get_agent_graph(request: Request):
+    """Return the pre-compiled agent graph stored on app.state."""
+    return request.app.state.agent_graph
 
 
 async def _stream_agent(
@@ -119,14 +120,45 @@ async def _stream_agent(
     input_value: Any = None,
 ) -> None:
     """Run the graph with the supplied input and publish each value chunk."""
+    app.state.active_agent_streams.add(thread_id)
     task = asyncio.current_task()
     app.state.pipeline_tasks.add(task)
     try:
         async for values in graph.astream(input_value, config, stream_mode="values"):
             payload = _sync_payload(values)
             await bridge.publish("agent", thread_id, payload)
+    except Exception as exc:
+        await bridge.publish(
+            "agent",
+            thread_id,
+            {
+                "messages": [],
+                "interrupt_type": None,
+                "operation_log": [f"stream error: {exc}"],
+                "pending_plan": None,
+                "pending_command": None,
+                "pending_script": None,
+                "error": str(exc),
+            },
+        )
+        raise
     finally:
+        app.state.active_agent_streams.discard(thread_id)
         app.state.pipeline_tasks.discard(task)
+
+
+def _start_stream(
+    thread_id: str,
+    graph,
+    bridge,
+    app,
+    input_value: Any = None,
+) -> None:
+    """Launch a background task that streams graph values for a thread."""
+    config = _agent_config(thread_id, app)
+    asyncio.create_task(
+        _stream_agent(thread_id, graph, config, bridge, app, input_value)
+    )
 
 
 @router.get("/", status_code=status.HTTP_501_NOT_IMPLEMENTED)
@@ -136,6 +168,7 @@ def agent_root():
 
 @router.post("/threads", status_code=status.HTTP_201_CREATED, response_model=Dict[str, Any])
 async def create_thread(
+    request: Request,
     project_id: str = Query(..., description="Project to associate with the new thread"),
     graph=Depends(get_agent_graph),
     store: ProjectStore = Depends(get_project_store),
@@ -148,23 +181,26 @@ async def create_thread(
         )
 
     thread_id = str(uuid.uuid4())
+    api_key = project.get("analysis", {}).get("api_key", "")
+    request.app.state.agent_api_keys[thread_id] = api_key
     initial_state = build_initial_state(project)
-    await graph.aupdate_state(_thread_config(thread_id), initial_state)
+    await graph.aupdate_state(_agent_config(thread_id, request.app), initial_state)
     return {"thread_id": thread_id}
 
 
 @router.get("/threads/{thread_id}", response_model=Dict[str, Any])
 async def get_thread(
+    request: Request,
     thread_id: str,
     graph=Depends(get_agent_graph),
 ) -> Dict[str, Any]:
     """Return the current state for an agent thread."""
     try:
-        snapshot = await graph.aget_state(_thread_config(thread_id))
-    except Exception as exc:
+        snapshot = await graph.aget_state(_agent_config(thread_id, request.app))
+    except KeyError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="thread not found"
-        ) from exc
+        )
 
     payload = _sync_payload(snapshot.values)
     payload["thread_id"] = thread_id
@@ -183,37 +219,42 @@ async def send_message(
     graph=Depends(get_agent_graph),
 ) -> Dict[str, Any]:
     """Append a user message to a thread and start streaming the agent response."""
+    config = _agent_config(thread_id, request.app)
+    try:
+        await graph.aget_state(config)
+    except KeyError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="thread not found"
+        )
+
     message = _make_message(payload.role, payload.content)
     bridge = get_bridge(request)
-    asyncio.create_task(
-        _stream_agent(
-            thread_id,
-            graph,
-            _thread_config(thread_id),
-            bridge,
-            request.app,
-            {"messages": [message]},
-        )
+    _start_stream(
+        thread_id,
+        graph,
+        bridge,
+        request.app,
+        {"messages": [message]},
     )
     return {"thread_id": thread_id}
 
 
 @router.put("/threads/{thread_id}/plan", response_model=Dict[str, Any])
 async def update_plan(
+    request: Request,
     thread_id: str,
     payload: UpdatePlanRequest,
     graph=Depends(get_agent_graph),
 ) -> Dict[str, Any]:
     """Update the pending plan on a thread without running the graph."""
+    config = _agent_config(thread_id, request.app)
     try:
-        await graph.aupdate_state(
-            _thread_config(thread_id), {"pending_plan": payload.plan}
-        )
-        snapshot = await graph.aget_state(_thread_config(thread_id))
-    except Exception as exc:
+        await graph.aupdate_state(config, {"pending_plan": payload.plan})
+        snapshot = await graph.aget_state(config)
+    except KeyError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="thread not found"
-        ) from exc
+        )
     return _sync_payload(snapshot.values)
 
 
@@ -228,16 +269,21 @@ async def confirm_interrupt(
     graph=Depends(get_agent_graph),
 ) -> Dict[str, Any]:
     """Resume a thread waiting on an interrupt with a confirmation."""
-    bridge = get_bridge(request)
-    asyncio.create_task(
-        _stream_agent(
-            thread_id,
-            graph,
-            _thread_config(thread_id),
-            bridge,
-            request.app,
-            Command(resume={"action": "confirm"}),
+    config = _agent_config(thread_id, request.app)
+    try:
+        await graph.aget_state(config)
+    except KeyError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="thread not found"
         )
+
+    bridge = get_bridge(request)
+    _start_stream(
+        thread_id,
+        graph,
+        bridge,
+        request.app,
+        Command(resume={"action": "confirm"}),
     )
     return {"thread_id": thread_id}
 
@@ -253,16 +299,21 @@ async def cancel_interrupt(
     graph=Depends(get_agent_graph),
 ) -> Dict[str, Any]:
     """Resume a thread waiting on an interrupt with a cancellation."""
-    bridge = get_bridge(request)
-    asyncio.create_task(
-        _stream_agent(
-            thread_id,
-            graph,
-            _thread_config(thread_id),
-            bridge,
-            request.app,
-            Command(resume={"action": "cancel"}),
+    config = _agent_config(thread_id, request.app)
+    try:
+        await graph.aget_state(config)
+    except KeyError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="thread not found"
         )
+
+    bridge = get_bridge(request)
+    _start_stream(
+        thread_id,
+        graph,
+        bridge,
+        request.app,
+        Command(resume={"action": "cancel"}),
     )
     return {"thread_id": thread_id}
 
@@ -276,11 +327,11 @@ async def thread_events(
 ) -> StreamingResponse:
     """Stream agent events for a thread as server-sent events."""
     try:
-        await graph.aget_state(_thread_config(thread_id))
-    except Exception as exc:
+        await graph.aget_state(_agent_config(thread_id, request.app))
+    except KeyError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="thread not found"
-        ) from exc
+        )
 
     bridge = get_bridge(request)
 
@@ -295,6 +346,9 @@ async def thread_events(
                     data = json.dumps(event["data"], ensure_ascii=False)
                     yield f"id: {event['event_id']}\nevent: agent\ndata: {data}\n\n"
                 except asyncio.TimeoutError:
+                    if thread_id not in request.app.state.active_agent_streams:
+                        yield "event: agent_end\ndata: {}\n\n"
+                        break
                     yield ": keep-alive\n\n"
         finally:
             await bridge.unsubscribe("agent", thread_id, queue)

@@ -1,7 +1,8 @@
 import json
-from typing import Literal
+from typing import Literal, Optional
 
 from langchain_core.messages import ToolMessage
+from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI
 from langgraph.types import interrupt
 
@@ -12,19 +13,29 @@ from app.actions import execute_plan
 from app.code_runner import execute_script_if_safe
 
 
-def _build_llm(state: AgentState) -> ChatOpenAI:
+def _build_llm(api_key: str, state: AgentState) -> ChatOpenAI:
     """根据状态构造 ChatOpenAI 实例。"""
     return ChatOpenAI(
-        api_key=state["api_key"],
+        api_key=api_key,
         base_url=state["base_url"],
         model=state["model"],
         temperature=0.2,
     )
 
 
-def call_llm(state: AgentState) -> dict:
+def _resolve_api_key(state: AgentState, config: Optional[RunnableConfig] = None) -> str:
+    """优先从 RunnableConfig 读取 api_key，兼容旧测试直接传入 state。"""
+    if config is not None:
+        api_key = config.get("configurable", {}).get("api_key", "")
+        if api_key:
+            return api_key
+    return state.get("api_key", "")
+
+
+def call_llm(state: AgentState, config: Optional[RunnableConfig] = None) -> dict:
     """调用 LLM，绑定工具后生成回复。"""
-    llm = _build_llm(state)
+    api_key = _resolve_api_key(state, config)
+    llm = _build_llm(api_key, state)
     tools = build_tools(state["project_path"], llm)
     model_with_tools = llm.bind_tools(list(tools.values()), parallel_tool_calls=False)
     response = model_with_tools.invoke(state["messages"])
@@ -39,14 +50,15 @@ def should_continue(state: AgentState) -> Literal["process_tool_calls", "__end__
     return "__end__"
 
 
-def process_tool_calls(state: AgentState) -> dict:
+def process_tool_calls(state: AgentState, config: Optional[RunnableConfig] = None) -> dict:
     """处理 LLM 输出的工具调用，设置对应的中断状态或返回 ToolMessage。"""
     last = state["messages"][-1]
     tool_calls = getattr(last, "tool_calls", [])
     if not tool_calls:
         return {"interrupt_type": None}
 
-    llm = _build_llm(state)
+    api_key = _resolve_api_key(state, config)
+    llm = _build_llm(api_key, state)
     tools = build_tools(state["project_path"], llm)
 
     updates = {"messages": []}

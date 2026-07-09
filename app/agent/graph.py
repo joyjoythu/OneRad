@@ -11,6 +11,9 @@ from app.agent.nodes import (
 
 
 def create_agent_graph(checkpointer=None):
+    if checkpointer is None:
+        from langgraph.checkpoint.memory import MemorySaver
+        checkpointer = MemorySaver()
     builder = StateGraph(AgentState)
     builder.add_node("call_llm", call_llm)
     builder.add_node("process_tool_calls", process_tool_calls)
