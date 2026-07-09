@@ -1,3 +1,4 @@
+import asyncio
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -9,6 +10,7 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from starlette.responses import FileResponse
 
 from app.api import agent, projects, runs
+from app.api.sse import EventBridge
 from app.projects import ProjectStore
 
 
@@ -22,11 +24,19 @@ def _data_dir() -> Path:
 async def lifespan(app: FastAPI):
     data_dir = _data_dir()
     app.state.project_store = ProjectStore(db_path=str(data_dir / "projects.db"))
+    app.state.event_bridge = EventBridge(str(app.state.project_store.db_path))
+    app.state.pipeline_tasks = set()
     async with AsyncSqliteSaver.from_conn_string(
         str(data_dir / "checkpoints.db")
     ) as saver:
         app.state.checkpointer = saver
         yield
+
+    remaining = list(app.state.pipeline_tasks)
+    for task in remaining:
+        task.cancel()
+    if remaining:
+        await asyncio.gather(*remaining, return_exceptions=True)
 
 
 def create_app() -> FastAPI:

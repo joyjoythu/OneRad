@@ -39,6 +39,11 @@ class EventBridge:
                 self.store.record_sse_event, scope, scope_id, event_id, payload
             )
             for queue in self._queues.get(key, {}).values():
+                if queue.full():
+                    try:
+                        queue.get_nowait()
+                    except asyncio.QueueEmpty:
+                        pass
                 await queue.put({"event_id": event_id, "data": data})
 
         return event_id
@@ -46,7 +51,7 @@ class EventBridge:
     async def subscribe(
         self, scope: str, scope_id: str, last_event_id: int = 0
     ) -> asyncio.Queue:
-        queue: asyncio.Queue = asyncio.Queue()
+        queue: asyncio.Queue = asyncio.Queue(maxsize=256)
         key = self._key(scope, scope_id)
         lock = self._scope_lock(scope, scope_id)
 

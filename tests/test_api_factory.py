@@ -18,11 +18,10 @@ def app(monkeypatch, tmp_path):
 
 def test_stub_routes_return_501(app):
     with TestClient(app) as client:
-        for path in ["/api/runs", "/api/agent"]:
-            response = client.get(path)
-            assert response.status_code == 501, (
-                f"{path} expected 501, got {response.status_code}"
-            )
+        response = client.get("/api/agent")
+        assert response.status_code == 501, (
+            f"/api/agent expected 501, got {response.status_code}"
+        )
 
 
 def test_spa_fallback_or_404(app):

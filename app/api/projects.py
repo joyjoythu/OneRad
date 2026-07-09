@@ -3,12 +3,11 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
-from starlette.concurrency import run_in_threadpool
 
 from app.api.deps import get_project_store
-from app.api.runs import RunConfig, _get_bridge, _run_pipeline
+from app.api.runner import RunConfig, get_bridge, start_pipeline_task
 from app.projects import ProjectStore
 
 router = APIRouter()
@@ -119,6 +118,7 @@ def delete_project(project_id: str, store: ProjectStore = Depends(get_project_st
 async def start_run(
     project_id: str,
     payload: RunConfig,
+    request: Request,
     store: ProjectStore = Depends(get_project_store),
 ) -> Dict[str, Any]:
     """Trigger a new pipeline run for a project."""
@@ -131,19 +131,17 @@ async def start_run(
         )
 
     run_id = store.record_run_start(project_id, payload.model_dump())
-    bridge = _get_bridge(store)
+    bridge = get_bridge(request)
     loop = asyncio.get_running_loop()
 
-    asyncio.create_task(
-        run_in_threadpool(
-            _run_pipeline,
-            project_id,
-            run_id,
-            payload.model_dump(),
-            bridge,
-            store,
-            loop,
-        )
+    start_pipeline_task(
+        request.app,
+        project_id,
+        run_id,
+        payload.model_dump(),
+        bridge,
+        store,
+        loop,
     )
 
     return {"run_id": run_id}

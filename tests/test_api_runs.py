@@ -95,7 +95,7 @@ def test_get_run_events_sse(client, temp_db, monkeypatch):
             ).result(timeout=5)
         store_arg.record_run_end(run_id, "completed", "fake", "")
 
-    monkeypatch.setattr("app.api.runs._run_pipeline", fake_pipeline)
+    monkeypatch.setattr("app.api.runner.run_pipeline", fake_pipeline)
 
     start = client.post(f"/api/projects/{project['id']}/runs", json=_run_config())
     assert start.status_code == 202
