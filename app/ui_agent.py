@@ -8,8 +8,7 @@ import pandas as pd
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.types import Command
 
-from app.agent import build_initial_state
-from app.agent.graph import create_agent_graph
+from app.agent import build_initial_state, create_agent_graph
 
 
 graph = create_agent_graph()
