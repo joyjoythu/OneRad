@@ -392,7 +392,8 @@ def create_ui(store: Optional[ProjectStore] = None):
                         log = gr.Textbox(label="日志", lines=20, interactive=False, elem_classes="onerad-logs")
                         report_file = gr.File(label="生成报告")
 
-                    create_agent_tab(store, current_project_id)
+                    with gr.Tab("AI Agent"):
+                        create_agent_tab(store, current_project_id)
 
         # 事件绑定
         all_project_outputs = [project_ids_state]

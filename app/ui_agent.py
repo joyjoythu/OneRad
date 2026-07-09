@@ -124,43 +124,42 @@ def create_agent_tab(store, current_project_id_state):
 
     agent_thread_state = gr.State({"thread_id": None, "project_id": None})
 
-    with gr.Tab("AI Agent") as tab:
-        chatbot = gr.Chatbot(label="AI Agent", height=400)
-        msg_input = gr.Textbox(
-            label="输入需求",
-            lines=2,
-            placeholder="例如：把 test 目录下的 .txt 文件复制到 backup 目录",
+    chatbot = gr.Chatbot(label="AI Agent", height=400)
+    msg_input = gr.Textbox(
+        label="输入需求",
+        lines=2,
+        placeholder="例如：把 test 目录下的 .txt 文件复制到 backup 目录",
+    )
+    send_btn = gr.Button("发送")
+
+    with gr.Column(visible=False) as plan_panel:
+        gr.Markdown("### 待确认的文件操作计划")
+        plan_df = gr.Dataframe(
+            headers=["action", "source", "target", "reason"],
+            datatype=["str", "str", "str", "str"],
+            row_count=0,
+            interactive=True,
+            label="计划",
         )
-        send_btn = gr.Button("发送")
+        with gr.Row():
+            plan_confirm = gr.Button("确认执行", variant="primary")
+            plan_cancel = gr.Button("取消")
 
-        with gr.Column(visible=False) as plan_panel:
-            gr.Markdown("### 待确认的文件操作计划")
-            plan_df = gr.Dataframe(
-                headers=["action", "source", "target", "reason"],
-                datatype=["str", "str", "str", "str"],
-                row_count=0,
-                interactive=True,
-                label="计划",
-            )
-            with gr.Row():
-                plan_confirm = gr.Button("确认执行", variant="primary")
-                plan_cancel = gr.Button("取消")
+    with gr.Column(visible=False) as cmd_panel:
+        gr.Markdown("### 待确认的系统命令")
+        cmd_md = gr.Markdown()
+        with gr.Row():
+            cmd_confirm = gr.Button("确认")
+            cmd_cancel = gr.Button("取消")
 
-        with gr.Column(visible=False) as cmd_panel:
-            gr.Markdown("### 待确认的系统命令")
-            cmd_md = gr.Markdown()
-            with gr.Row():
-                cmd_confirm = gr.Button("确认")
-                cmd_cancel = gr.Button("取消")
+    with gr.Column(visible=False) as script_panel:
+        gr.Markdown("### 待确认的 Python 脚本")
+        script_code = gr.Code(language="python", label="脚本代码")
+        with gr.Row():
+            script_confirm = gr.Button("确认执行", variant="primary")
+            script_cancel = gr.Button("取消")
 
-        with gr.Column(visible=False) as script_panel:
-            gr.Markdown("### 待确认的 Python 脚本")
-            script_code = gr.Code(language="python", label="脚本代码")
-            with gr.Row():
-                script_confirm = gr.Button("确认执行", variant="primary")
-                script_cancel = gr.Button("取消")
-
-        agent_log = gr.Textbox(label="Agent 日志", lines=10, interactive=False)
+    agent_log = gr.Textbox(label="Agent 日志", lines=10, interactive=False)
 
     outputs = [
         chatbot,
@@ -275,5 +274,3 @@ def create_agent_tab(store, current_project_id_state):
         inputs=[agent_thread_state],
         outputs=outputs,
     )
-
-    return tab
