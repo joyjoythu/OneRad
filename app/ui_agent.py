@@ -214,7 +214,10 @@ def create_agent_tab(store, current_project_id_state):
         pending_plan = (getattr(snapshot, "values", {}) or {}).get("pending_plan") or {}
         edited_rows = plan_df_value.values.tolist() if isinstance(plan_df_value, pd.DataFrame) else (plan_df_value or [])
         pending_plan["plan"] = _plan_from_rows(edited_rows)
-        graph.update_state(config, {"pending_plan": pending_plan})
+        try:
+            graph.update_state(config, {"pending_plan": pending_plan})
+        except Exception as e:
+            return _sync_outputs(snapshot, f"状态更新失败: {e}")
 
         try:
             for _ in graph.stream(Command(resume={"action": "confirm"}), config, stream_mode="values"):
