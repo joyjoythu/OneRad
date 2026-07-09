@@ -21,6 +21,7 @@ from app.ui_style import (
     ICON_GLOBE,
     ICON_FILE_CODE,
 )
+from app.ui_agent import create_agent_tab
 from app.utils import parse_covariates
 
 
@@ -353,36 +354,40 @@ def create_ui(store: Optional[ProjectStore] = None):
 
             # 右侧工作区
             with gr.Column(scale=1, elem_classes="onerad-card"):
-                with gr.Row():
-                    project_title = gr.Markdown("## 当前项目: 未选择", scale=1)
-                    status_msg = gr.HTML(scale=0)
+                with gr.Tabs():
+                    with gr.Tab("影像组学分析"):
+                        with gr.Row():
+                            project_title = gr.Markdown("## 当前项目: 未选择", scale=1)
+                            status_msg = gr.HTML(scale=0)
 
-                gr.HTML(section_title_html(ICON_FOLDER, "数据源"))
-                with gr.Row():
-                    image_dir = gr.Textbox(label="影像文件夹路径", elem_classes="onerad-input")
-                    clinical_path = gr.Textbox(label="临床表格路径", elem_classes="onerad-input")
+                        gr.HTML(section_title_html(ICON_FOLDER, "数据源"))
+                        with gr.Row():
+                            image_dir = gr.Textbox(label="影像文件夹路径", elem_classes="onerad-input")
+                            clinical_path = gr.Textbox(label="临床表格路径", elem_classes="onerad-input")
 
-                gr.HTML(section_title_html(ICON_SETTINGS, "分析配置"))
-                with gr.Row():
-                    output_dir = gr.Textbox(label="输出目录", value="./outputs", elem_classes="onerad-input")
-                    modality = gr.Dropdown(choices=["auto", "CT", "MRI"], value="auto", label="模态")
-                    covariates = gr.Textbox(label="协变量（逗号分隔）", value="", elem_classes="onerad-input")
-                with gr.Row():
-                    max_lasso_features = gr.Number(label="LASSO 最大特征数", value=100, precision=0, elem_classes="onerad-input")
-                    n_splits = gr.Number(label="交叉验证折数", value=5, precision=0, elem_classes="onerad-input")
+                        gr.HTML(section_title_html(ICON_SETTINGS, "分析配置"))
+                        with gr.Row():
+                            output_dir = gr.Textbox(label="输出目录", value="./outputs", elem_classes="onerad-input")
+                            modality = gr.Dropdown(choices=["auto", "CT", "MRI"], value="auto", label="模态")
+                            covariates = gr.Textbox(label="协变量（逗号分隔）", value="", elem_classes="onerad-input")
+                        with gr.Row():
+                            max_lasso_features = gr.Number(label="LASSO 最大特征数", value=100, precision=0, elem_classes="onerad-input")
+                            n_splits = gr.Number(label="交叉验证折数", value=5, precision=0, elem_classes="onerad-input")
 
-                gr.HTML(section_title_html(ICON_GLOBE, "AI 模型配置"))
-                with gr.Row():
-                    api_key = gr.Textbox(label="DeepSeek API Key", type="password", elem_classes="onerad-input")
-                    model = gr.Textbox(label="模型", value="deepseek-chat", elem_classes="onerad-input")
+                        gr.HTML(section_title_html(ICON_GLOBE, "AI 模型配置"))
+                        with gr.Row():
+                            api_key = gr.Textbox(label="DeepSeek API Key", type="password", elem_classes="onerad-input")
+                            model = gr.Textbox(label="模型", value="deepseek-chat", elem_classes="onerad-input")
 
-                with gr.Row():
-                    btn_save = gr.Button("保存项目配置", elem_classes="onerad-btn-secondary")
-                    btn_run = gr.Button("运行分析", elem_classes="onerad-btn-primary")
+                        with gr.Row():
+                            btn_save = gr.Button("保存项目配置", elem_classes="onerad-btn-secondary")
+                            btn_run = gr.Button("运行分析", elem_classes="onerad-btn-primary")
 
-                gr.HTML(section_title_html(ICON_FILE_CODE, "运行日志"))
-                log = gr.Textbox(label="日志", lines=20, interactive=False, elem_classes="onerad-logs")
-                report_file = gr.File(label="生成报告")
+                        gr.HTML(section_title_html(ICON_FILE_CODE, "运行日志"))
+                        log = gr.Textbox(label="日志", lines=20, interactive=False, elem_classes="onerad-logs")
+                        report_file = gr.File(label="生成报告")
+
+                    create_agent_tab(store, current_project_id)
 
         # 事件绑定
         all_project_outputs = [project_ids_state]

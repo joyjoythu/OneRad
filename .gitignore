@@ -6,3 +6,4 @@ pyradiomics-master/
 .worktrees/
 .superpowers/
 reference_code/
+.venv-test/
