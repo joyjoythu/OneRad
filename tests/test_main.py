@@ -42,7 +42,7 @@ def test_parse_args_base_url_default():
 
 def test_parse_args_model_default():
     args = _parse_args([])
-    assert args.model == "deepseek-chat"
+    assert args.model == "deepseek-v4-pro"
 
 
 def test_main_cli_pipeline_error(monkeypatch, capsys):
@@ -64,7 +64,7 @@ def test_main_cli_pipeline_error(monkeypatch, capsys):
     mock_args.resampled_pixel_spacing = None
     mock_args.api_key = ""
     mock_args.base_url = "https://api.deepseek.com/v1"
-    mock_args.model = "deepseek-chat"
+    mock_args.model = "deepseek-v4-pro"
     monkeypatch.setattr("main._parse_args", lambda argv=None: mock_args)
 
     mock_orch = MagicMock()
@@ -120,7 +120,7 @@ def test_main_feature_csv_direct_analysis(tmp_path, monkeypatch):
         resampled_pixel_spacing=None,
         api_key=None,
         base_url="https://api.deepseek.com/v1",
-        model="deepseek-chat",
+        model="deepseek-v4-pro",
     ))
 
     main()
@@ -170,7 +170,7 @@ def test_main_uses_cached_features_csv_when_available(tmp_path, monkeypatch):
         resampled_pixel_spacing=None,
         api_key=None,
         base_url="https://api.deepseek.com/v1",
-        model="deepseek-chat",
+        model="deepseek-v4-pro",
     ))
 
     main()

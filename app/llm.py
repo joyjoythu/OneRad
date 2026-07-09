@@ -70,7 +70,7 @@ class LLMClient:
         self,
         api_key: Optional[str] = None,
         base_url: str = "https://api.deepseek.com/v1",
-        model: str = "deepseek-chat",
+        model: str = "deepseek-v4-pro",
     ):
         self.api_key = api_key or os.getenv("DEEPSEEK_API_KEY")
         self.base_url = base_url

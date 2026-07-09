@@ -162,7 +162,7 @@ def test_run_analysis_uses_cached_features_csv(tmp_path):
         mod="auto",
         covs="",
         key=None,
-        m="deepseek-chat",
+        m="deepseek-v4-pro",
         yaml_path=str(tmp_path / "Params_labels.yaml"),
         max_lasso_features=20,
         n_splits=3,

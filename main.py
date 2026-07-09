@@ -36,7 +36,7 @@ def _parse_args(argv=None):
                         help="覆盖 pyradiomics 的 resampledPixelSpacing, e.g. '0.5,0.5,0.5'")
     parser.add_argument("--api-key", default=None)
     parser.add_argument("--base-url", default="https://api.deepseek.com/v1")
-    parser.add_argument("--model", default="deepseek-chat")
+    parser.add_argument("--model", default="deepseek-v4-pro")
     parser.add_argument("--ui", action="store_true", help="启动 Gradio UI")
     return parser.parse_args(argv)
 

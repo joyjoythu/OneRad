@@ -130,7 +130,7 @@ class Orchestrator:
         resampled_pixel_spacing: Optional[Tuple[float, float, float]] = None,
         api_key: Optional[str] = None,
         base_url: str = "https://api.deepseek.com/v1",
-        model: str = "deepseek-chat",
+        model: str = "deepseek-v4-pro",
         max_lasso_features: int = 100,
         n_splits: int = 5,
     ):

@@ -24,4 +24,4 @@ USER appuser
 
 EXPOSE 7860
 
-CMD ["sh", "-c", "python main.py --ui --base-url ${BASE_URL:-https://api.deepseek.com/v1} --model ${MODEL:-deepseek-chat}"]
+CMD ["sh", "-c", "python main.py --ui --base-url ${BASE_URL:-https://api.deepseek.com/v1} --model ${MODEL:-deepseek-v4-pro}"]

@@ -17,7 +17,7 @@ def _find_tool_message(messages, tool_call_id=None):
 
 
 def test_graph_runs_to_end_without_tools(tmp_path):
-    project = {"path": str(tmp_path), "analysis": {"api_key": "fake", "model": "deepseek-chat"}}
+    project = {"path": str(tmp_path), "analysis": {"api_key": "fake", "model": "deepseek-v4-pro"}}
     state = build_initial_state(project)
     state["messages"] = [HumanMessage(content="hello")]
 
@@ -33,7 +33,7 @@ def test_graph_runs_to_end_without_tools(tmp_path):
 
 
 def test_graph_interrupts_on_system_command(tmp_path):
-    project = {"path": str(tmp_path), "analysis": {"api_key": "fake", "model": "deepseek-chat"}}
+    project = {"path": str(tmp_path), "analysis": {"api_key": "fake", "model": "deepseek-v4-pro"}}
     state = build_initial_state(project)
     state["messages"] = [HumanMessage(content="list files")]
 
@@ -65,7 +65,7 @@ def test_graph_interrupts_on_system_command(tmp_path):
 
 
 def test_graph_interrupts_on_file_plan(tmp_path):
-    project = {"path": str(tmp_path), "analysis": {"api_key": "fake", "model": "deepseek-chat"}}
+    project = {"path": str(tmp_path), "analysis": {"api_key": "fake", "model": "deepseek-v4-pro"}}
     state = build_initial_state(project)
     state["messages"] = [HumanMessage(content="organize files")]
 
@@ -113,7 +113,7 @@ def test_graph_interrupts_on_file_plan(tmp_path):
 
 
 def test_graph_cancel_operation(tmp_path):
-    project = {"path": str(tmp_path), "analysis": {"api_key": "fake", "model": "deepseek-chat"}}
+    project = {"path": str(tmp_path), "analysis": {"api_key": "fake", "model": "deepseek-v4-pro"}}
     state = build_initial_state(project)
     state["messages"] = [HumanMessage(content="list files")]
 
@@ -144,7 +144,7 @@ def test_graph_cancel_operation(tmp_path):
 
 
 def test_graph_cancel_file_plan_does_not_execute(tmp_path):
-    project = {"path": str(tmp_path), "analysis": {"api_key": "fake", "model": "deepseek-chat"}}
+    project = {"path": str(tmp_path), "analysis": {"api_key": "fake", "model": "deepseek-v4-pro"}}
     state = build_initial_state(project)
     state["messages"] = [HumanMessage(content="organize files")]
 
@@ -191,7 +191,7 @@ def test_graph_cancel_file_plan_does_not_execute(tmp_path):
 
 def test_graph_interrupts_on_python_script(tmp_path):
     """中风险 Python 脚本会触发中断，确认后执行并返回结果。"""
-    project = {"path": str(tmp_path), "analysis": {"api_key": "fake", "model": "deepseek-chat"}}
+    project = {"path": str(tmp_path), "analysis": {"api_key": "fake", "model": "deepseek-v4-pro"}}
     state = build_initial_state(project)
     state["messages"] = [HumanMessage(content="write a file")]
 
@@ -234,7 +234,7 @@ def test_graph_interrupts_on_python_script(tmp_path):
 
 def test_graph_interrupts_on_low_risk_python_script(tmp_path):
     """低风险 Python 脚本也会触发中断，确认后执行并返回结果。"""
-    project = {"path": str(tmp_path), "analysis": {"api_key": "fake", "model": "deepseek-chat"}}
+    project = {"path": str(tmp_path), "analysis": {"api_key": "fake", "model": "deepseek-v4-pro"}}
     state = build_initial_state(project)
     state["messages"] = [HumanMessage(content="say hello")]
 
@@ -274,7 +274,7 @@ def test_graph_interrupts_on_low_risk_python_script(tmp_path):
 
 def test_graph_non_dict_resume_defaults_to_cancel(tmp_path):
     """非字典的 resume 值应被视为取消，不产生副作用。"""
-    project = {"path": str(tmp_path), "analysis": {"api_key": "fake", "model": "deepseek-chat"}}
+    project = {"path": str(tmp_path), "analysis": {"api_key": "fake", "model": "deepseek-v4-pro"}}
     state = build_initial_state(project)
     state["messages"] = [HumanMessage(content="list files")]
 
@@ -316,7 +316,7 @@ def test_process_tool_calls_unknown_tool_returns_error():
         "project_path": ".",
         "api_key": "fake",
         "base_url": "https://api.deepseek.com/v1",
-        "model": "deepseek-chat",
+        "model": "deepseek-v4-pro",
     }
 
     with patch("app.agent.nodes.ChatOpenAI") as mock_llm_class:

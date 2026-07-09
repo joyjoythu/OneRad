@@ -63,7 +63,7 @@ def _run_analysis(
                 max_lasso_features=max_lasso_features,
                 n_splits=n_splits,
                 api_key=key,
-                model=m or "deepseek-chat",
+                model=m or "deepseek-v4-pro",
             )
             logs.append(f"[ANALYSIS] stage_complete: 完成: ANALYSIS")
             return "\n".join(logs), report_path
@@ -137,7 +137,7 @@ def create_ui(store: Optional[ProjectStore] = None):
             return (
                 "",  # current_project_id
                 "## 当前项目: 未选择",  # project_title
-                "", "", "./outputs", "auto", "", "deepseek-chat", "", 100, 5,  # 表单字段
+                "", "", "./outputs", "auto", "", "deepseek-v4-pro", "", 100, 5,  # 表单字段
                 _config_status_html("", ""),  # status_msg
                 None,  # report_file
             )
@@ -146,7 +146,7 @@ def create_ui(store: Optional[ProjectStore] = None):
             return (
                 "",
                 "## 当前项目: 未选择",
-                "", "", "./outputs", "auto", "", "deepseek-chat", "", 100, 5,
+                "", "", "./outputs", "auto", "", "deepseek-v4-pro", "", 100, 5,
                 project_status_html("error", "项目不存在", "项目加载失败"),
                 None,
             )
@@ -159,7 +159,7 @@ def create_ui(store: Optional[ProjectStore] = None):
             analysis.get("output_dir", "./outputs"),
             analysis.get("modality", "auto"),
             analysis.get("covariates", ""),
-            analysis.get("model", "deepseek-chat"),
+            analysis.get("model", "deepseek-v4-pro"),
             analysis.get("api_key", ""),
             int(analysis.get("max_lasso_features", 100)),
             int(analysis.get("n_splits", 5)),
@@ -259,7 +259,7 @@ def create_ui(store: Optional[ProjectStore] = None):
                 "output_dir": output_dir or "./outputs",
                 "modality": modality or "auto",
                 "covariates": covariates or "",
-                "model": model or "deepseek-chat",
+                "model": model or "deepseek-v4-pro",
                 "api_key": api_key or "",
                 "max_lasso_features": int(max_lasso_features) if max_lasso_features is not None else 100,
                 "n_splits": int(n_splits) if n_splits is not None else 5,
@@ -277,7 +277,7 @@ def create_ui(store: Optional[ProjectStore] = None):
             "output_dir": output_dir or "./outputs",
             "modality": modality or "auto",
             "covariates": covariates or "",
-            "model": model or "deepseek-chat",
+            "model": model or "deepseek-v4-pro",
             "api_key": api_key or "",
             "max_lasso_features": int(max_lasso_features) if max_lasso_features is not None else 100,
             "n_splits": int(n_splits) if n_splits is not None else 5,
@@ -377,7 +377,12 @@ def create_ui(store: Optional[ProjectStore] = None):
                         gr.HTML(section_title_html(ICON_GLOBE, "AI 模型配置"))
                         with gr.Row():
                             api_key = gr.Textbox(label="DeepSeek API Key", type="password", elem_classes="onerad-input")
-                            model = gr.Textbox(label="模型", value="deepseek-chat", elem_classes="onerad-input")
+                            model = gr.Dropdown(
+                                label="模型",
+                                choices=["deepseek-v4-pro", "deepseek-v4-flash"],
+                                value="deepseek-v4-pro",
+                                elem_classes="onerad-input",
+                            )
 
                         with gr.Row():
                             btn_save = gr.Button("保存项目配置", elem_classes="onerad-btn-secondary")

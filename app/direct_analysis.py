@@ -29,7 +29,7 @@ def run_direct_analysis(
     n_splits: int = 5,
     api_key: Optional[str] = None,
     base_url: str = "https://api.deepseek.com/v1",
-    model: str = "deepseek-chat",
+    model: str = "deepseek-v4-pro",
 ) -> str:
     """Run LASSO + logistic regression from pre-extracted feature and clinical CSVs.
 

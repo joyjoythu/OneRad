@@ -11,4 +11,4 @@ services:
       - GRADIO_SERVER_NAME=0.0.0.0
       - GRADIO_SERVER_PORT=7860
       - BASE_URL=${BASE_URL:-https://api.deepseek.com/v1}
-      - MODEL=${MODEL:-deepseek-chat}
+      - MODEL=${MODEL:-deepseek-v4-pro}

@@ -101,4 +101,4 @@ pytest tests/
 
 - `DEEPSEEK_API_KEY`：DeepSeek API Key。
 - `BASE_URL`：LLM API Base URL，默认 `https://api.deepseek.com/v1`。
-- `MODEL`：模型名称，默认 `deepseek-chat`。
+- `MODEL`：模型名称，默认 `deepseek-v4-pro`。

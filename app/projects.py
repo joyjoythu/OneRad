@@ -100,7 +100,7 @@ class ProjectStore:
                 "output_dir": "./outputs",
                 "modality": "auto",
                 "covariates": "",
-                "model": "deepseek-chat",
+                "model": "deepseek-v4-pro",
                 "api_key": "",
             },
         }
@@ -166,7 +166,7 @@ class ProjectStore:
             "output_dir": "./outputs",
             "modality": "auto",
             "covariates": "",
-            "model": "deepseek-chat",
+            "model": "deepseek-v4-pro",
             "api_key": "",
         }
 
@@ -199,7 +199,7 @@ class ProjectStore:
                 "output_dir": analysis_config.get("output_dir", "./outputs"),
                 "modality": analysis_config.get("modality", "auto"),
                 "covariates": analysis_config.get("covariates", ""),
-                "model": analysis_config.get("model", "deepseek-chat"),
+                "model": analysis_config.get("model", "deepseek-v4-pro"),
                 "api_key": analysis_config.get("api_key", ""),
             },
         }
@@ -238,7 +238,7 @@ class ProjectStore:
                     analysis_config.get("output_dir", ""),
                     analysis_config.get("modality", "auto"),
                     analysis_config.get("covariates", ""),
-                    analysis_config.get("model", "deepseek-chat"),
+                    analysis_config.get("model", "deepseek-v4-pro"),
                     "running",
                     "",
                     "",
