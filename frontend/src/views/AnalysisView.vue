@@ -5,18 +5,31 @@
       <el-tag v-if="statusTag" :type="statusTag.type">{{ statusTag.label }}</el-tag>
     </header>
 
-    <AnalysisForm @save="handleSave" @run="handleRun" />
+    <AnalysisForm
+      :config="projectStore.currentConfig"
+      @update:config="handleConfigUpdate"
+      @save="handleSave"
+      @run="handleRun"
+    />
 
     <div v-if="reportHref" class="analysis-report">
-      <el-button type="success" :icon="Document" tag="a" :href="reportHref" target="_blank"
-        >查看报告</el-button
+      <el-button
+        type="success"
+        :icon="Document"
+        tag="a"
+        :href="reportHref"
+        target="_blank"
+        rel="noopener noreferrer"
+        :aria-label="reportAriaLabel"
       >
+        查看报告
+      </el-button>
     </div>
 
     <LogViewer
       v-if="showLogViewer"
       :logs="runStore.logs"
-      @clear="runStore.logs = []"
+      @clear="runStore.clearLogs()"
       @close="showLogsOverride = false"
     />
   </div>
@@ -30,6 +43,7 @@ import AnalysisForm from '@/components/AnalysisForm.vue'
 import LogViewer from '@/components/LogViewer.vue'
 import { useProjectStore } from '@/stores/project'
 import { useRunStore } from '@/stores/run'
+import type { AnalysisConfig } from '@/api/projects'
 
 const projectStore = useProjectStore()
 const runStore = useRunStore()
@@ -63,9 +77,17 @@ const reportHref = computed(() => {
   return `file://${runStore.reportUrl}`
 })
 
+const reportAriaLabel = computed(() => '查看报告（在新标签页中打开）')
+
 const showLogViewer = computed(() => {
   return showLogsOverride.value && (runStore.running || runStore.logs.length > 0)
 })
+
+function handleConfigUpdate(config: AnalysisConfig): void {
+  if (projectStore.currentProject) {
+    projectStore.currentConfig = config
+  }
+}
 
 async function handleSave(): Promise<void> {
   if (!projectStore.currentProject || !projectStore.currentConfig) {

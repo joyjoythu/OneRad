@@ -26,18 +26,28 @@ const mockProject = (): Project => ({
   analysis: mockConfig(),
 })
 
+function setupWrapper(config: AnalysisConfig | null = null) {
+  return mount(AnalysisForm, {
+    props: { config },
+    global: {
+      plugins: [ElementPlus],
+    },
+  })
+}
+
+async function selectProject() {
+  const store = useProjectStore()
+  const project = mockProject()
+  store.projects = [project]
+  store.selectProject(project.id)
+  await flushPromises()
+  return { store, project }
+}
+
 describe('AnalysisForm', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
   })
-
-  function setupWrapper() {
-    return mount(AnalysisForm, {
-      global: {
-        plugins: [ElementPlus],
-      },
-    })
-  }
 
   it('renders placeholder when no project is selected', async () => {
     const wrapper = setupWrapper()
@@ -48,12 +58,8 @@ describe('AnalysisForm', () => {
   })
 
   it('renders all config fields when a project is selected', async () => {
-    const store = useProjectStore()
-    const project = mockProject()
-    store.currentProject = project
-    store.currentConfig = { ...project.analysis }
-
-    const wrapper = setupWrapper()
+    const { store } = await selectProject()
+    const wrapper = setupWrapper(store.currentConfig)
     await flushPromises()
 
     expect(wrapper.find('.el-empty').exists()).toBe(false)
@@ -68,13 +74,23 @@ describe('AnalysisForm', () => {
     expect(wrapper.find('input[placeholder="请输入 API 密钥"]').exists()).toBe(true)
   })
 
-  it('emits run event when clicking the start button', async () => {
-    const store = useProjectStore()
-    const project = mockProject()
-    store.currentProject = project
-    store.currentConfig = { ...project.analysis }
+  it('emits save event when clicking the save button', async () => {
+    const { store } = await selectProject()
+    const wrapper = setupWrapper(store.currentConfig)
+    await flushPromises()
 
-    const wrapper = setupWrapper()
+    const saveButton = wrapper
+      .findAll('button')
+      .find((b) => b.text().includes('保存配置'))
+    expect(saveButton).toBeDefined()
+    await saveButton!.trigger('click')
+
+    expect(wrapper.emitted('save')).toHaveLength(1)
+  })
+
+  it('emits run event when clicking the start button', async () => {
+    const { store } = await selectProject()
+    const wrapper = setupWrapper(store.currentConfig)
     await flushPromises()
 
     const runButton = wrapper
@@ -84,5 +100,20 @@ describe('AnalysisForm', () => {
     await runButton!.trigger('click')
 
     expect(wrapper.emitted('run')).toHaveLength(1)
+  })
+
+  it('emits update:config when a field is edited', async () => {
+    const { store } = await selectProject()
+    const wrapper = setupWrapper(store.currentConfig)
+    await flushPromises()
+
+    const input = wrapper.find('input[placeholder="请输入影像目录路径"]')
+    await input.setValue('/new/images')
+    await flushPromises()
+
+    const events = wrapper.emitted('update:config')
+    expect(events).toBeDefined()
+    expect(events!.length).toBeGreaterThan(0)
+    expect((events!.at(-1) as [AnalysisConfig])[0].image_dir).toBe('/new/images')
   })
 })

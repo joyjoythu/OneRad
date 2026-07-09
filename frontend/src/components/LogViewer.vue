@@ -8,7 +8,13 @@
       <el-button link :icon="Close" @click="handleClose">关闭</el-button>
     </div>
 
-    <div ref="logContainer" class="log-viewer-body">
+    <div
+      ref="logContainer"
+      class="log-viewer-body"
+      role="log"
+      aria-live="polite"
+      aria-atomic="false"
+    >
       <div v-if="!logs.length" class="log-empty">暂无日志</div>
       <div v-else class="log-entries">
         <div v-for="(log, index) in logs" :key="index" class="log-entry">

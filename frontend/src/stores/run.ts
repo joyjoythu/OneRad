@@ -60,6 +60,10 @@ export const useRunStore = defineStore('run', () => {
     return run_id
   }
 
+  function clearLogs(): void {
+    logs.value = []
+  }
+
   return {
     currentRun,
     logs,
@@ -67,5 +71,6 @@ export const useRunStore = defineStore('run', () => {
     reportUrl,
     startRun,
     disconnect,
+    clearLogs,
   }
 })
