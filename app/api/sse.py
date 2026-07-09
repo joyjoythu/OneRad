@@ -54,19 +54,21 @@ class EventBridge:
             max_event_id = await self.next_event_id(scope, scope_id) - 1
             self._queues.setdefault(key, {})[id(queue)] = queue
 
-        historical = await run_in_threadpool(
-            self.store.list_sse_events,
-            scope,
-            scope_id,
-            after_event_id=last_event_id,
-            limit=10_000_000,
-        )
-        for event in historical:
-            if event["event_id"] > max_event_id:
-                continue
-            await queue.put(
-                {"event_id": event["event_id"], "data": json.loads(event["data"])}
+            historical = await run_in_threadpool(
+                self.store.list_sse_events,
+                scope,
+                scope_id,
+                after_event_id=last_event_id,
+                limit=10_000_000,
             )
+            for event in historical:
+                # Safety net: historical fetch happened under the lock, so this
+                # should always be true. Kept to guard against stale reads.
+                if event["event_id"] > max_event_id:
+                    continue
+                await queue.put(
+                    {"event_id": event["event_id"], "data": json.loads(event["data"])}
+                )
 
         return queue
 

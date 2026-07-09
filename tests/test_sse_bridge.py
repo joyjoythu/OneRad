@@ -1,4 +1,5 @@
 import asyncio
+import time
 
 import pytest
 
@@ -102,3 +103,38 @@ async def test_subscribe_does_not_lose_events_during_replay(bridge):
 
     _, received = await asyncio.gather(publisher(), subscriber())
     assert received == list(range(1, 21))
+
+
+@pytest.mark.anyio
+async def test_subscribe_receives_events_in_order_during_replay(bridge):
+    # Pre-publish events 1-10 so the subscriber has historical replay work.
+    for i in range(1, 11):
+        await bridge.publish("run", "run-1", {"index": i})
+
+    # Slow down the historical replay so live publishes race against it.
+    original_list = bridge.store.list_sse_events
+
+    def slow_list_sse_events(*args, **kwargs):
+        time.sleep(0.1)
+        return original_list(*args, **kwargs)
+
+    bridge.store.list_sse_events = slow_list_sse_events
+
+    received = []
+
+    async def subscriber():
+        queue = await bridge.subscribe("run", "run-1", last_event_id=0)
+        for _ in range(20):
+            event = await asyncio.wait_for(queue.get(), timeout=2.0)
+            received.append(event["event_id"])
+        return received
+
+    async def publisher():
+        # Yield control so the subscriber begins replay first.
+        await asyncio.sleep(0)
+        for i in range(11, 21):
+            await bridge.publish("run", "run-1", {"index": i})
+            await asyncio.sleep(0)
+
+    results = await asyncio.gather(subscriber(), publisher())
+    assert results[0] == list(range(1, 21))
