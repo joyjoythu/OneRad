@@ -109,6 +109,21 @@ def test_classify_dynamic_import_is_high():
     assert classify_risk(code) == "high"
 
 
+def test_classify_builtins_import_attr_is_high():
+    code = "import builtins\nbuiltins.__import__('subprocess').run(['echo', 'x'])"
+    assert classify_risk(code) == "high"
+
+
+def test_classify_dunder_builtins_import_attr_is_high():
+    code = "__builtins__.__import__('subprocess').run(['echo', 'x'])"
+    assert classify_risk(code) == "high"
+
+
+def test_classify_getattr_import_is_high():
+    code = "import builtins\ngetattr(builtins, '__import__')('subprocess').run(['echo', 'x'])"
+    assert classify_risk(code) == "high"
+
+
 def test_run_script_blocks_bytes_path_traversal(tmp_path, monkeypatch):
     monkeypatch.setattr(
         "app.code_runner.find_venv_python", lambda project_path: Path(sys.executable)

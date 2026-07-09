@@ -31,7 +31,7 @@ MEDIUM_RISK_WRITE_PATTERNS = [
     r"open\s*\([^)]*,\s*[\"'][wax][\"']",
     r"open\s*\([^)]*mode\s*=\s*[\"'][wax][\"']",
 ]
-DANGEROUS_NAMES = {"system", "popen", "exec", "eval", "rmtree", "remove", "unlink"}
+DANGEROUS_NAMES = {"system", "popen", "exec", "eval", "rmtree", "remove", "unlink", "__import__", "getattr"}
 
 # 字符串字面量中危险路径特征的静态检测
 PATH_TRAVERSAL_PATTERN = r"['\"][^'\"]*\.\.[^'\"]*['\"]"
@@ -43,6 +43,12 @@ def classify_risk(code: str) -> str:
     try:
         tree = ast.parse(code)
     except SyntaxError:
+        return "high"
+
+    # 静态字符串检测：直接访问 __builtins__ 或使用 __import__ 字符串均视为高危
+    if "__builtins__" in code:
+        return "high"
+    if "__import__" in code:
         return "high"
 
     import_map: Dict[str, str] = {}
