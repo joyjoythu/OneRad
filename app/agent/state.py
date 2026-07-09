@@ -10,9 +10,9 @@ class AgentState(TypedDict):
     model: str
 
     interrupt_type: Optional[str]                  # file_plan / system_command / python_script
-    pending_plan: Optional[List[Dict[str, Any]]]
-    pending_command: Optional[Dict[str, Any]]
-    pending_script: Optional[Dict[str, Any]]
+    pending_plan: Optional[Dict[str, Any]]           # {"tool_call_id": str, "plan": List[Dict]}
+    pending_command: Optional[Dict[str, Any]]        # {"tool_call_id": str, ...command}
+    pending_script: Optional[Dict[str, Any]]         # {"tool_call_id": str, ...script_meta}
     script_risk_level: Optional[str]
 
     confirmed: Optional[bool]
