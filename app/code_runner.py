@@ -25,6 +25,7 @@ HIGH_RISK_MODULES = {
     "os",
     "shutil",
     "pathlib",
+    "importlib",
 }
 MEDIUM_RISK_WRITE_PATTERNS = [
     r"open\s*\([^)]*,\s*[\"'][wax][\"']",
@@ -63,17 +64,19 @@ def classify_risk(code: str) -> str:
                 return "high"
         elif isinstance(node, ast.Call):
             func = node.func
-            if isinstance(func, ast.Attribute):
-                if func.attr in DANGEROUS_NAMES:
-                    return "high"
-            elif isinstance(func, ast.Name):
+            if isinstance(func, ast.Name):
                 if func.id in {"exec", "eval"}:
+                    return "high"
+                if func.id == "__import__":
                     return "high"
                 source = import_map.get(func.id)
                 if source:
                     top = source.split(".")[0]
                     if top in HIGH_RISK_MODULES and func.id in DANGEROUS_NAMES:
                         return "high"
+            elif isinstance(func, ast.Attribute):
+                if func.attr in DANGEROUS_NAMES:
+                    return "high"
 
     # 检测 .. 父目录引用、Unix 绝对路径与 Windows 绝对路径（高危路径特征优先于写操作）
     if re.search(r"['\"]/[^'\"\n]+['\"]", code):
@@ -144,16 +147,21 @@ def run_script(script_path: str, project_path: str, timeout: int = 60) -> Dict[s
         return {"returncode": -1, "stdout": "", "stderr": str(e), "success": False}
 
 
-SANDBOX_HEADER_TEMPLATE = """import builtins, os
+SANDBOX_HEADER_TEMPLATE = """import builtins, io, os
 _PROJECT_ROOT = os.path.abspath({project_path!r})
 _orig_open = builtins.open
+_io_open = io.open
 def _safe_open(file, *args, **kwargs):
-    if isinstance(file, str):
-        abs_path = os.path.abspath(os.path.join(_PROJECT_ROOT, file))
-        if not abs_path.startswith(_PROJECT_ROOT + os.sep):
-            raise PermissionError(f"Access outside project sandbox: {{file}}")
+    try:
+        path_str = os.fsdecode(os.fspath(file))
+        path = os.path.abspath(os.path.join(_PROJECT_ROOT, path_str))
+    except Exception:
+        return _orig_open(file, *args, **kwargs)
+    if not path.startswith(_PROJECT_ROOT + os.sep):
+        raise PermissionError(f"Access outside project sandbox: {{file!r}}")
     return _orig_open(file, *args, **kwargs)
 builtins.open = _safe_open
+io.open = _safe_open
 """
 
 

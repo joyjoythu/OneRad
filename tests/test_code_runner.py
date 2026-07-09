@@ -102,3 +102,38 @@ def test_run_script_allows_in_project_write(tmp_path, monkeypatch):
     result = execute_script_if_safe(meta, str(tmp_path))
     assert result["success"] is True
     assert (tmp_path / "sub" / "a.txt").read_text(encoding="utf-8") == "hello"
+
+
+def test_classify_dynamic_import_is_high():
+    code = "__import__('os').system('echo x')"
+    assert classify_risk(code) == "high"
+
+
+def test_run_script_blocks_bytes_path_traversal(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "app.code_runner.find_venv_python", lambda project_path: Path(sys.executable)
+    )
+    # 动态构造 bytes 路径，避免静态规则命中字面量 ".."
+    code = (
+        "parts = bytes([ord('.'), ord('.'), ord('/'), ord('e'), ord('s'), ord('c'), "
+        "ord('a'), ord('p'), ord('e'), ord('.'), ord('t'), ord('x'), ord('t')])\n"
+        "open(parts, 'wb').write(b'x')"
+    )
+    meta = prepare_script(code, "bytes escape", str(tmp_path))
+    assert meta["risk_level"] == "low"
+    result = execute_script_if_safe(meta, str(tmp_path))
+    assert result["success"] is False
+    assert "PermissionError" in result["stderr"]
+
+
+def test_run_script_blocks_dynamic_pathlib(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "app.code_runner.find_venv_python", lambda project_path: Path(sys.executable)
+    )
+    code = "__import__('pathlib').Path('..').resolve()"
+    meta = prepare_script(code, "dynamic pathlib", str(tmp_path))
+    # 动态 __import__ 会被分类为高危，直接拒绝
+    assert meta["risk_level"] == "high"
+    result = execute_script_if_safe(meta, str(tmp_path))
+    assert result["success"] is False
+    assert "拒绝执行" in result["error"]
