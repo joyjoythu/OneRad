@@ -5,6 +5,7 @@ from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, System
 from langgraph.types import Command
 
 from app.agent import create_agent_graph, build_initial_state
+from app.agent.nodes import process_tool_calls
 
 
 def _find_tool_message(messages, tool_call_id=None):
@@ -187,3 +188,105 @@ def test_graph_cancel_file_plan_does_not_execute(tmp_path):
     assert parsed.get("cancelled") is True
     assert not (tmp_path / "should_not_exist").exists()
 
+
+def test_graph_interrupts_on_python_script(tmp_path):
+    """中风险 Python 脚本会触发中断，确认后执行并返回结果。"""
+    project = {"path": str(tmp_path), "analysis": {"api_key": "fake", "model": "deepseek-chat"}}
+    state = build_initial_state(project)
+    state["messages"] = [HumanMessage(content="write a file")]
+
+    graph = create_agent_graph()
+    config = {"configurable": {"thread_id": "test-python-script"}}
+
+    with patch("app.agent.nodes.ChatOpenAI") as mock_llm_class, \
+         patch("app.agent.nodes.execute_script_if_safe") as mock_execute:
+        mock_llm = MagicMock()
+        mock_llm.bind_tools.return_value = mock_llm
+        mock_llm.invoke.side_effect = [
+            AIMessage(
+                content="",
+                tool_calls=[{
+                    "name": "execute_python_script",
+                    "args": {
+                        "description": "write file",
+                        "code": 'with open("out.txt", "w") as f:\n    f.write("hello")\n',
+                    },
+                    "id": "call_script",
+                }],
+            ),
+            AIMessage(content="Done"),
+        ]
+        mock_llm_class.return_value = mock_llm
+        mock_execute.return_value = {"success": True, "stdout": "hello", "stderr": ""}
+
+        events = list(graph.stream(state, config))
+        assert any("__interrupt__" in e for e in events)
+
+        final = graph.invoke(Command(resume={"action": "confirm"}), config)
+
+    tool_msg = _find_tool_message(final["messages"], tool_call_id="call_script")
+    assert tool_msg is not None
+    parsed = json.loads(tool_msg.content)
+    assert parsed["success"] is True
+    assert parsed["stdout"] == "hello"
+    mock_execute.assert_called_once()
+
+
+def test_graph_non_dict_resume_defaults_to_cancel(tmp_path):
+    """非字典的 resume 值应被视为取消，不产生副作用。"""
+    project = {"path": str(tmp_path), "analysis": {"api_key": "fake", "model": "deepseek-chat"}}
+    state = build_initial_state(project)
+    state["messages"] = [HumanMessage(content="list files")]
+
+    graph = create_agent_graph()
+    config = {"configurable": {"thread_id": "test-non-dict-resume"}}
+
+    with patch("app.agent.nodes.ChatOpenAI") as mock_llm_class:
+        mock_llm = MagicMock()
+        mock_llm.bind_tools.return_value = mock_llm
+        mock_llm.invoke.side_effect = [
+            AIMessage(
+                content="",
+                tool_calls=[{"name": "list_directory", "args": {"path": "."}, "id": "call_non_dict"}],
+            ),
+            AIMessage(content="Done"),
+        ]
+        mock_llm_class.return_value = mock_llm
+
+        events = list(graph.stream(state, config))
+        assert any("__interrupt__" in e for e in events)
+
+        final = graph.invoke(Command(resume="not-a-dict"), config)
+
+    tool_msg = _find_tool_message(final["messages"], tool_call_id="call_non_dict")
+    assert tool_msg is not None
+    parsed = json.loads(tool_msg.content)
+    assert parsed.get("cancelled") is True
+
+
+def test_process_tool_calls_unknown_tool_returns_error():
+    """未知或缺失的工具名应返回错误 ToolMessage。"""
+    state = {
+        "messages": [
+            AIMessage(
+                content="",
+                tool_calls=[{"name": "nonexistent_tool", "args": {}, "id": "call_unknown"}],
+            )
+        ],
+        "project_path": ".",
+        "api_key": "fake",
+        "base_url": "https://api.deepseek.com/v1",
+        "model": "deepseek-chat",
+    }
+
+    with patch("app.agent.nodes.ChatOpenAI") as mock_llm_class:
+        mock_llm_class.return_value = MagicMock()
+        updates = process_tool_calls(state)
+
+    assert updates["interrupt_type"] is None
+    assert len(updates["messages"]) == 1
+    tool_msg = updates["messages"][0]
+    assert tool_msg.tool_call_id == "call_unknown"
+    parsed = json.loads(tool_msg.content)
+    assert "error" in parsed
+    assert "nonexistent_tool" in parsed["error"]

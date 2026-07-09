@@ -1,7 +1,8 @@
 from app.agent.graph import create_agent_graph
+from app.agent.state import AgentState
 
 
-def build_initial_state(project: dict) -> dict:
+def build_initial_state(project: dict) -> AgentState:
     analysis = project.get("analysis", {})
     return {
         "messages": [],
