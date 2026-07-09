@@ -9,6 +9,7 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.types import Command
 
 from app.agent import build_initial_state, create_agent_graph
+from app.ui_style import AGENT_INPUT_JS
 
 
 def _rows_from_plan(plan: List[Dict[str, Any]]) -> List[List[str]]:
@@ -127,12 +128,23 @@ def create_agent_tab(store, current_project_id_state):
     agent_thread_state = gr.State({"thread_id": None, "project_id": None})
 
     chatbot = gr.Chatbot(label="AI Agent", height=400)
-    msg_input = gr.Textbox(
-        label="输入需求",
-        lines=2,
-        placeholder="例如：把 test 目录下的 .txt 文件复制到 backup 目录",
-    )
-    send_btn = gr.Button("发送")
+    with gr.Row(elem_classes="onerad-input-row"):
+        msg_input = gr.Textbox(
+            label="输入需求",
+            lines=2,
+            placeholder="例如：把 test 目录下的 .txt 文件复制到 backup 目录",
+            scale=1,
+            elem_classes="onerad-input",
+            elem_id="agent-msg-input",
+        )
+        send_btn = gr.Button(
+            "发送",
+            scale=0,
+            min_width=52,
+            elem_classes=["onerad-btn-primary", "onerad-send-btn"],
+            elem_id="agent-send-btn",
+        )
+    gr.HTML("", head=f"<script>{AGENT_INPUT_JS}</script>")
 
     with gr.Column(visible=False) as plan_panel:
         gr.Markdown("### 待确认的文件操作计划")

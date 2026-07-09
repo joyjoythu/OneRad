@@ -225,6 +225,29 @@ CUSTOM_CSS = """
     width: 100%;
 }
 
+/* 输入框与发送按钮同行 */
+.onerad-input-row {
+    align-items: flex-end !important;
+    gap: 8px !important;
+}
+.onerad-input-row .onerad-input {
+    flex: 1 !important;
+}
+.onerad-send-btn,
+.onerad-send-btn button,
+.onerad-send-btn > div {
+    min-width: 52px !important;
+    width: 52px !important;
+    min-height: 52px !important;
+    height: 52px !important;
+    padding: 0 !important;
+    border-radius: 8px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 13px !important;
+}
+
 /* 状态面板 */
 .onerad-status {
     border: 1px solid #e5e7eb;
@@ -426,6 +449,38 @@ def project_status_html(status: str, title: str, description: str) -> str:
       <div class="onerad-status-desc">{html.escape(description)}</div>
     </div>
     """.strip()
+
+
+AGENT_INPUT_JS = """
+(function () {
+  function getRoot() {
+    var app = document.querySelector('gradio-app');
+    return app && app.shadowRoot ? app.shadowRoot : document;
+  }
+  function findTextarea() {
+    var root = getRoot();
+    var input = root.querySelector('#agent-msg-input');
+    return input ? input.querySelector('textarea') : null;
+  }
+  function attach() {
+    var textarea = findTextarea();
+    if (!textarea) {
+      setTimeout(attach, 300);
+      return;
+    }
+    if (textarea._oneradEnterAttached) return;
+    textarea._oneradEnterAttached = true;
+    textarea.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter' || e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return;
+      e.preventDefault();
+      var root = getRoot();
+      var btn = root.querySelector('#agent-send-btn button');
+      if (btn) btn.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true}));
+    });
+  }
+  attach();
+})();
+""".strip()
 
 
 def project_list_html(projects: List[Dict[str, Any]], selected_id: str = "") -> str:
