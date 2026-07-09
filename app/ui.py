@@ -1,10 +1,14 @@
 import html
+import logging
+import os
 import traceback
 from pathlib import Path
 from typing import Optional
 
 import gradio as gr
+import pandas as pd
 
+from app.direct_analysis import run_direct_analysis
 from app.orchestrator import Orchestrator, register_default_handlers
 from app.projects import ProjectStore
 from app.ui_style import (
@@ -24,11 +28,45 @@ from app.utils import parse_covariates
 MAX_PROJECTS = 20
 
 
-def _run_analysis(img_dir, clinical, out_dir, mod, covs, key, m, yaml_path):
-    if not img_dir or not img_dir.strip() or not clinical or not clinical.strip():
-        return "错误：影像文件夹路径和临床表格路径不能为空", None
+def _run_analysis(
+    img_dir,
+    clinical,
+    out_dir,
+    mod,
+    covs,
+    key,
+    m,
+    yaml_path,
+    max_lasso_features,
+    n_splits,
+):
+    cached_feature_csv = os.path.join(out_dir or "./outputs", "radiomics_features.csv")
+    has_cached_features = os.path.exists(cached_feature_csv)
+
+    if not clinical or not clinical.strip():
+        return "错误：临床表格路径不能为空", None
+
+    if not has_cached_features and (not img_dir or not img_dir.strip()):
+        return "错误：未检测到已提取的特征文件，请填写影像文件夹路径", None
 
     try:
+        # If cached features exist, bypass the heavy image pipeline.
+        if has_cached_features:
+            logs = [f"[ANALYSIS] stage_start: 开始: ANALYSIS", f"检测到已存在的特征文件，直接用于分析: {cached_feature_csv}"]
+            report_path = run_direct_analysis(
+                feature_csv=cached_feature_csv,
+                clinical=clinical,
+                output_dir=out_dir or "./outputs",
+                modality=mod or "auto",
+                covariates=parse_covariates(covs),
+                max_lasso_features=max_lasso_features,
+                n_splits=n_splits,
+                api_key=key,
+                model=m or "deepseek-chat",
+            )
+            logs.append(f"[ANALYSIS] stage_complete: 完成: ANALYSIS")
+            return "\n".join(logs), report_path
+
         orch = Orchestrator(
             image_dir=img_dir,
             clinical_path=clinical,
@@ -39,6 +77,8 @@ def _run_analysis(img_dir, clinical, out_dir, mod, covs, key, m, yaml_path):
             base_url="https://api.deepseek.com/v1",
             model=m,
             yaml_path=yaml_path,
+            max_lasso_features=max_lasso_features,
+            n_splits=n_splits,
         )
         register_default_handlers(orch)
 
@@ -49,6 +89,9 @@ def _run_analysis(img_dir, clinical, out_dir, mod, covs, key, m, yaml_path):
         orch.set_sse_emitter(emitter)
         for _ in orch.run():
             pass
+
+        # Cache extracted features so subsequent UI runs can skip extraction.
+        _cache_features(orch.state, out_dir or "./outputs")
 
         report = orch.state.get("report")
         if not report or report.get("success") is False:
@@ -62,11 +105,27 @@ def _run_analysis(img_dir, clinical, out_dir, mod, covs, key, m, yaml_path):
 
 def _config_status_html(image_dir, clinical_path, is_save=False):
     """根据配置完整性返回对应的项目状态 HTML。"""
-    if image_dir and image_dir.strip() and clinical_path and clinical_path.strip():
+    if clinical_path and clinical_path.strip():
         if is_save:
             return project_status_html("success", "已就绪", "配置已保存，可开始分析")
-        return project_status_html("info", "等待开始分析", "配置已填写，可保存或开始分析")
+        return project_status_html("info", "等待开始分析", "临床表格已填写，可开始分析")
     return project_status_html("info", "等待配置", "请填写影像路径和临床表格")
+
+
+def _cache_features(state: dict, output_dir: str) -> None:
+    """Persist extracted features so the UI can reuse them on the next run."""
+    feature_state = state.get("feature")
+    if not isinstance(feature_state, dict):
+        return
+    feature_df = feature_state.get("feature_df")
+    if not isinstance(feature_df, pd.DataFrame) or feature_df.empty:
+        return
+    try:
+        os.makedirs(output_dir, exist_ok=True)
+        cache_path = os.path.join(output_dir, "radiomics_features.csv")
+        feature_df.reset_index().to_csv(cache_path, index=False)
+    except Exception:
+        logging.warning("特征矩阵缓存失败", exc_info=True)
 
 
 def create_ui(store: Optional[ProjectStore] = None):
@@ -77,7 +136,7 @@ def create_ui(store: Optional[ProjectStore] = None):
             return (
                 "",  # current_project_id
                 "## 当前项目: 未选择",  # project_title
-                "", "", "./outputs", "auto", "", "deepseek-chat", "",  # 表单字段
+                "", "", "./outputs", "auto", "", "deepseek-chat", "", 100, 5,  # 表单字段
                 _config_status_html("", ""),  # status_msg
                 None,  # report_file
             )
@@ -86,7 +145,7 @@ def create_ui(store: Optional[ProjectStore] = None):
             return (
                 "",
                 "## 当前项目: 未选择",
-                "", "", "./outputs", "auto", "", "deepseek-chat", "",
+                "", "", "./outputs", "auto", "", "deepseek-chat", "", 100, 5,
                 project_status_html("error", "项目不存在", "项目加载失败"),
                 None,
             )
@@ -101,6 +160,8 @@ def create_ui(store: Optional[ProjectStore] = None):
             analysis.get("covariates", ""),
             analysis.get("model", "deepseek-chat"),
             analysis.get("api_key", ""),
+            int(analysis.get("max_lasso_features", 100)),
+            int(analysis.get("n_splits", 5)),
             _config_status_html(analysis.get("image_dir", ""), analysis.get("clinical_path", "")),
             None,
         )
@@ -129,20 +190,20 @@ def create_ui(store: Optional[ProjectStore] = None):
 
     def _on_select_by_index(ids, idx):
         if idx >= len(ids):
-            return [gr.update()] * 11
+            return [gr.update()] * 13
         return _on_project_select(ids[idx])
 
     def _on_delete_by_index(ids, idx, current_id):
         if idx >= len(ids):
-            updates = [gr.update() for _ in range(72)]
-            updates[70] = project_status_html("error", "删除失败", "项目索引无效")
+            updates = [gr.update() for _ in range(74)]
+            updates[72] = project_status_html("error", "删除失败", "项目索引无效")
             return tuple(updates)
         project_id = ids[idx]
         try:
             store.delete_project(project_id)
         except Exception as e:
-            updates = [gr.update() for _ in range(72)]
-            updates[70] = project_status_html("error", "删除项目失败", str(e))
+            updates = [gr.update() for _ in range(74)]
+            updates[72] = project_status_html("error", "删除项目失败", str(e))
             return tuple(updates)
 
         projects = store.list_projects()
@@ -158,21 +219,21 @@ def create_ui(store: Optional[ProjectStore] = None):
     def on_create_project(name, path, description):
         error_html = lambda msg: f'<div style="color:#dc2626;font-size:13px;margin-top:6px;">{html.escape(msg)}</div>'
         if not name or not name.strip() or not path or not path.strip():
-            error_updates = [gr.update() for _ in range(76)]
-            error_updates[70] = project_status_html("error", "创建失败", "项目名称和路径不能为空")
-            error_updates[75] = gr.update(visible=True, value=error_html("项目名称和路径不能为空"))
+            error_updates = [gr.update() for _ in range(78)]
+            error_updates[72] = project_status_html("error", "创建失败", "项目名称和路径不能为空")
+            error_updates[77] = gr.update(visible=True, value=error_html("项目名称和路径不能为空"))
             return tuple(error_updates)
         if any(p["name"] == name.strip() for p in store.list_projects()):
-            error_updates = [gr.update() for _ in range(76)]
-            error_updates[70] = project_status_html("error", "创建失败", "项目名称已存在")
-            error_updates[75] = gr.update(visible=True, value=error_html("项目名称已存在，请使用其他名称"))
+            error_updates = [gr.update() for _ in range(78)]
+            error_updates[72] = project_status_html("error", "创建失败", "项目名称已存在")
+            error_updates[77] = gr.update(visible=True, value=error_html("项目名称已存在，请使用其他名称"))
             return tuple(error_updates)
         try:
             project = store.create_project(name.strip(), path.strip(), description or "")
         except Exception as e:
-            error_updates = [gr.update() for _ in range(76)]
-            error_updates[70] = project_status_html("error", "创建项目失败", str(e))
-            error_updates[75] = gr.update(visible=True, value=error_html(str(e)))
+            error_updates = [gr.update() for _ in range(78)]
+            error_updates[72] = project_status_html("error", "创建项目失败", str(e))
+            error_updates[77] = gr.update(visible=True, value=error_html(str(e)))
             return tuple(error_updates)
 
         projects = store.list_projects()
@@ -187,7 +248,7 @@ def create_ui(store: Optional[ProjectStore] = None):
             gr.update(visible=False, value=""),  # create_error_msg
         )
 
-    def on_save_config(project_id, image_dir, clinical_path, output_dir, modality, covariates, model, api_key):
+    def on_save_config(project_id, image_dir, clinical_path, output_dir, modality, covariates, model, api_key, max_lasso_features, n_splits):
         if not project_id:
             return project_status_html("error", "请先选择一个项目", "保存前需要选择项目")
         try:
@@ -199,12 +260,14 @@ def create_ui(store: Optional[ProjectStore] = None):
                 "covariates": covariates or "",
                 "model": model or "deepseek-chat",
                 "api_key": api_key or "",
+                "max_lasso_features": int(max_lasso_features) if max_lasso_features is not None else 100,
+                "n_splits": int(n_splits) if n_splits is not None else 5,
             })
             return _config_status_html(image_dir, clinical_path, is_save=True)
         except Exception as e:
             return project_status_html("error", "保存失败", str(e))
 
-    def on_run(project_id, image_dir, clinical_path, output_dir, modality, covariates, api_key, model):
+    def on_run(project_id, image_dir, clinical_path, output_dir, modality, covariates, api_key, model, max_lasso_features, n_splits):
         if not project_id:
             return "请先选择一个项目", None
         config = {
@@ -215,6 +278,8 @@ def create_ui(store: Optional[ProjectStore] = None):
             "covariates": covariates or "",
             "model": model or "deepseek-chat",
             "api_key": api_key or "",
+            "max_lasso_features": int(max_lasso_features) if max_lasso_features is not None else 100,
+            "n_splits": int(n_splits) if n_splits is not None else 5,
         }
         store.save_project_config(project_id, config)
         project = store.load_project(project_id)
@@ -229,6 +294,8 @@ def create_ui(store: Optional[ProjectStore] = None):
             api_key,
             config["model"],
             yaml_path,
+            config["max_lasso_features"],
+            config["n_splits"],
         )
         status = "success" if report_path else "failed"
         summary = logs[-1000:] if isinstance(logs, str) else logs
@@ -300,6 +367,9 @@ def create_ui(store: Optional[ProjectStore] = None):
                     output_dir = gr.Textbox(label="输出目录", value="./outputs", elem_classes="onerad-input")
                     modality = gr.Dropdown(choices=["auto", "CT", "MRI"], value="auto", label="模态")
                     covariates = gr.Textbox(label="协变量（逗号分隔）", value="", elem_classes="onerad-input")
+                with gr.Row():
+                    max_lasso_features = gr.Number(label="LASSO 最大特征数", value=100, precision=0, elem_classes="onerad-input")
+                    n_splits = gr.Number(label="交叉验证折数", value=5, precision=0, elem_classes="onerad-input")
 
                 gr.HTML(section_title_html(ICON_GLOBE, "AI 模型配置"))
                 with gr.Row():
@@ -332,6 +402,8 @@ def create_ui(store: Optional[ProjectStore] = None):
             covariates,
             model,
             api_key,
+            max_lasso_features,
+            n_splits,
             status_msg,
             report_file,
             new_name,
@@ -362,6 +434,8 @@ def create_ui(store: Optional[ProjectStore] = None):
                     covariates,
                     model,
                     api_key,
+                    max_lasso_features,
+                    n_splits,
                     status_msg,
                     report_file,
                 ],
@@ -377,6 +451,8 @@ def create_ui(store: Optional[ProjectStore] = None):
                 covariates,
                 model,
                 api_key,
+                max_lasso_features,
+                n_splits,
                 status_msg,
                 report_file,
             ])
@@ -389,13 +465,13 @@ def create_ui(store: Optional[ProjectStore] = None):
 
         btn_save.click(
             on_save_config,
-            inputs=[current_project_id, image_dir, clinical_path, output_dir, modality, covariates, model, api_key],
+            inputs=[current_project_id, image_dir, clinical_path, output_dir, modality, covariates, model, api_key, max_lasso_features, n_splits],
             outputs=[status_msg],
         )
 
         btn_run.click(
             on_run,
-            inputs=[current_project_id, image_dir, clinical_path, output_dir, modality, covariates, api_key, model],
+            inputs=[current_project_id, image_dir, clinical_path, output_dir, modality, covariates, api_key, model, max_lasso_features, n_splits],
             outputs=[log, report_file],
         )
 

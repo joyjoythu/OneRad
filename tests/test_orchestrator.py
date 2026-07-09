@@ -22,6 +22,19 @@ def test_orchestrator_init():
     )
     assert orch.state["stage"] == PipelineStage.IDLE
     assert orch.state["config"]["image_dir"] == "./data/images"
+    assert orch.state["config"]["max_lasso_features"] == 100
+    assert orch.state["config"]["n_splits"] == 5
+
+
+def test_orchestrator_init_custom_analysis_params():
+    orch = Orchestrator(
+        image_dir="./data/images",
+        clinical_path="./data/clinical.csv",
+        max_lasso_features=50,
+        n_splits=3,
+    )
+    assert orch.state["config"]["max_lasso_features"] == 50
+    assert orch.state["config"]["n_splits"] == 3
 
 
 def test_register_handler_rejects_non_execution_stage():

@@ -13,6 +13,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import StratifiedKFold
 from sklearn import metrics
 from scipy import stats
+from scipy.stats import mannwhitneyu
 
 from app.metrics import calculate_metrics
 
@@ -79,7 +80,8 @@ class AnalysisAgent:
     """
 
     def __init__(self, covariates: Optional[List[str]] = None, n_splits: int = 5,
-                 random_state: int = 42, output_dir: Optional[str] = None):
+                 random_state: int = 42, output_dir: Optional[str] = None,
+                 max_lasso_features: int = 100):
         """Initialize the analysis agent.
 
         Args:
@@ -87,11 +89,61 @@ class AnalysisAgent:
             n_splits: Number of cross-validation folds.
             random_state: Random seed for reproducibility.
             output_dir: Optional directory for future outputs.
+            max_lasso_features: Maximum number of radiomic features to feed into
+                LASSO. When the radiomic feature matrix is larger, a univariate
+                pre-screen (Mann-Whitney U) is used to retain the most promising
+                features. This prevents LASSO from shrinking all coefficients to
+                zero in high-dimensional, low-sample settings.
         """
         self.covariates = covariates or []
         self.n_splits = n_splits
         self.random_state = random_state
         self.output_dir = output_dir
+        self.max_lasso_features = max_lasso_features
+
+    @staticmethod
+    def _prescreen_radiomic_features(
+        X: np.ndarray,
+        y: np.ndarray,
+        radiomic_cols: List[str],
+        max_features: int,
+    ) -> List[str]:
+        """Rank radiomic features by univariate association with the label.
+
+        Uses the Mann-Whitney U test (rank-based, no normality assumption) to
+        compare feature distributions between the two label groups. Returns the
+        ``max_features`` columns with the smallest p-values.
+
+        Args:
+            X: Feature matrix whose first columns correspond to ``radiomic_cols``.
+            y: Binary labels (0/1).
+            radiomic_cols: Names of the radiomic feature columns.
+            max_features: Maximum number of radiomic features to retain.
+
+        Returns:
+            A list of radiomic column names selected for LASSO.
+        """
+        if len(radiomic_cols) <= max_features:
+            return radiomic_cols.copy()
+
+        n_radio = len(radiomic_cols)
+        X_radio = X[:, :n_radio]
+        idx_0 = np.where(y == 0)[0]
+        idx_1 = np.where(y == 1)[0]
+
+        p_values = np.full(n_radio, 1.0)
+        for j in range(n_radio):
+            x0 = X_radio[idx_0, j]
+            x1 = X_radio[idx_1, j]
+            if len(x0) == 0 or len(x1) == 0:
+                continue
+            try:
+                _, p_values[j] = mannwhitneyu(x0, x1, alternative="two-sided")
+            except ValueError:
+                p_values[j] = 1.0
+
+        selected_idx = np.argsort(p_values)[:max_features]
+        return [radiomic_cols[i] for i in selected_idx]
 
     def run(self, merged_df: pd.DataFrame, label_col: str,
             output_dir: Optional[str] = None) -> Dict[str, Any]:
@@ -135,6 +187,16 @@ class AnalysisAgent:
 
         X = X_raw.values.astype(float)
 
+        # 高维影像组学数据预处理：单变量预筛选，防止 LASSO 在样本量小、特征数多
+        # 时把所有系数压到 0。
+        if len(radiomic_cols) > self.max_lasso_features:
+            radiomic_cols = self._prescreen_radiomic_features(
+                X, y, radiomic_cols, self.max_lasso_features
+            )
+            feature_cols = radiomic_cols + clinical_covs
+            X_raw = X_raw[feature_cols]
+            X = X_raw.values.astype(float)
+
         # 5 折 CV
         skf = StratifiedKFold(n_splits=self.n_splits, shuffle=True, random_state=self.random_state)
         val_probs = np.zeros(len(y))
@@ -154,6 +216,13 @@ class AnalysisAgent:
                 X_train_radio = X_train_s[:, :len(radiomic_cols)]
                 lasso = LassoCV(cv=3, random_state=self.random_state, max_iter=10000).fit(X_train_radio, y_train)
                 radio_mask = np.abs(lasso.coef_) > 1e-6
+
+                # 若本折 LASSO 未选中任何影像组学特征，则回退到预筛选后最重要的
+                # 第一个特征，保证该折仍能贡献预测并避免空特征集导致流水线中断。
+                if not np.any(radio_mask):
+                    radio_mask = np.zeros(len(radiomic_cols), dtype=bool)
+                    radio_mask[0] = True
+
                 save_dir = output_dir or self.output_dir
                 if save_dir and len(radiomic_cols) > 0:
                     os.makedirs(save_dir, exist_ok=True)

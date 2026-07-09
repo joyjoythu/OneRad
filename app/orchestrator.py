@@ -131,6 +131,8 @@ class Orchestrator:
         api_key: Optional[str] = None,
         base_url: str = "https://api.deepseek.com/v1",
         model: str = "deepseek-chat",
+        max_lasso_features: int = 100,
+        n_splits: int = 5,
     ):
         self.state: Dict[str, Any] = {
             "stage": PipelineStage.IDLE,
@@ -148,6 +150,8 @@ class Orchestrator:
                 "min_samples": min_samples,
                 "yaml_path": yaml_path,
                 "resampled_pixel_spacing": resampled_pixel_spacing,
+                "max_lasso_features": max_lasso_features,
+                "n_splits": n_splits,
                 "llm": {
                     "api_key": api_key,
                     "base_url": base_url,
@@ -372,7 +376,9 @@ def register_default_handlers(orch: Orchestrator) -> None:
 
     orch.register_handler(PipelineStage.ANALYSIS, lambda state: analysis.AnalysisAgent(
         output_dir=state["config"]["output_dir"],
-        covariates=state["config"].get("covariates", [])
+        covariates=state["config"].get("covariates", []),
+        max_lasso_features=state["config"].get("max_lasso_features", 100),
+        n_splits=state["config"].get("n_splits", 5),
     ).run(state["merged"]["df"], state["clinical"]["label_col"]))
 
     orch.register_handler(PipelineStage.REPORT, lambda state: report.ReportAgent().run(

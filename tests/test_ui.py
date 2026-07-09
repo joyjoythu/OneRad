@@ -4,6 +4,7 @@ import tempfile
 from pathlib import Path
 
 import gradio as gr
+import pandas as pd
 import pytest
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -126,3 +127,46 @@ def test_project_list_html_reflects_deletion(isolated_store):
     html_after = project_list_html(store.list_projects(), "")
     assert "ToDelete" not in html_after
     assert "onerad-empty-state" in html_after
+
+
+def test_run_analysis_uses_cached_features_csv(tmp_path):
+    """_run_analysis should bypass the image pipeline when radiomics_features.csv exists."""
+    import numpy as np
+    from app.ui import _run_analysis
+
+    rng = np.random.RandomState(11)
+    n = 40
+    label = rng.randint(0, 2, n)
+    feature_df = pd.DataFrame({
+        "patient_id": [f"P{i:03d}" for i in range(n)],
+    })
+    for j in range(20):
+        feature_df[f"original_feat_{j}"] = rng.randn(n)
+    feature_df["original_feat_0"] += label * 1.5
+
+    clinical_df = pd.DataFrame({
+        "patient_id": [f"P{i:03d}" for i in range(n)],
+        "Label": label,
+    })
+
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+    feature_df.to_csv(output_dir / "radiomics_features.csv", index=False)
+    clinical_csv = tmp_path / "clinical.csv"
+    clinical_df.to_csv(clinical_csv, index=False)
+
+    logs, report_path = _run_analysis(
+        img_dir="./nonexistent_images",
+        clinical=str(clinical_csv),
+        out_dir=str(output_dir),
+        mod="auto",
+        covs="",
+        key=None,
+        m="deepseek-chat",
+        yaml_path=str(tmp_path / "Params_labels.yaml"),
+        max_lasso_features=20,
+        n_splits=3,
+    )
+    assert report_path is not None
+    assert "radiomics_features.csv" in logs
+    assert Path(report_path).exists()

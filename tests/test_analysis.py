@@ -110,6 +110,31 @@ def test_empty_intersection_returns_error(monkeypatch):
     assert "交集为空" in result["message"]
 
 
+def test_high_dimensional_weak_signal_succeeds_with_prescreening():
+    """High-dimensional low-signal data used to make LASSO select nothing.
+
+    Without pre-screening, ``LassoCV`` can shrink every coefficient to zero
+    in some CV folds when the number of radiomic features is large relative
+    to the sample size. Pre-screening keeps the most promising features so
+    the analysis can complete.
+    """
+    rng = np.random.RandomState(42)
+    n = 60
+    n_features = 150
+    df = pd.DataFrame({
+        "patient_id": [f"P{i:03d}" for i in range(n)],
+        "Label": rng.randint(0, 2, n),
+    })
+    for j in range(n_features):
+        df[f"original_noise_{j}"] = rng.randn(n) + df["Label"] * 0.05
+
+    agent = AnalysisAgent(covariates=[], n_splits=5, random_state=42)
+    result = agent.run(df, label_col="Label")
+    assert result["success"] is True, result["message"]
+    assert "auc" in result["metrics"]
+    assert len(result["selected_features"]) > 0
+
+
 def test_bootstrap_auc_ci_empty_scores():
     y_true = np.array([0, 0, 0])
     y_prob = np.array([0.1, 0.2, 0.3])

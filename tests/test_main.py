@@ -1,3 +1,6 @@
+import argparse
+
+import pandas as pd
 import pytest
 
 from main import _parse_args
@@ -51,9 +54,13 @@ def test_main_cli_pipeline_error(monkeypatch, capsys):
     mock_args.ui = False
     mock_args.image_dir = "./img"
     mock_args.clinical = "./cli.csv"
+    mock_args.feature_csv = None
+    mock_args.label_col = None
     mock_args.output_dir = "./out"
     mock_args.modality = "auto"
     mock_args.covariates = ""
+    mock_args.max_lasso_features = 100
+    mock_args.n_splits = 5
     mock_args.resampled_pixel_spacing = None
     mock_args.api_key = ""
     mock_args.base_url = "https://api.deepseek.com/v1"
@@ -69,3 +76,104 @@ def test_main_cli_pipeline_error(monkeypatch, capsys):
 
     captured = capsys.readouterr()
     assert "pipeline failed" in captured.err or "流水线执行失败" in captured.err
+
+
+def test_main_feature_csv_direct_analysis(tmp_path, monkeypatch):
+    """End-to-end test for running LASSO + logistic regression from feature CSV."""
+    import numpy as np
+    from main import main
+
+    rng = np.random.RandomState(42)
+    n = 40
+    feature_df = pd.DataFrame({
+        "patient_id": [f"P{i:03d}" for i in range(n)],
+    })
+    for j in range(20):
+        feature_df[f"original_feat_{j}"] = rng.randn(n)
+    # Add a weak signal so LASSO can select something
+    label = rng.randint(0, 2, n)
+    feature_df["original_feat_0"] += label * 1.5
+
+    clinical_df = pd.DataFrame({
+        "patient_id": [f"P{i:03d}" for i in range(n)],
+        "Label": label,
+    })
+
+    feature_csv = tmp_path / "features.csv"
+    clinical_csv = tmp_path / "clinical.csv"
+    feature_df.to_csv(feature_csv, index=False)
+    clinical_df.to_csv(clinical_csv, index=False)
+
+    output_dir = tmp_path / "out"
+
+    monkeypatch.setattr("main._parse_args", lambda argv=None: argparse.Namespace(
+        ui=False,
+        image_dir=None,
+        clinical=str(clinical_csv),
+        feature_csv=str(feature_csv),
+        label_col=None,
+        output_dir=str(output_dir),
+        modality="auto",
+        covariates="",
+        max_lasso_features=20,
+        n_splits=3,
+        resampled_pixel_spacing=None,
+        api_key=None,
+        base_url="https://api.deepseek.com/v1",
+        model="deepseek-chat",
+    ))
+
+    main()
+
+    report_files = list(output_dir.glob("*.docx"))
+    assert len(report_files) == 1, f"Expected one DOCX report, found {report_files}"
+
+
+def test_main_uses_cached_features_csv_when_available(tmp_path, monkeypatch):
+    """If output_dir/radiomics_features.csv exists, --image-dir runs should reuse it."""
+    import numpy as np
+    from main import main
+
+    rng = np.random.RandomState(7)
+    n = 40
+    label = rng.randint(0, 2, n)
+    feature_df = pd.DataFrame({
+        "patient_id": [f"P{i:03d}" for i in range(n)],
+    })
+    for j in range(20):
+        feature_df[f"original_feat_{j}"] = rng.randn(n)
+    feature_df["original_feat_0"] += label * 1.5
+
+    clinical_df = pd.DataFrame({
+        "patient_id": [f"P{i:03d}" for i in range(n)],
+        "Label": label,
+    })
+
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+    cached_feature_csv = output_dir / "radiomics_features.csv"
+    clinical_csv = tmp_path / "clinical.csv"
+    feature_df.to_csv(cached_feature_csv, index=False)
+    clinical_df.to_csv(clinical_csv, index=False)
+
+    monkeypatch.setattr("main._parse_args", lambda argv=None: argparse.Namespace(
+        ui=False,
+        image_dir="./nonexistent_images",  # should not be touched
+        clinical=str(clinical_csv),
+        feature_csv=None,
+        label_col=None,
+        output_dir=str(output_dir),
+        modality="auto",
+        covariates="",
+        max_lasso_features=20,
+        n_splits=3,
+        resampled_pixel_spacing=None,
+        api_key=None,
+        base_url="https://api.deepseek.com/v1",
+        model="deepseek-chat",
+    ))
+
+    main()
+
+    report_files = list(output_dir.glob("*.docx"))
+    assert len(report_files) == 1, f"Expected one DOCX report, found {report_files}"
