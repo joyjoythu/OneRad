@@ -26,6 +26,8 @@ HIGH_RISK_MODULES = {
     "shutil",
     "pathlib",
     "importlib",
+    "sys",
+    "builtins",
 }
 MEDIUM_RISK_WRITE_PATTERNS = [
     r"open\s*\([^)]*,\s*[\"'][wax][\"']",
@@ -75,6 +77,8 @@ def classify_risk(code: str) -> str:
                     return "high"
                 if func.id == "__import__":
                     return "high"
+                if func.id in DANGEROUS_NAMES:
+                    return "high"
                 source = import_map.get(func.id)
                 if source:
                     top = source.split(".")[0]
@@ -83,6 +87,9 @@ def classify_risk(code: str) -> str:
             elif isinstance(func, ast.Attribute):
                 if func.attr in DANGEROUS_NAMES:
                     return "high"
+        elif isinstance(node, ast.Attribute):
+            if node.attr in DANGEROUS_NAMES:
+                return "high"
 
     # 检测 .. 父目录引用、Unix 绝对路径与 Windows 绝对路径（高危路径特征优先于写操作）
     if re.search(r"['\"]/[^'\"\n]+['\"]", code):
@@ -153,21 +160,22 @@ def run_script(script_path: str, project_path: str, timeout: int = 60) -> Dict[s
         return {"returncode": -1, "stdout": "", "stderr": str(e), "success": False}
 
 
-SANDBOX_HEADER_TEMPLATE = """import builtins, io, os
-_PROJECT_ROOT = os.path.abspath({project_path!r})
-_orig_open = builtins.open
-_io_open = io.open
-def _safe_open(file, *args, **kwargs):
+SANDBOX_HEADER_TEMPLATE = """import builtins as _b, io as _io, os as _os
+_PROJECT_ROOT = _os.path.abspath({project_path!r})
+_orig_open = _b.open
+_io_open = _io.open
+def _safe_open(file, *args, _os=_os, _orig_open=_orig_open, **kwargs):
     try:
-        path_str = os.fsdecode(os.fspath(file))
-        path = os.path.abspath(os.path.join(_PROJECT_ROOT, path_str))
+        path_str = _os.fsdecode(_os.fspath(file))
+        path = _os.path.abspath(_os.path.join(_PROJECT_ROOT, path_str))
     except Exception:
         return _orig_open(file, *args, **kwargs)
-    if not path.startswith(_PROJECT_ROOT + os.sep):
+    if not path.startswith(_PROJECT_ROOT + _os.sep):
         raise PermissionError(f"Access outside project sandbox: {{file!r}}")
     return _orig_open(file, *args, **kwargs)
-builtins.open = _safe_open
-io.open = _safe_open
+_b.open = _safe_open
+_io.open = _safe_open
+del _b, _io, _os, _orig_open, _io_open
 """
 
 

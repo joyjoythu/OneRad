@@ -152,3 +152,31 @@ def test_run_script_blocks_dynamic_pathlib(tmp_path, monkeypatch):
     result = execute_script_if_safe(meta, str(tmp_path))
     assert result["success"] is False
     assert "拒绝执行" in result["error"]
+
+
+def test_classify_getattr_call_is_high():
+    code = "getattr(builtins, '__import__')('os')"
+    assert classify_risk(code) == "high"
+
+
+def test_classify_sys_modules_is_high():
+    code = "import sys\nsys.modules['os'].system('x')"
+    assert classify_risk(code) == "high"
+
+
+def test_classify_builtins_import_is_high():
+    code = "import builtins"
+    assert classify_risk(code) == "high"
+
+
+def test_run_script_header_does_not_expose_os(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "app.code_runner.find_venv_python", lambda project_path: Path(sys.executable)
+    )
+    code = "os.system('echo exposed')"
+    meta = prepare_script(code, "exposed os", str(tmp_path))
+    # 静态扫描会把 os.system 判定为高危，直接拒绝执行
+    assert meta["risk_level"] == "high"
+    result = execute_script_if_safe(meta, str(tmp_path))
+    assert result["success"] is False
+    assert "拒绝执行" in result["error"]
