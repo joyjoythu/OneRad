@@ -57,7 +57,7 @@ def _run_config():
 def test_start_run_idempotency(client, temp_db):
     store, root = temp_db
     project = store.create_project("A", str(root / "a"), "")
-    url = f"/api/runs/projects/{project['id']}/runs"
+    url = f"/api/projects/{project['id']}/runs"
 
     first = client.post(url, json=_run_config())
     assert first.status_code == 202
@@ -70,9 +70,7 @@ def test_start_run_idempotency(client, temp_db):
 def test_get_run_returns_record(client, temp_db):
     store, root = temp_db
     project = store.create_project("A", str(root / "a"), "")
-    start = client.post(
-        f"/api/runs/projects/{project['id']}/runs", json=_run_config()
-    )
+    start = client.post(f"/api/projects/{project['id']}/runs", json=_run_config())
     run_id = start.json()["run_id"]
 
     response = client.get(f"/api/runs/{run_id}")
@@ -99,9 +97,7 @@ def test_get_run_events_sse(client, temp_db, monkeypatch):
 
     monkeypatch.setattr("app.api.runs._run_pipeline", fake_pipeline)
 
-    start = client.post(
-        f"/api/runs/projects/{project['id']}/runs", json=_run_config()
-    )
+    start = client.post(f"/api/projects/{project['id']}/runs", json=_run_config())
     assert start.status_code == 202
     run_id = start.json()["run_id"]
 

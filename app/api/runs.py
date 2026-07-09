@@ -130,44 +130,6 @@ def _run_pipeline(
         store.record_run_end(run_id, "failed", f"{exc}\n{tb}")
 
 
-@router.post(
-    "/projects/{project_id}/runs",
-    response_model=Dict[str, Any],
-    status_code=status.HTTP_202_ACCEPTED,
-)
-async def start_run(
-    project_id: str,
-    payload: RunConfig,
-    store: ProjectStore = Depends(get_project_store),
-) -> Dict[str, Any]:
-    """Trigger a new pipeline run for a project."""
-    if store.load_project(project_id) is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="项目不存在")
-
-    if store.has_running_run(project_id):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="项目已有正在运行的流水线"
-        )
-
-    run_id = store.record_run_start(project_id, payload.model_dump())
-    bridge = _get_bridge(store)
-    loop = asyncio.get_running_loop()
-
-    asyncio.create_task(
-        run_in_threadpool(
-            _run_pipeline,
-            project_id,
-            run_id,
-            payload.model_dump(),
-            bridge,
-            store,
-            loop,
-        )
-    )
-
-    return {"run_id": run_id}
-
-
 @router.get("/{run_id}", response_model=Dict[str, Any])
 def get_run(run_id: str, store: ProjectStore = Depends(get_project_store)) -> Dict[str, Any]:
     """Fetch a single run record by ID."""

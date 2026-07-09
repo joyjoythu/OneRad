@@ -1,11 +1,14 @@
+import asyncio
 import os
 from pathlib import Path
 from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 
 from app.api.deps import get_project_store
+from app.api.runs import RunConfig, _get_bridge, _run_pipeline
 from app.projects import ProjectStore
 
 router = APIRouter()
@@ -110,6 +113,40 @@ def delete_project(project_id: str, store: ProjectStore = Depends(get_project_st
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="项目不存在")
     store.delete_project(project_id)
     return None
+
+
+@router.post("/{project_id}/runs", response_model=Dict[str, Any], status_code=status.HTTP_202_ACCEPTED)
+async def start_run(
+    project_id: str,
+    payload: RunConfig,
+    store: ProjectStore = Depends(get_project_store),
+) -> Dict[str, Any]:
+    """Trigger a new pipeline run for a project."""
+    if store.load_project(project_id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="项目不存在")
+
+    if store.has_running_run(project_id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="项目已有正在运行的流水线"
+        )
+
+    run_id = store.record_run_start(project_id, payload.model_dump())
+    bridge = _get_bridge(store)
+    loop = asyncio.get_running_loop()
+
+    asyncio.create_task(
+        run_in_threadpool(
+            _run_pipeline,
+            project_id,
+            run_id,
+            payload.model_dump(),
+            bridge,
+            store,
+            loop,
+        )
+    )
+
+    return {"run_id": run_id}
 
 
 @router.get("/{project_id}/runs", response_model=List[Dict[str, Any]])
