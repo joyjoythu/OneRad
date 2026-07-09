@@ -1,10 +1,10 @@
 from app.agent.state import AgentState
 
 
-def create_agent_graph():
+def create_agent_graph(checkpointer=None):
     """Lazily import and build the compiled LangGraph agent."""
     from app.agent.graph import create_agent_graph as _create_agent_graph
-    return _create_agent_graph()
+    return _create_agent_graph(checkpointer=checkpointer)
 
 
 def build_initial_state(project: dict) -> AgentState:
