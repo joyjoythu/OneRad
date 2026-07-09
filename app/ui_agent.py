@@ -102,6 +102,7 @@ def _sync_outputs(snapshot: Any, thread_state: Dict[str, Any], extra_log: str = 
         script_text,
         log_text,
         thread_state,
+        "",  # 清空输入框
     )
 
 
@@ -116,6 +117,7 @@ def _empty_sync(thread_state: Dict[str, Any], log_text: str = ""):
         "",
         log_text,
         thread_state,
+        "",  # 清空输入框
     )
 
 
@@ -171,6 +173,7 @@ def create_agent_tab(store, current_project_id_state):
         script_code,
         agent_log,
         agent_thread_state,
+        msg_input,
     ]
 
     def on_send(project_id, msg, thread_state):
