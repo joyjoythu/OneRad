@@ -11,9 +11,6 @@ from langgraph.types import Command
 from app.agent import build_initial_state, create_agent_graph
 
 
-graph = create_agent_graph()
-
-
 def _rows_from_plan(plan: List[Dict[str, Any]]) -> List[List[str]]:
     rows = []
     for item in plan or []:
@@ -123,6 +120,8 @@ def _empty_sync(thread_state: Dict[str, Any], log_text: str = ""):
 
 
 def create_agent_tab(store, current_project_id_state):
+    graph = create_agent_graph()
+
     agent_thread_state = gr.State({"thread_id": None, "project_id": None})
 
     with gr.Tab("AI Agent") as tab:
@@ -139,7 +138,7 @@ def create_agent_tab(store, current_project_id_state):
             plan_df = gr.Dataframe(
                 headers=["action", "source", "target", "reason"],
                 datatype=["str", "str", "str", "str"],
-                row_count=(0, "dynamic"),
+                row_count=0,
                 interactive=True,
                 label="计划",
             )
@@ -185,16 +184,22 @@ def create_agent_tab(store, current_project_id_state):
             project = store.load_project(project_id)
             init_state = build_initial_state(project)
             config = {"configurable": {"thread_id": thread_id}}
-            graph.update_state(config, init_state)
+            try:
+                graph.update_state(config, init_state)
+            except Exception as e:
+                return _empty_sync(thread_state, f"状态初始化失败: {e}")
         else:
             config = {"configurable": {"thread_id": thread_state["thread_id"]}}
 
-        for _ in graph.stream(
-            {"messages": [HumanMessage(content=msg)]},
-            config,
-            stream_mode="values",
-        ):
-            pass
+        try:
+            for _ in graph.stream(
+                {"messages": [HumanMessage(content=msg)]},
+                config,
+                stream_mode="values",
+            ):
+                pass
+        except Exception as e:
+            return _empty_sync(thread_state, f"Agent 运行失败: {e}")
 
         snapshot = graph.get_state(config)
         return _sync_outputs(snapshot, thread_state)
@@ -211,8 +216,11 @@ def create_agent_tab(store, current_project_id_state):
         pending_plan["plan"] = _plan_from_rows(edited_rows)
         graph.update_state(config, {"pending_plan": pending_plan})
 
-        for _ in graph.stream(Command(resume={"action": "confirm"}), config, stream_mode="values"):
-            pass
+        try:
+            for _ in graph.stream(Command(resume={"action": "confirm"}), config, stream_mode="values"):
+                pass
+        except Exception as e:
+            return _sync_outputs(snapshot, f"操作失败: {e}")
         snapshot = graph.get_state(config)
         return _sync_outputs(snapshot, thread_state)
 
@@ -221,8 +229,11 @@ def create_agent_tab(store, current_project_id_state):
         if not thread_id:
             return _empty_sync(thread_state, "Agent 线程未初始化")
         config = {"configurable": {"thread_id": thread_id}}
-        for _ in graph.stream(Command(resume={"action": action}), config, stream_mode="values"):
-            pass
+        try:
+            for _ in graph.stream(Command(resume={"action": action}), config, stream_mode="values"):
+                pass
+        except Exception as e:
+            return _sync_outputs(graph.get_state(config), f"操作失败: {e}")
         snapshot = graph.get_state(config)
         return _sync_outputs(snapshot, thread_state)
 
