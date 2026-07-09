@@ -70,6 +70,8 @@ const statusTag = computed(() => {
 })
 
 const reportHref = computed(() => {
+  // 后端目前返回的是本地报告路径。若已是 URL 则直接使用；
+  // 否则按本地文件路径处理（file:// 前缀），相对路径会受浏览器沙箱限制。
   if (!runStore.reportUrl) return ''
   if (/^(https?:|file:)/i.test(runStore.reportUrl)) {
     return runStore.reportUrl
@@ -77,7 +79,7 @@ const reportHref = computed(() => {
   return `file://${runStore.reportUrl}`
 })
 
-const reportAriaLabel = computed(() => '查看报告（在新标签页中打开）')
+const reportAriaLabel = '查看报告（在新标签页中打开）'
 
 const showLogViewer = computed(() => {
   return showLogsOverride.value && (runStore.running || runStore.logs.length > 0)

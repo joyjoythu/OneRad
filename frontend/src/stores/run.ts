@@ -52,6 +52,9 @@ export const useRunStore = defineStore('run', () => {
         disconnect()
       },
       onError: () => {
+        if (currentRun.value) {
+          currentRun.value.status = 'failed'
+        }
         running.value = false
         disconnect()
       },

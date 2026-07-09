@@ -102,10 +102,22 @@ const defaultConfig = (): AnalysisConfig => ({
 
 const draft = reactive<AnalysisConfig>(defaultConfig())
 
+function configsEqual(a: AnalysisConfig, b: AnalysisConfig): boolean {
+  return (
+    a.image_dir === b.image_dir &&
+    a.clinical_path === b.clinical_path &&
+    a.output_dir === b.output_dir &&
+    a.modality === b.modality &&
+    a.covariates === b.covariates &&
+    a.model === b.model &&
+    a.api_key === b.api_key
+  )
+}
+
 watch(
   () => props.config,
   (cfg) => {
-    if (cfg && JSON.stringify(cfg) !== JSON.stringify(draft)) {
+    if (cfg && !configsEqual(cfg, draft)) {
       Object.assign(draft, cfg)
     }
   },
