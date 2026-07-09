@@ -294,6 +294,15 @@ class ProjectStore:
         finally:
             conn.close()
 
+    def get_run(self, run_id: str) -> Optional[Dict[str, Any]]:
+        conn = sqlite3.connect(str(self.db_path))
+        try:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone()
+            return dict(row) if row else None
+        finally:
+            conn.close()
+
     def record_sse_event(self, scope: str, scope_id: str, event_id: int, data: str) -> None:
         conn = sqlite3.connect(str(self.db_path))
         try:
