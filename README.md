@@ -39,13 +39,7 @@ uv venv --python 3.11
 uv pip install ./pyradiomics-master/pyradiomics-master --no-cache-dir
 ```
 
-3. 安装其余依赖：
-
-```bash
-uv pip install -r requirements.txt --no-cache-dir
-```
-
-4. 激活环境：
+3. 激活环境（`uv pip install` 会自动安装到当前项目虚拟环境，无需手动激活即可使用；如需在 shell 中使用已安装的命令，可激活环境）：
 
 ```bash
 # Git Bash
@@ -56,6 +50,12 @@ source .venv/Scripts/activate
 
 # Windows PowerShell
 .venv\Scripts\Activate.ps1
+```
+
+4. 安装其余依赖：
+
+```bash
+uv pip install -r requirements.txt --no-cache-dir
 ```
 
 ### 使用 pip
@@ -104,11 +104,18 @@ python main.py --image-dir ./data/images --clinical ./data/clinical.csv --output
 
 ### UI（FastAPI + Vue）
 
+`python main.py` 会启动 FastAPI 并同时提供 API 与已构建的 Vue SPA。运行前需要确保 `frontend/dist/` 已存在，可通过以下命令构建：
+
 ```bash
+cd frontend
+npm run build
+cd ..
 python main.py
 ```
 
-启动后访问 http://localhost:8000。FastAPI 会同时提供 API 和已构建的 Vue SPA（静态资源），因此无需单独启动前端。
+启动后访问 http://localhost:8000。
+
+> 注意：若未执行 `npm run build`，`frontend/dist/` 不存在时访问根路径会返回 404。
 
 常用启动参数：
 
@@ -116,6 +123,8 @@ python main.py
 - `--port`：服务器端口，默认 `8000`。
 - `--base-url`：LLM API Base URL，默认 `https://api.deepseek.com/v1`。
 - `--model`：模型名称，默认 `deepseek-v4-pro`。
+- `--api-key`：LLM API Key；也可通过 `DEEPSEEK_API_KEY` 环境变量设置。
+- `--feature-csv`：已提取好的影像组学特征 CSV 路径，提供后直接进入 LASSO + Logistic Regression 分析。
 
 ### 前端独立开发
 
@@ -132,6 +141,12 @@ npm run dev
 
 ```bash
 export DEEPSEEK_API_KEY=your_key
+docker compose up --build
+```
+
+或在使用 Compose V1 的环境：
+
+```bash
 docker-compose up --build
 ```
 
