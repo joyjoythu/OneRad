@@ -38,18 +38,18 @@ def _plan_from_rows(rows: List[List[Any]]) -> List[Dict[str, Any]]:
     return plan
 
 
-def _render_chat(messages: List[Any]) -> List[List[str]]:
-    history: List[List[str]] = []
+def _render_chat(messages: List[Any]) -> List[Dict[str, str]]:
+    history: List[Dict[str, str]] = []
     for msg in messages or []:
         if isinstance(msg, HumanMessage):
-            history.append(["user", str(msg.content)])
+            history.append({"role": "user", "content": str(msg.content)})
         elif isinstance(msg, AIMessage):
-            history.append(["assistant", str(msg.content)])
+            history.append({"role": "assistant", "content": str(msg.content)})
         elif isinstance(msg, ToolMessage):
-            if history and history[-1][0] == "assistant":
-                history[-1][1] += f"\n\n[工具结果]\n{msg.content}"
+            if history and history[-1]["role"] == "assistant":
+                history[-1]["content"] += f"\n\n[工具结果]\n{msg.content}"
             else:
-                history.append(["assistant", f"[工具结果]\n{msg.content}"])
+                history.append({"role": "assistant", "content": f"[工具结果]\n{msg.content}"})
     return history
 
 
