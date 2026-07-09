@@ -5,10 +5,10 @@ import sys
 import traceback
 
 import pandas as pd
+import uvicorn
 
 from app.direct_analysis import run_direct_analysis
 from app.utils import parse_covariates, parse_float_tuple
-from app.ui_style import CUSTOM_CSS
 
 
 logging.basicConfig(
@@ -37,8 +37,14 @@ def _parse_args(argv=None):
     parser.add_argument("--api-key", default=None)
     parser.add_argument("--base-url", default="https://api.deepseek.com/v1")
     parser.add_argument("--model", default="deepseek-v4-pro")
-    parser.add_argument("--ui", action="store_true", help="启动 Gradio UI")
+    parser.add_argument("--host", default="0.0.0.0", help="FastAPI 服务器地址")
+    parser.add_argument("--port", type=int, default=8000, help="FastAPI 服务器端口")
     return parser.parse_args(argv)
+
+
+def _should_run_server(args) -> bool:
+    """Return True when no offline-analysis CLI args are provided."""
+    return args.image_dir is None and args.feature_csv is None
 
 
 def _run_direct_analysis(args) -> str:
@@ -58,13 +64,13 @@ def _run_direct_analysis(args) -> str:
     )
 
 
-def main():
-    args = _parse_args()
+def main(argv=None):
+    args = _parse_args(argv)
 
-    if args.ui or (args.image_dir is None and args.feature_csv is None):
-        from app.ui import create_ui
-        demo = create_ui()
-        demo.launch(css=CUSTOM_CSS)
+    if _should_run_server(args):
+        from app.api import create_app
+        app = create_app()
+        uvicorn.run(app, host=args.host, port=args.port)
         return
 
     if args.feature_csv:
@@ -87,7 +93,6 @@ def main():
     # Auto-detect previously extracted features in the output directory.
     # If they exist, reuse them directly instead of re-running the heavy
     # image discovery / QC / feature extraction stages.
-    import os
     cached_feature_csv = os.path.join(args.output_dir, "radiomics_features.csv")
     if os.path.exists(cached_feature_csv) and args.image_dir:
         print(f"检测到已存在的特征文件，直接用于分析: {cached_feature_csv}")
@@ -137,8 +142,6 @@ def _save_extracted_features(state: dict, output_dir: str) -> None:
     This allows subsequent runs to skip the expensive feature extraction stage
     and start directly from LASSO + logistic regression.
     """
-    import os
-
     feature_state = state.get("feature")
     if not isinstance(feature_state, dict):
         return
