@@ -24,12 +24,17 @@ HIGH_RISK_MODULES = {
     "ctypes",
     "os",
     "shutil",
+    "pathlib",
 }
 MEDIUM_RISK_WRITE_PATTERNS = [
     r"open\s*\([^)]*,\s*[\"'][wax][\"']",
     r"open\s*\([^)]*mode\s*=\s*[\"'][wax][\"']",
 ]
 DANGEROUS_NAMES = {"system", "popen", "exec", "eval", "rmtree", "remove", "unlink"}
+
+# 字符串字面量中危险路径特征的静态检测
+PATH_TRAVERSAL_PATTERN = r"['\"][^'\"]*\.\.[^'\"]*['\"]"
+WINDOWS_ABS_PATH_PATTERN = r"(?i)r?['\"][a-z]:[/\\]"
 
 
 def classify_risk(code: str) -> str:
@@ -70,14 +75,18 @@ def classify_risk(code: str) -> str:
                     if top in HIGH_RISK_MODULES and func.id in DANGEROUS_NAMES:
                         return "high"
 
+    # 检测 .. 父目录引用、Unix 绝对路径与 Windows 绝对路径（高危路径特征优先于写操作）
+    if re.search(r"['\"]/[^'\"\n]+['\"]", code):
+        return "high"
+    if re.search(PATH_TRAVERSAL_PATTERN, code):
+        return "high"
+    if re.search(WINDOWS_ABS_PATH_PATTERN, code):
+        return "high"
+
     # 检测写操作
     for pat in MEDIUM_RISK_WRITE_PATTERNS:
         if re.search(pat, code):
             return "medium"
-
-    # 检测绝对路径
-    if re.search(r"['\"]/[^'\"\n]+['\"]", code):
-        return "high"
 
     return "low"
 
@@ -135,10 +144,30 @@ def run_script(script_path: str, project_path: str, timeout: int = 60) -> Dict[s
         return {"returncode": -1, "stdout": "", "stderr": str(e), "success": False}
 
 
+SANDBOX_HEADER_TEMPLATE = """import builtins, os
+_PROJECT_ROOT = os.path.abspath({project_path!r})
+_orig_open = builtins.open
+def _safe_open(file, *args, **kwargs):
+    if isinstance(file, str):
+        abs_path = os.path.abspath(os.path.join(_PROJECT_ROOT, file))
+        if not abs_path.startswith(_PROJECT_ROOT + os.sep):
+            raise PermissionError(f"Access outside project sandbox: {{file}}")
+    return _orig_open(file, *args, **kwargs)
+builtins.open = _safe_open
+"""
+
+
 def execute_script_if_safe(meta: Dict[str, Any], project_path: str) -> Dict[str, Any]:
     if meta.get("risk_level") == "high":
         return {"error": "脚本被判定为高风险，拒绝执行", "risk_level": "high", "success": False}
-    return run_script(meta["script_path"], project_path)
+
+    script_path = meta["script_path"]
+    if meta.get("risk_level") in {"low", "medium"}:
+        original_code = Path(script_path).read_text(encoding="utf-8")
+        sandbox_header = SANDBOX_HEADER_TEMPLATE.format(project_path=project_path)
+        Path(script_path).write_text(sandbox_header + "\n" + original_code, encoding="utf-8")
+
+    return run_script(script_path, project_path)
 
 
 def _short_id(length: int = 6) -> str:

@@ -61,3 +61,44 @@ def test_execute_script_if_safe_blocks_high_risk():
     assert result["success"] is False
     assert result["risk_level"] == "high"
     assert "拒绝执行" in result["error"]
+
+
+def test_classify_pathlib_is_high():
+    assert classify_risk("import pathlib") == "high"
+    assert classify_risk("from pathlib import Path") == "high"
+
+
+def test_classify_parent_reference_is_high():
+    assert classify_risk("open('../outside.txt', 'w')") == "high"
+    assert classify_risk("with open('sub/../../escape.txt') as f: pass") == "high"
+
+
+def test_classify_windows_absolute_path_is_high():
+    assert classify_risk(r"open('C:\\Users\\x.txt', 'w')") == "high"
+    assert classify_risk(r"open(r'C:\\Users\\x.txt', 'w')") == "high"
+    assert classify_risk("open('C:/Users/x.txt', 'w')") == "high"
+
+
+def test_run_script_blocks_path_traversal(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "app.code_runner.find_venv_python", lambda project_path: Path(sys.executable)
+    )
+    code = "open('../outside.txt', 'w').write('x')"
+    meta = prepare_script(code, "escape", str(tmp_path))
+    assert meta["risk_level"] == "high"
+    result = execute_script_if_safe(meta, str(tmp_path))
+    assert result["success"] is False
+    assert "拒绝执行" in result["error"]
+
+
+def test_run_script_allows_in_project_write(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "app.code_runner.find_venv_python", lambda project_path: Path(sys.executable)
+    )
+    (tmp_path / "sub").mkdir()
+    code = "open('sub/a.txt', 'w').write('hello')"
+    meta = prepare_script(code, "in-project write", str(tmp_path))
+    assert meta["risk_level"] == "medium"
+    result = execute_script_if_safe(meta, str(tmp_path))
+    assert result["success"] is True
+    assert (tmp_path / "sub" / "a.txt").read_text(encoding="utf-8") == "hello"
