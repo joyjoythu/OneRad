@@ -18,11 +18,11 @@ ONERAD_DATA_DIR = Path(
 
 
 def _resolve_project_path(path: str) -> Path:
-    """Resolve a user-supplied project path inside ONERAD_DATA_DIR.
+    """Resolve a user-supplied project path.
 
-    Rejects paths that contain '..' as a path component or that resolve
-    outside the allowed ONERAD_DATA_DIR root. Relative paths are resolved
-    relative to ONERAD_DATA_DIR.
+    Rejects paths that contain '..' as a path component. Relative paths are
+    resolved relative to ONERAD_DATA_DIR; absolute paths are accepted as-is,
+    allowing projects to live outside the default data directory.
     """
     parsed = Path(path)
     if ".." in parsed.parts:
@@ -34,13 +34,6 @@ def _resolve_project_path(path: str) -> Path:
         resolved = parsed.resolve()
     else:
         resolved = (ONERAD_DATA_DIR / parsed).resolve()
-
-    try:
-        resolved.relative_to(ONERAD_DATA_DIR)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid project path"
-        )
 
     return resolved
 

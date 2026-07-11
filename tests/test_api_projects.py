@@ -132,6 +132,20 @@ def test_create_project_rejects_path_traversal(client, temp_db):
     assert "Invalid project path" in response.json()["detail"]
 
 
+def test_create_project_accepts_absolute_path(client, temp_db):
+    _store, root = temp_db
+    # Use a directory outside ONERAD_DATA_DIR to prove absolute paths are accepted.
+    absolute_path = root.parent / "abs-project"
+    response = client.post(
+        "/api/projects",
+        json={"name": "abs-project", "path": str(absolute_path), "description": "test"},
+    )
+    assert response.status_code == 201
+    data = response.json()
+    assert data["name"] == "abs-project"
+    assert Path(data["path"]).resolve() == absolute_path.resolve()
+
+
 def test_create_project_rejects_duplicate_name(client, temp_db):
     _store, root = temp_db
     project_path = root / "dup-project"

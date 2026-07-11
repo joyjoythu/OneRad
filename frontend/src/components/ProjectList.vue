@@ -48,7 +48,10 @@
           <el-input v-model="form.name" placeholder="请输入项目名称" />
         </el-form-item>
         <el-form-item label="路径" prop="path">
-          <el-input v-model="form.path" placeholder="请输入项目路径" />
+          <el-input
+            v-model="form.path"
+            placeholder="相对路径（如 demo）或本机绝对路径（如 D:\\project）"
+          />
         </el-form-item>
         <el-form-item label="描述" prop="description">
           <el-input

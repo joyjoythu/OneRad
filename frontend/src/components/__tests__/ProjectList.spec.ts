@@ -90,7 +90,7 @@ describe('ProjectList', () => {
     expect(wrapper.find('.el-dialog').isVisible()).toBe(true)
 
     const nameInput = wrapper.find('input[placeholder="请输入项目名称"]')
-    const pathInput = wrapper.find('input[placeholder="请输入项目路径"]')
+    const pathInput = wrapper.find('input[placeholder*="本机绝对路径"]')
 
     await nameInput.setValue('New Project')
     await pathInput.setValue('/tmp/new')
