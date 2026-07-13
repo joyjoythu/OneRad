@@ -2,6 +2,8 @@ import client from './client'
 import { API_BASE } from './client'
 import type { AnalysisConfig } from './projects'
 
+export const DEFAULT_RUN_LLM_MODEL = 'deepseek-v4-pro'
+
 export interface RunRecord {
   id: string
   project_id: string

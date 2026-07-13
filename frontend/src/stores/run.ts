@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import * as api from '@/api/runs'
+import { DEFAULT_RUN_LLM_MODEL } from '@/api/runs'
 import type { RunRecord } from '@/api/runs'
 import type { AnalysisConfig } from '@/api/projects'
 
@@ -31,7 +32,7 @@ export const useRunStore = defineStore('run', () => {
       id: run_id,
       project_id: projectId,
       ...config,
-      llm_model: 'deepseek-v4-pro',
+      llm_model: DEFAULT_RUN_LLM_MODEL,
       status: 'running',
       log_summary: '',
       report_path: '',

@@ -21,7 +21,6 @@ const mockAnalysis = () => ({
   covariates: '',
   model: 'logistic',
   analysis_model: 'logistic',
-  llm_model: 'deepseek-v4-pro',
   api_key: '',
 })
 
