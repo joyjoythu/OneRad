@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useRunStore } from '../run'
 import client from '@/api/client'
-import type { RunRecord, AnalysisConfig } from '@/api/runs'
+import type { RunRecord } from '@/api/runs'
+import type { AnalysisConfig } from '@/api/projects'
 
 vi.mock('@/api/client', () => ({
   default: {
@@ -22,7 +23,6 @@ const mockConfig: AnalysisConfig = {
   covariates: '',
   model: 'logistic',
   analysis_model: 'logistic',
-  llm_model: 'deepseek-v4-pro',
   api_key: '',
 }
 
@@ -30,6 +30,7 @@ const mockRun = (id: string, projectId: string): RunRecord => ({
   id,
   project_id: projectId,
   ...mockConfig,
+  llm_model: 'deepseek-v4-pro',
   status: 'completed',
   log_summary: '',
   report_path: `/reports/${id}.pdf`,
