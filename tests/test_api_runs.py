@@ -51,7 +51,6 @@ def _run_config():
         "covariates": "",
         "model": "logistic",
         "analysis_model": "logistic",
-        "llm_model": "deepseek-v4-pro",
         "api_key": "",
     }
 
@@ -80,6 +79,8 @@ def test_get_run_returns_record(client, temp_db):
     data = response.json()
     assert data["id"] == run_id
     assert data["project_id"] == project["id"]
+    if "llm_model" in data:
+        assert data["llm_model"] == "deepseek-v4-pro"
 
     response = client.get("/api/runs/non-existent-id")
     assert response.status_code == 404

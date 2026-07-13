@@ -88,7 +88,6 @@ def test_update_config(client, temp_db):
             "covariates": "age,gender",
             "model": "logistic",
             "analysis_model": "logistic",
-            "llm_model": "deepseek-v4-pro",
             "api_key": "secret",
         },
     )
@@ -186,7 +185,6 @@ def test_update_config_does_not_persist_api_key(client, temp_db):
             "covariates": "age,gender",
             "model": "logistic",
             "analysis_model": "logistic",
-            "llm_model": "deepseek-v4-pro",
             "api_key": "super-secret",
         },
     )
