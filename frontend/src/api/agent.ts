@@ -48,6 +48,10 @@ export interface CreateThreadRequest {
   llm_model: string
 }
 
+export interface CreateThreadResponse {
+  thread_id: string
+}
+
 export interface MessageRequest {
   role: string
   content: string

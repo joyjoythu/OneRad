@@ -80,7 +80,7 @@ async function initThread(projectId: string): Promise<void> {
     if (!config) {
       return
     }
-    await agentStore.ensureThread(projectId, config)
+    await agentStore.ensureThread(projectId, config.api_key, 'deepseek-v4-flash')
   }
 }
 

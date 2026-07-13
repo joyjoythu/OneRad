@@ -9,8 +9,6 @@ import type {
   PendingScript,
 } from '@/api/agent'
 
-import type { AnalysisConfig } from '@/api/projects'
-
 export const useAgentStore = defineStore('agent', () => {
   const threadId = ref<string | null>(null)
   const messages = ref<AgentMessage[]>([])
@@ -45,14 +43,15 @@ export const useAgentStore = defineStore('agent', () => {
 
   async function ensureThread(
     projectId: string,
-    config: AnalysisConfig
+    apiKey: string,
+    llmModel: string
   ): Promise<string> {
     if (threadId.value) {
       return threadId.value
     }
     const { thread_id } = await api.createThread(projectId, {
-      api_key: config.api_key,
-      llm_model: config.llm_model,
+      api_key: apiKey,
+      llm_model: llmModel,
     })
     threadId.value = thread_id
     await syncThread()
