@@ -7,14 +7,14 @@ import { useProjectStore } from '@/stores/project'
 import type { Project, AnalysisConfig } from '@/api/projects'
 
 const mockConfig = (): AnalysisConfig => ({
-  image_dir: '/path/to/images',
-  clinical_path: '/path/to/clinical.csv',
+  image_dir: '/data/images',
+  clinical_path: '/data/clinical.csv',
   output_dir: './outputs',
   modality: 'CT',
-  covariates: 'age,gender',
-  model: 'logistic',
-  analysis_model: 'logistic',
-  api_key: 'sk-test',
+  covariates: 'age,sex',
+  model: 'random_forest',
+  analysis_model: 'random_forest',
+  api_key: 'secret-key',
 })
 
 const mockProject = (): Project => ({
