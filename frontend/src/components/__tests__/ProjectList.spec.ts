@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
-import ElementPlus, { ElMessageBox, ElMessage } from 'element-plus'
+import ElementPlus, { ElMessageBox, ElMessage, MessageBoxData, MessageHandler } from 'element-plus'
 import ProjectList from '../ProjectList.vue'
 import { useProjectStore } from '@/stores/project'
 import type { Project } from '@/api/projects'
@@ -40,9 +40,9 @@ const mockProject = (id: string): Project => ({
 describe('ProjectList', () => {
   beforeEach(() => {
     vi.resetAllMocks()
-    vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm' as any)
-    vi.spyOn(ElMessage, 'error').mockImplementation(() => undefined as any)
-    vi.spyOn(ElMessage, 'warning').mockImplementation(() => undefined as any)
+    vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm' as MessageBoxData)
+    vi.spyOn(ElMessage, 'error').mockImplementation(() => ({ close: () => {} }) as MessageHandler)
+    vi.spyOn(ElMessage, 'warning').mockImplementation(() => ({ close: () => {} }) as MessageHandler)
   })
 
   function setupWrapper() {

@@ -160,7 +160,7 @@ describe('AgentChat', () => {
     expect(agentStore.sendMessage).not.toHaveBeenCalled()
   })
 
-  it('defaults the model selector to deepseek-v4-flash', async () => {
+  it('defaults the model selector to DEFAULT_AGENT_MODEL', async () => {
     const projectStore = useProjectStore()
     projectStore.currentProject = mockProject()
 
