@@ -11,6 +11,8 @@ export interface RunRecord {
   modality: string
   covariates: string
   model: string
+  analysis_model: string
+  llm_model: string
   status: string
   log_summary: string
   report_path: string

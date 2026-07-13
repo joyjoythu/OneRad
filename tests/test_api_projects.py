@@ -86,7 +86,9 @@ def test_update_config(client, temp_db):
             "output_dir": "./out",
             "modality": "CT",
             "covariates": "age,gender",
-            "model": "deepseek-v4-pro",
+            "model": "logistic",
+            "analysis_model": "logistic",
+            "llm_model": "deepseek-v4-pro",
             "api_key": "secret",
         },
     )
@@ -182,7 +184,9 @@ def test_update_config_does_not_persist_api_key(client, temp_db):
             "output_dir": "./out",
             "modality": "CT",
             "covariates": "age,gender",
-            "model": "deepseek-v4-pro",
+            "model": "logistic",
+            "analysis_model": "logistic",
+            "llm_model": "deepseek-v4-pro",
             "api_key": "super-secret",
         },
     )

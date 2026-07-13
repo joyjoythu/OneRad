@@ -62,7 +62,9 @@ def test_save_project_config_updates_yaml(temp_db):
         "output_dir": "./out",
         "modality": "CT",
         "covariates": "age,gender",
-        "model": "deepseek-v4-pro",
+        "model": "logistic",
+        "analysis_model": "logistic",
+        "llm_model": "deepseek-v4-pro",
     })
     assert updated["analysis"]["modality"] == "CT"
     yaml_path = Path(p["path"]) / "project.yaml"

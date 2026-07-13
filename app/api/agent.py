@@ -30,6 +30,13 @@ class MessageRequest(BaseModel):
     content: str
 
 
+class CreateThreadRequest(BaseModel):
+    """Request body for creating an agent thread."""
+
+    api_key: str = ""
+    llm_model: str = "deepseek-v4-pro"
+
+
 class UpdatePlanRequest(BaseModel):
     """Request body for replacing the pending plan on a thread."""
 
@@ -39,7 +46,10 @@ class UpdatePlanRequest(BaseModel):
 def _agent_config(thread_id: str, app) -> Dict[str, Any]:
     """Build the RunnableConfig for a thread, including the api_key from app state."""
     api_key = getattr(app.state, "agent_api_keys", {}).get(thread_id, "")
-    return {"configurable": {"thread_id": thread_id, "api_key": api_key}}
+    llm_model = getattr(app.state, "agent_llm_models", {}).get(
+        thread_id, "deepseek-v4-pro"
+    )
+    return {"configurable": {"thread_id": thread_id, "api_key": api_key, "llm_model": llm_model}}
 
 
 def _render_messages(values: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -169,6 +179,7 @@ def agent_root():
 @router.post("/threads", status_code=status.HTTP_201_CREATED, response_model=Dict[str, Any])
 async def create_thread(
     request: Request,
+    payload: Optional[CreateThreadRequest] = None,
     project_id: str = Query(..., description="Project to associate with the new thread"),
     graph=Depends(get_agent_graph),
     store: ProjectStore = Depends(get_project_store),
@@ -180,10 +191,13 @@ async def create_thread(
             status_code=status.HTTP_404_NOT_FOUND, detail="项目不存在"
         )
 
+    payload = payload or CreateThreadRequest()
     thread_id = str(uuid.uuid4())
-    api_key = project.get("analysis", {}).get("api_key", "")
+    api_key = payload.api_key
+    llm_model = payload.llm_model
     request.app.state.agent_api_keys[thread_id] = api_key
-    initial_state = build_initial_state(project)
+    request.app.state.agent_llm_models[thread_id] = llm_model
+    initial_state = build_initial_state(project, api_key=api_key, llm_model=llm_model)
     await graph.aupdate_state(_agent_config(thread_id, request.app), initial_state)
     return {"thread_id": thread_id}
 

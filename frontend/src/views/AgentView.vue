@@ -76,7 +76,11 @@ async function initThread(projectId: string): Promise<void> {
   if (agentStore.threadId) {
     await agentStore.reconnect()
   } else {
-    await agentStore.ensureThread(projectId)
+    const config = projectStore.currentConfig
+    if (!config) {
+      return
+    }
+    await agentStore.ensureThread(projectId, config)
   }
 }
 

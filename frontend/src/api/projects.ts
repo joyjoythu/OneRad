@@ -7,6 +7,8 @@ export interface AnalysisConfig {
   modality: string
   covariates: string
   model: string
+  analysis_model: string
+  llm_model: string
   api_key: string
 }
 

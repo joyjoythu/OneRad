@@ -24,7 +24,9 @@ class RunConfig(BaseModel):
     output_dir: str = "./outputs"
     modality: str = "auto"
     covariates: str = ""
-    model: str = "deepseek-v4-pro"
+    model: str = "logistic"
+    analysis_model: str = "logistic"
+    llm_model: str = "deepseek-v4-pro"
     api_key: str = ""
 
 
@@ -86,7 +88,8 @@ def run_pipeline(
             output_dir=config.get("output_dir", "./outputs"),
             modality=config.get("modality", "auto"),
             covariates=parse_covariates(config.get("covariates", "")),
-            model=config.get("model", "deepseek-v4-pro"),
+            model=config.get("analysis_model") or config.get("model", "logistic"),
+            llm_model=config.get("llm_model", "deepseek-v4-pro"),
             api_key=config.get("api_key"),
         )
         register_default_handlers(orch)

@@ -67,7 +67,7 @@ describe('useAgentStore', () => {
 
   it('sendMessage appends the user message and calls the API', async () => {
     const store = useAgentStore()
-    await store.ensureThread('project-1')
+    await store.ensureThread('project-1', { api_key: '', llm_model: 'deepseek-v4-pro' } as any)
     await store.sendMessage('Hello')
 
     expect(store.messages).toContainEqual({ role: 'user', content: 'Hello' })
@@ -79,7 +79,7 @@ describe('useAgentStore', () => {
 
   it('applies state from SSE events', async () => {
     const store = useAgentStore()
-    await store.ensureThread('project-1')
+    await store.ensureThread('project-1', { api_key: '', llm_model: 'deepseek-v4-pro' } as any)
     const es = MockEventSource.instances[0]
 
     es.emit('agent', mockState({
@@ -93,7 +93,7 @@ describe('useAgentStore', () => {
 
   it('reconnect syncs state and reopens the event stream', async () => {
     const store = useAgentStore()
-    await store.ensureThread('project-1')
+    await store.ensureThread('project-1', { api_key: '', llm_model: 'deepseek-v4-pro' } as any)
     store.disconnect()
     MockEventSource.instances = []
 

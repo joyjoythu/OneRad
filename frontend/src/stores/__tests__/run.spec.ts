@@ -20,7 +20,9 @@ const mockConfig: AnalysisConfig = {
   output_dir: './outputs',
   modality: 'auto',
   covariates: '',
-  model: 'deepseek-v4-pro',
+  model: 'logistic',
+  analysis_model: 'logistic',
+  llm_model: 'deepseek-v4-pro',
   api_key: '',
 }
 

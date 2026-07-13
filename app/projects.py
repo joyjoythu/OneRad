@@ -112,7 +112,9 @@ class ProjectStore:
                 "output_dir": "./outputs",
                 "modality": "auto",
                 "covariates": "",
-                "model": "deepseek-v4-pro",
+                "model": "logistic",
+                "analysis_model": "logistic",
+                "llm_model": "deepseek-v4-pro",
                 "api_key": "",
             },
         }
@@ -178,7 +180,9 @@ class ProjectStore:
             "output_dir": "./outputs",
             "modality": "auto",
             "covariates": "",
-            "model": "deepseek-v4-pro",
+            "model": "logistic",
+            "analysis_model": "logistic",
+            "llm_model": "deepseek-v4-pro",
             "api_key": "",
         }
 
@@ -199,6 +203,8 @@ class ProjectStore:
         project_path = Path(project["path"])
         yaml_path = project_path / "project.yaml"
 
+        analysis_model = analysis_config.get("analysis_model", "logistic")
+        llm_model = analysis_config.get("llm_model", "deepseek-v4-pro")
         project_data = {
             "name": project["name"],
             "description": project.get("description", ""),
@@ -211,7 +217,9 @@ class ProjectStore:
                 "output_dir": analysis_config.get("output_dir", "./outputs"),
                 "modality": analysis_config.get("modality", "auto"),
                 "covariates": analysis_config.get("covariates", ""),
-                "model": analysis_config.get("model", "deepseek-v4-pro"),
+                "model": analysis_model,
+                "analysis_model": analysis_model,
+                "llm_model": llm_model,
                 # api_key is intentionally never persisted to disk.
                 "api_key": "",
             },
@@ -251,7 +259,8 @@ class ProjectStore:
                     analysis_config.get("output_dir", ""),
                     analysis_config.get("modality", "auto"),
                     analysis_config.get("covariates", ""),
-                    analysis_config.get("model", "deepseek-v4-pro"),
+                    analysis_config.get("analysis_model")
+                    or analysis_config.get("model", "logistic"),
                     "running",
                     "",
                     "",

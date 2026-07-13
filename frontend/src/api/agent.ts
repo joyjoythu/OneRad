@@ -43,8 +43,9 @@ export interface AgentState {
   pending_script: PendingScript | null
 }
 
-export interface CreateThreadResponse {
-  thread_id: string
+export interface CreateThreadRequest {
+  api_key: string
+  llm_model: string
 }
 
 export interface MessageRequest {
@@ -63,9 +64,10 @@ export interface AgentEventCallbacks {
 }
 
 export const createThread = async (
-  projectId: string
+  projectId: string,
+  payload: CreateThreadRequest
 ): Promise<CreateThreadResponse> => {
-  const res = await client.post('/agent/threads', undefined, {
+  const res = await client.post('/agent/threads', payload, {
     params: { project_id: projectId },
   })
   return res.data

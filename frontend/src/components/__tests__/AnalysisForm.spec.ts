@@ -13,6 +13,8 @@ const mockConfig = (): AnalysisConfig => ({
   modality: 'CT',
   covariates: 'age,sex',
   model: 'random_forest',
+  analysis_model: 'random_forest',
+  llm_model: 'deepseek-v4-pro',
   api_key: 'secret-key',
 })
 

@@ -7,6 +7,7 @@ class AgentState(TypedDict):
     project_path: str
     base_url: str
     model: str
+    api_key: Optional[str]
 
     interrupt_type: Optional[str]                  # file_plan / system_command / python_script
     pending_plan: Optional[Dict[str, Any]]           # {"tool_call_id": str, "plan": List[Dict]}

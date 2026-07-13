@@ -13,12 +13,17 @@ from app.actions import execute_plan
 from app.code_runner import execute_script_if_safe
 
 
-def _build_llm(api_key: str, state: AgentState) -> ChatOpenAI:
+def _build_llm(
+    api_key: str, state: AgentState, config: Optional[RunnableConfig] = None
+) -> ChatOpenAI:
     """根据状态构造 ChatOpenAI 实例。"""
+    model = state["model"]
+    if config is not None:
+        model = config.get("configurable", {}).get("llm_model") or model
     return ChatOpenAI(
         api_key=api_key,
         base_url=state["base_url"],
-        model=state["model"],
+        model=model,
         temperature=0.2,
     )
 
@@ -35,7 +40,7 @@ def _resolve_api_key(state: AgentState, config: Optional[RunnableConfig] = None)
 def call_llm(state: AgentState, config: Optional[RunnableConfig] = None) -> dict:
     """调用 LLM，绑定工具后生成回复。"""
     api_key = _resolve_api_key(state, config)
-    llm = _build_llm(api_key, state)
+    llm = _build_llm(api_key, state, config)
     tools = build_tools(state["project_path"], llm)
     model_with_tools = llm.bind_tools(list(tools.values()), parallel_tool_calls=False)
     response = model_with_tools.invoke(state["messages"])
@@ -58,7 +63,7 @@ def process_tool_calls(state: AgentState, config: Optional[RunnableConfig] = Non
         return {"interrupt_type": None}
 
     api_key = _resolve_api_key(state, config)
-    llm = _build_llm(api_key, state)
+    llm = _build_llm(api_key, state, config)
     tools = build_tools(state["project_path"], llm)
 
     updates = {"messages": []}

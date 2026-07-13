@@ -32,18 +32,24 @@ def _create_project(client):
     return response.json()
 
 
+def _create_thread(client, project_id, api_key="", llm_model="deepseek-v4-pro"):
+    response = client.post(
+        f"/api/agent/threads?project_id={project_id}",
+        json={"api_key": api_key, "llm_model": llm_model},
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
 def test_create_thread(client):
     project = _create_project(client)
-    response = client.post(f"/api/agent/threads?project_id={project['id']}")
-    assert response.status_code == 201, response.text
-    data = response.json()
+    data = _create_thread(client, project['id'])
     assert "thread_id" in data
 
 
 def test_get_thread(client):
     project = _create_project(client)
-    created = client.post(f"/api/agent/threads?project_id={project['id']}")
-    thread_id = created.json()["thread_id"]
+    thread_id = _create_thread(client, project['id'])["thread_id"]
 
     response = client.get(f"/api/agent/threads/{thread_id}")
     assert response.status_code == 200, response.text
@@ -57,8 +63,7 @@ def test_get_thread(client):
 def test_send_message_publishes_events(client, app):
     """Mock the graph to verify message sending stores events for SSE replay."""
     project = _create_project(client)
-    created = client.post(f"/api/agent/threads?project_id={project['id']}")
-    thread_id = created.json()["thread_id"]
+    thread_id = _create_thread(client, project['id'])["thread_id"]
 
     async def fake_astream(input_value=None, config=None, stream_mode=None):
         yield {
@@ -96,8 +101,7 @@ def test_send_message_publishes_events(client, app):
 async def test_sse_bridge_receives_agent_events(app, client):
     """Verify the EventBridge can replay agent-scoped events for the SSE feed."""
     project = _create_project(client)
-    created = client.post(f"/api/agent/threads?project_id={project['id']}")
-    thread_id = created.json()["thread_id"]
+    thread_id = _create_thread(client, project['id'])["thread_id"]
 
     bridge = app.state.event_bridge
     await bridge.publish("agent", thread_id, {"hello": "world"})

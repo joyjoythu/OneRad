@@ -31,12 +31,19 @@
           />
         </el-form-item>
 
-        <el-form-item label="模型">
-          <el-select v-model="draft.model" placeholder="请选择模型">
+        <el-form-item label="分析模型">
+          <el-select v-model="draft.analysis_model" placeholder="请选择分析模型">
             <el-option label="Logistic 回归" value="logistic" />
             <el-option label="随机森林" value="random_forest" />
             <el-option label="支持向量机" value="svm" />
             <el-option label="XGBoost" value="xgboost" />
+          </el-select>
+        </el-form-item>
+
+        <el-form-item label="LLM 模型">
+          <el-select v-model="draft.llm_model" placeholder="请选择 LLM 模型">
+            <el-option label="DeepSeek-V4 Pro" value="deepseek-v4-pro" />
+            <el-option label="DeepSeek-V4 Flash" value="deepseek-v4-flash" />
           </el-select>
         </el-form-item>
 
@@ -97,6 +104,8 @@ const defaultConfig = (): AnalysisConfig => ({
   modality: 'CT',
   covariates: '',
   model: 'logistic',
+  analysis_model: 'logistic',
+  llm_model: 'deepseek-v4-pro',
   api_key: '',
 })
 
@@ -110,6 +119,8 @@ function configsEqual(a: AnalysisConfig, b: AnalysisConfig): boolean {
     a.modality === b.modality &&
     a.covariates === b.covariates &&
     a.model === b.model &&
+    a.analysis_model === b.analysis_model &&
+    a.llm_model === b.llm_model &&
     a.api_key === b.api_key
   )
 }

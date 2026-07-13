@@ -130,7 +130,8 @@ class Orchestrator:
         resampled_pixel_spacing: Optional[Tuple[float, float, float]] = None,
         api_key: Optional[str] = None,
         base_url: str = "https://api.deepseek.com/v1",
-        model: str = "deepseek-v4-pro",
+        model: str = "logistic",
+        llm_model: str = "deepseek-v4-pro",
         max_lasso_features: int = 100,
         n_splits: int = 5,
     ):
@@ -152,10 +153,11 @@ class Orchestrator:
                 "resampled_pixel_spacing": resampled_pixel_spacing,
                 "max_lasso_features": max_lasso_features,
                 "n_splits": n_splits,
+                "model": model,
                 "llm": {
                     "api_key": api_key,
                     "base_url": base_url,
-                    "model": model,
+                    "model": llm_model,
                 },
             },
             "discovery": None,
