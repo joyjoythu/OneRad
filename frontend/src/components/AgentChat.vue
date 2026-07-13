@@ -53,7 +53,7 @@
         <el-select
           v-model="selectedModel"
           class="model-selector"
-          placeholder="选择模型"
+          placeholder="模型（仅新会话）"
           :disabled="!agentStore.threadId"
           @change="handleModelChange"
         >
@@ -73,6 +73,10 @@
   </div>
 </template>
 
+<script lang="ts">
+export const DEFAULT_AGENT_MODEL = 'deepseek-v4-flash'
+</script>
+
 <script setup lang="ts">
 import { ref, computed, watchEffect, nextTick } from 'vue'
 import { Promotion } from '@element-plus/icons-vue'
@@ -88,7 +92,7 @@ const emit = defineEmits<{
 
 const input = ref('')
 const messageContainer = ref<HTMLDivElement | null>(null)
-const selectedModel = ref('deepseek-v4-flash')
+const selectedModel = ref(DEFAULT_AGENT_MODEL)
 
 const canSend = computed(() => {
   return agentStore.threadId && input.value.trim().length > 0

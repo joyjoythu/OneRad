@@ -45,7 +45,7 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useAgentStore } from '@/stores/agent'
 import { useProjectStore } from '@/stores/project'
-import AgentChat from '@/components/AgentChat.vue'
+import AgentChat, { DEFAULT_AGENT_MODEL } from '@/components/AgentChat.vue'
 import PlanPanel from '@/components/PlanPanel.vue'
 import CommandPanel from '@/components/CommandPanel.vue'
 import ScriptPanel from '@/components/ScriptPanel.vue'
@@ -53,7 +53,7 @@ import ScriptPanel from '@/components/ScriptPanel.vue'
 const agentStore = useAgentStore()
 const projectStore = useProjectStore()
 
-const selectedModel = ref('deepseek-v4-flash')
+const selectedModel = ref(DEFAULT_AGENT_MODEL)
 
 const pageTitle = computed(() => {
   return projectStore.currentProject
