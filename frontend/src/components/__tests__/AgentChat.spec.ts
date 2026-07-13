@@ -1,8 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { mount, flushPromises, VueWrapper } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import ElementPlus from 'element-plus'
-import AgentChat, { DEFAULT_AGENT_MODEL } from '../AgentChat.vue'
+import AgentChat from '../AgentChat.vue'
+import { DEFAULT_AGENT_MODEL } from '@/api/agent'
 import { useAgentStore } from '@/stores/agent'
 import { useProjectStore } from '@/stores/project'
 import type { Project } from '@/api/projects'
@@ -78,13 +79,9 @@ describe('AgentChat', () => {
     expect(rows[2].text()).toContain('result')
   })
 
-  it('sends a message when clicking the send button', async () => {
+  it('emits send-message when clicking the send button', async () => {
     const projectStore = useProjectStore()
     projectStore.currentProject = mockProject()
-
-    const agentStore = useAgentStore()
-    agentStore.threadId = 'thread-1'
-    vi.spyOn(agentStore, 'sendMessage').mockResolvedValue(undefined)
 
     const wrapper = setupWrapper()
     await flushPromises()
@@ -99,17 +96,14 @@ describe('AgentChat', () => {
     await sendButton!.trigger('click')
     await flushPromises()
 
-    expect(agentStore.sendMessage).toHaveBeenCalledWith('Test message', 'user')
+    expect(wrapper.emitted('send-message')).toHaveLength(1)
+    expect(wrapper.emitted('send-message')![0]).toEqual(['Test message'])
     expect((textarea.element as HTMLTextAreaElement).value).toBe('')
   })
 
-  it('sends a message when pressing Enter', async () => {
+  it('emits send-message when pressing Enter', async () => {
     const projectStore = useProjectStore()
     projectStore.currentProject = mockProject()
-
-    const agentStore = useAgentStore()
-    agentStore.threadId = 'thread-1'
-    vi.spyOn(agentStore, 'sendMessage').mockResolvedValue(undefined)
 
     const wrapper = setupWrapper()
     await flushPromises()
@@ -119,16 +113,13 @@ describe('AgentChat', () => {
     await textarea.trigger('keydown', { key: 'Enter', shiftKey: false })
     await flushPromises()
 
-    expect(agentStore.sendMessage).toHaveBeenCalledWith('Enter message', 'user')
+    expect(wrapper.emitted('send-message')).toHaveLength(1)
+    expect(wrapper.emitted('send-message')![0]).toEqual(['Enter message'])
   })
 
-  it('does not send on Enter while IME is composing', async () => {
+  it('does not emit send-message on Enter while IME is composing', async () => {
     const projectStore = useProjectStore()
     projectStore.currentProject = mockProject()
-
-    const agentStore = useAgentStore()
-    agentStore.threadId = 'thread-1'
-    vi.spyOn(agentStore, 'sendMessage').mockResolvedValue(undefined)
 
     const wrapper = setupWrapper()
     await flushPromises()
@@ -138,16 +129,12 @@ describe('AgentChat', () => {
     await textarea.trigger('keydown', { key: 'Enter', shiftKey: false, isComposing: true })
     await flushPromises()
 
-    expect(agentStore.sendMessage).not.toHaveBeenCalled()
+    expect(wrapper.emitted('send-message')).toBeUndefined()
   })
 
-  it('does not send on Shift+Enter', async () => {
+  it('does not emit send-message on Shift+Enter', async () => {
     const projectStore = useProjectStore()
     projectStore.currentProject = mockProject()
-
-    const agentStore = useAgentStore()
-    agentStore.threadId = 'thread-1'
-    vi.spyOn(agentStore, 'sendMessage').mockResolvedValue(undefined)
 
     const wrapper = setupWrapper()
     await flushPromises()
@@ -157,7 +144,21 @@ describe('AgentChat', () => {
     await textarea.trigger('keydown', { key: 'Enter', shiftKey: true })
     await flushPromises()
 
-    expect(agentStore.sendMessage).not.toHaveBeenCalled()
+    expect(wrapper.emitted('send-message')).toBeUndefined()
+  })
+
+  it('enables the input and model selector when a project is selected without a thread', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    const textarea = wrapper.find('textarea')
+    expect(textarea.attributes('disabled')).toBeUndefined()
+
+    const select = wrapper.findComponent('.model-selector') as VueWrapper<any>
+    expect(select.props('disabled')).toBeFalsy()
   })
 
   it('defaults the model selector to DEFAULT_AGENT_MODEL', async () => {

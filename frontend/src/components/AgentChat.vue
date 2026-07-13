@@ -47,14 +47,13 @@
           resize="none"
           placeholder="请输入消息，Enter 发送，Shift+Enter 换行"
           aria-label="消息输入"
-          :disabled="!agentStore.threadId"
+          :disabled="!projectStore.currentProject"
           @keydown="handleKeydown"
         />
         <el-select
           v-model="selectedModel"
           class="model-selector"
           placeholder="模型（仅新会话）"
-          :disabled="!agentStore.threadId"
           @change="handleModelChange"
         >
           <el-option label="DeepSeek-V4 Flash" value="deepseek-v4-flash" />
@@ -73,21 +72,19 @@
   </div>
 </template>
 
-<script lang="ts">
-export const DEFAULT_AGENT_MODEL = 'deepseek-v4-flash'
-</script>
-
 <script setup lang="ts">
 import { ref, computed, watchEffect, nextTick } from 'vue'
 import { Promotion } from '@element-plus/icons-vue'
 import { useAgentStore } from '@/stores/agent'
 import { useProjectStore } from '@/stores/project'
+import { DEFAULT_AGENT_MODEL } from '@/api/agent'
 
 const agentStore = useAgentStore()
 const projectStore = useProjectStore()
 
 const emit = defineEmits<{
   'update:model': [model: string]
+  'send-message': [content: string]
 }>()
 
 const input = ref('')
@@ -95,7 +92,7 @@ const messageContainer = ref<HTMLDivElement | null>(null)
 const selectedModel = ref(DEFAULT_AGENT_MODEL)
 
 const canSend = computed(() => {
-  return agentStore.threadId && input.value.trim().length > 0
+  return projectStore.currentProject !== null && input.value.trim().length > 0
 })
 
 watchEffect(async () => {
@@ -125,14 +122,10 @@ function handleModelChange(value: string): void {
 
 async function handleSend(): Promise<void> {
   const content = input.value.trim()
-  if (!content || !agentStore.threadId) return
+  if (!content) return
 
   input.value = ''
-  try {
-    await agentStore.sendMessage(content, 'user')
-  } catch {
-    // 错误已由 axios 拦截器统一提示
-  }
+  emit('send-message', content)
 }
 </script>
 

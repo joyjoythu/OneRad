@@ -9,7 +9,7 @@
 
     <div class="agent-workspace">
       <div class="agent-chat-wrapper">
-        <AgentChat @update:model="selectedModel = $event" />
+        <AgentChat @update:model="selectedModel = $event" @send-message="handleSendMessage" />
       </div>
 
       <div class="agent-side-panel">
@@ -45,10 +45,11 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useAgentStore } from '@/stores/agent'
 import { useProjectStore } from '@/stores/project'
-import AgentChat, { DEFAULT_AGENT_MODEL } from '@/components/AgentChat.vue'
+import AgentChat from '@/components/AgentChat.vue'
 import PlanPanel from '@/components/PlanPanel.vue'
 import CommandPanel from '@/components/CommandPanel.vue'
 import ScriptPanel from '@/components/ScriptPanel.vue'
+import { DEFAULT_AGENT_MODEL } from '@/api/agent'
 
 const agentStore = useAgentStore()
 const projectStore = useProjectStore()
@@ -74,26 +75,24 @@ const interruptTag = computed(() => {
   }
 })
 
-async function initThread(projectId: string): Promise<void> {
-  if (agentStore.threadId) {
-    await agentStore.reconnect()
-  } else {
-    const config = projectStore.currentConfig
-    if (!config) {
-      return
-    }
+async function handleSendMessage(content: string): Promise<void> {
+  const projectId = projectStore.currentProject?.id
+  if (!projectId) return
+  const config = projectStore.currentConfig
+  if (!config) return
+  if (!agentStore.threadId) {
     await agentStore.ensureThread(projectId, config.api_key, selectedModel.value)
+  }
+  try {
+    await agentStore.sendMessage(content, 'user')
+  } catch {
+    // errors handled by axios interceptor
   }
 }
 
-function resetAndInit(projectId: string): void {
-  agentStore.resetThread()
-  void initThread(projectId)
-}
-
 onMounted(() => {
-  if (projectStore.currentProject) {
-    void initThread(projectStore.currentProject.id)
+  if (projectStore.currentProject && agentStore.threadId) {
+    void agentStore.reconnect()
   }
 })
 
@@ -108,8 +107,8 @@ watch(
       agentStore.resetThread()
       return
     }
-    if (newId !== oldId) {
-      resetAndInit(newId)
+    if (newId !== oldId && agentStore.threadId) {
+      void agentStore.reconnect()
     }
   }
 )

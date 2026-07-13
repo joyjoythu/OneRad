@@ -1,6 +1,8 @@
 import client from './client'
 import { API_BASE } from './client'
 
+export const DEFAULT_AGENT_MODEL = 'deepseek-v4-flash'
+
 export interface AgentMessage {
   role: string
   content: string
