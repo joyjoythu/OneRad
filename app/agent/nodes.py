@@ -68,6 +68,9 @@ def process_tool_calls(state: AgentState, config: Optional[RunnableConfig] = Non
 
     updates = {"messages": []}
     interrupt_type = None
+    # 同一轮 LLM 输出中最多只允许一个需要人工确认的工具调用，
+    # 避免 pending 被覆盖导致部分 tool_call_id 缺少响应。
+    confirmation_pending = False
 
     for tc in tool_calls:
         name = tc.get("name") if isinstance(tc, dict) else None
@@ -92,27 +95,41 @@ def process_tool_calls(state: AgentState, config: Optional[RunnableConfig] = Non
             ))
             continue
 
-        if name in {"list_directory", "find_files", "get_file_info"}:
-            interrupt_type = "system_command"
-            updates["pending_command"] = {"tool_call_id": tool_call_id, **parsed}
-        elif name == "plan_file_operations":
-            interrupt_type = "file_plan"
-            updates["pending_plan"] = {"tool_call_id": tool_call_id, "plan": parsed}
-        elif name == "execute_python_script":
-            if isinstance(parsed, dict):
-                if "error" in parsed:
-                    updates["messages"].append(ToolMessage(content=tool_result, tool_call_id=tool_call_id))
-                elif "_pending_tool" in parsed and "script" in parsed:
-                    interrupt_type = "python_script"
-                    updates["pending_script"] = {"tool_call_id": tool_call_id, **parsed["script"]}
-                    updates["script_risk_level"] = parsed["script"]["risk_level"]
-                else:
-                    updates["messages"].append(ToolMessage(content=tool_result, tool_call_id=tool_call_id))
-            else:
+        needs_confirmation = name in {
+            "list_directory",
+            "find_files",
+            "get_file_info",
+            "plan_file_operations",
+        } or (
+            name == "execute_python_script"
+            and isinstance(parsed, dict)
+            and "_pending_tool" in parsed
+            and "script" in parsed
+        )
+
+        if needs_confirmation:
+            if confirmation_pending:
+                # 已经有一个需要确认的工具在处理中；为该 tool_call_id 返回错误响应，
+                # 保证 assistant 的 tool_calls 后每个 id 都有 tool 消息。
                 updates["messages"].append(ToolMessage(
-                    content=json.dumps({"error": f"Tool {name} returned non-dict result"}),
+                    content=json.dumps({
+                        "error": "一次只能处理一个需要确认的操作，请重新请求",
+                    }),
                     tool_call_id=tool_call_id,
                 ))
+                continue
+            confirmation_pending = True
+            if name in {"list_directory", "find_files", "get_file_info"}:
+                interrupt_type = "system_command"
+                updates["pending_command"] = {"tool_call_id": tool_call_id, **parsed}
+            elif name == "plan_file_operations":
+                interrupt_type = "file_plan"
+                updates["pending_plan"] = {"tool_call_id": tool_call_id, "plan": parsed}
+            elif name == "execute_python_script":
+                interrupt_type = "python_script"
+                updates["pending_script"] = {"tool_call_id": tool_call_id, **parsed["script"]}
+                updates["script_risk_level"] = parsed["script"]["risk_level"]
+            # 需要确认的工具不在此处生成 ToolMessage，由 execute_confirmed 在用户确认/取消后统一补齐。
         else:
             updates["messages"].append(ToolMessage(content=tool_result, tool_call_id=tool_call_id))
 
@@ -146,6 +163,22 @@ def human_review(state: AgentState) -> dict:
     }
 
 
+def _resolve_tool_call_id(state: AgentState) -> str:
+    """从中断的 pending 状态或最近一条 assistant 消息中解析 tool_call_id。"""
+    for pending in (
+        state.get("pending_plan"),
+        state.get("pending_command"),
+        state.get("pending_script"),
+    ):
+        if pending:
+            return pending.get("tool_call_id", "") or ""
+    last = state["messages"][-1] if state.get("messages") else None
+    tool_calls = getattr(last, "tool_calls", []) if last else []
+    if tool_calls:
+        return tool_calls[0].get("id", "") or ""
+    return ""
+
+
 def execute_confirmed(state: AgentState) -> dict:
     """根据用户确认结果执行待处理操作或取消，并清空中断状态。"""
     itype = state["interrupt_type"]
@@ -155,32 +188,46 @@ def execute_confirmed(state: AgentState) -> dict:
     pending_script = state.get("pending_script")
 
     if itype == "file_plan":
+        tool_call_id = (pending_plan or {}).get("tool_call_id", "") or _resolve_tool_call_id(state)
         if not pending_plan:
+            if not tool_call_id:
+                raise RuntimeError("Missing pending plan and cannot resolve tool_call_id")
             return _clear_interrupt({
-                "messages": [ToolMessage(content=json.dumps({"error": "Missing pending plan"}), tool_call_id="")]
+                "messages": [ToolMessage(
+                    content=json.dumps({"error": "Missing pending plan"}),
+                    tool_call_id=tool_call_id,
+                )]
             })
-        tool_call_id = pending_plan["tool_call_id"]
     elif itype == "system_command":
+        tool_call_id = (pending_command or {}).get("tool_call_id", "") or _resolve_tool_call_id(state)
         if not pending_command:
+            if not tool_call_id:
+                raise RuntimeError("Missing pending command and cannot resolve tool_call_id")
             return _clear_interrupt({
-                "messages": [ToolMessage(content=json.dumps({"error": "Missing pending command"}), tool_call_id="")]
+                "messages": [ToolMessage(
+                    content=json.dumps({"error": "Missing pending command"}),
+                    tool_call_id=tool_call_id,
+                )]
             })
-        tool_call_id = pending_command["tool_call_id"]
     elif itype == "python_script":
+        tool_call_id = (pending_script or {}).get("tool_call_id", "") or _resolve_tool_call_id(state)
         if not pending_script:
+            if not tool_call_id:
+                raise RuntimeError("Missing pending script and cannot resolve tool_call_id")
             return _clear_interrupt({
-                "messages": [ToolMessage(content=json.dumps({"error": "Missing pending script"}), tool_call_id="")]
+                "messages": [ToolMessage(
+                    content=json.dumps({"error": "Missing pending script"}),
+                    tool_call_id=tool_call_id,
+                )]
             })
-        tool_call_id = pending_script["tool_call_id"]
     else:
-        tool_call_id = (
-            (pending_plan or {}).get("tool_call_id", "")
-            or (pending_command or {}).get("tool_call_id", "")
-            or (pending_script or {}).get("tool_call_id", "")
-            or ""
-        )
+        tool_call_id = _resolve_tool_call_id(state)
+        if not tool_call_id:
+            raise RuntimeError(f"Unknown interrupt type {itype} and cannot resolve tool_call_id")
         content = json.dumps({"error": f"unknown interrupt type: {itype}"})
-        return _clear_interrupt({"messages": [ToolMessage(content=content, tool_call_id=tool_call_id)]})
+        return _clear_interrupt({
+            "messages": [ToolMessage(content=content, tool_call_id=tool_call_id)]
+        })
 
     if not state.get("confirmed"):
         content = json.dumps({"cancelled": True, "reason": "用户取消了操作"})
