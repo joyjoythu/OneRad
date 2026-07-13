@@ -50,6 +50,16 @@
           :disabled="!agentStore.threadId"
           @keydown="handleKeydown"
         />
+        <el-select
+          v-model="selectedModel"
+          class="model-selector"
+          placeholder="选择模型"
+          :disabled="!agentStore.threadId"
+          @change="handleModelChange"
+        >
+          <el-option label="DeepSeek-V4 Flash" value="deepseek-v4-flash" />
+          <el-option label="DeepSeek-V4 Pro" value="deepseek-v4-pro" />
+        </el-select>
         <el-button
           type="primary"
           :icon="Promotion"
@@ -72,8 +82,13 @@ import { useProjectStore } from '@/stores/project'
 const agentStore = useAgentStore()
 const projectStore = useProjectStore()
 
+const emit = defineEmits<{
+  'update:model': [model: string]
+}>()
+
 const input = ref('')
 const messageContainer = ref<HTMLDivElement | null>(null)
+const selectedModel = ref('deepseek-v4-flash')
 
 const canSend = computed(() => {
   return agentStore.threadId && input.value.trim().length > 0
@@ -98,6 +113,10 @@ function handleKeydown(event: KeyboardEvent): void {
     event.preventDefault()
     handleSend()
   }
+}
+
+function handleModelChange(value: string): void {
+  emit('update:model', value)
 }
 
 async function handleSend(): Promise<void> {
@@ -203,6 +222,14 @@ async function handleSend(): Promise<void> {
 }
 
 .message-input-area .el-button {
+  margin-bottom: 1px;
+}
+
+.model-selector {
+  width: 150px;
+}
+
+.model-selector :deep(.el-select__wrapper) {
   margin-bottom: 1px;
 }
 </style>
