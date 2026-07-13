@@ -24,7 +24,6 @@ const mockAnalysis = () => ({
   covariates: '',
   model: 'logistic',
   analysis_model: 'logistic',
-  llm_model: 'deepseek-v4-pro',
   api_key: '',
 })
 
@@ -41,9 +40,9 @@ const mockProject = (id: string): Project => ({
 describe('ProjectList', () => {
   beforeEach(() => {
     vi.resetAllMocks()
-    vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm')
-    vi.spyOn(ElMessage, 'error').mockImplementation(() => {})
-    vi.spyOn(ElMessage, 'warning').mockImplementation(() => {})
+    vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm' as any)
+    vi.spyOn(ElMessage, 'error').mockImplementation(() => undefined as any)
+    vi.spyOn(ElMessage, 'warning').mockImplementation(() => undefined as any)
   })
 
   function setupWrapper() {

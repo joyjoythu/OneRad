@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises, VueWrapper } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import ElementPlus from 'element-plus'
-import AgentChat from '../AgentChat.vue'
+import AgentChat, { DEFAULT_AGENT_MODEL } from '../AgentChat.vue'
 import { useAgentStore } from '@/stores/agent'
 import { useProjectStore } from '@/stores/project'
 import type { Project } from '@/api/projects'
@@ -172,7 +172,7 @@ describe('AgentChat', () => {
 
     const select = wrapper.findComponent('.model-selector') as VueWrapper<any>
     expect(select.exists()).toBe(true)
-    expect(select.props('modelValue')).toBe('deepseek-v4-flash')
+    expect(select.props('modelValue')).toBe(DEFAULT_AGENT_MODEL)
   })
 
   it('emits update:model when the model selector changes', async () => {

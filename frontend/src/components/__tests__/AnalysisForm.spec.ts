@@ -7,15 +7,14 @@ import { useProjectStore } from '@/stores/project'
 import type { Project, AnalysisConfig } from '@/api/projects'
 
 const mockConfig = (): AnalysisConfig => ({
-  image_dir: '/data/images',
-  clinical_path: '/data/clinical.csv',
+  image_dir: '/path/to/images',
+  clinical_path: '/path/to/clinical.csv',
   output_dir: './outputs',
   modality: 'CT',
-  covariates: 'age,sex',
-  model: 'random_forest',
-  analysis_model: 'random_forest',
-  llm_model: 'deepseek-v4-pro',
-  api_key: 'secret-key',
+  covariates: 'age,gender',
+  model: 'logistic',
+  analysis_model: 'logistic',
+  api_key: 'sk-test',
 })
 
 const mockProject = (): Project => ({
@@ -116,6 +115,6 @@ describe('AnalysisForm', () => {
     const events = wrapper.emitted('update:config')
     expect(events).toBeDefined()
     expect(events!.length).toBeGreaterThan(0)
-    expect((events!.at(-1) as [AnalysisConfig])[0].image_dir).toBe('/new/images')
+    expect((events![events!.length - 1] as [AnalysisConfig])[0].image_dir).toBe('/new/images')
   })
 })
