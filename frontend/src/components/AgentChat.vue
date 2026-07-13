@@ -124,9 +124,14 @@ async function handleSend(): Promise<void> {
   const content = input.value.trim()
   if (!content) return
 
-  input.value = ''
   emit('send-message', content)
 }
+
+function clearInput(): void {
+  input.value = ''
+}
+
+defineExpose({ clearInput })
 </script>
 
 <style scoped>

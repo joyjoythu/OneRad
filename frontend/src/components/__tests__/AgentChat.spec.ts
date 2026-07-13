@@ -98,7 +98,7 @@ describe('AgentChat', () => {
 
     expect(wrapper.emitted('send-message')).toHaveLength(1)
     expect(wrapper.emitted('send-message')![0]).toEqual(['Test message'])
-    expect((textarea.element as HTMLTextAreaElement).value).toBe('')
+    expect((textarea.element as HTMLTextAreaElement).value).toBe('Test message')
   })
 
   it('emits send-message when pressing Enter', async () => {

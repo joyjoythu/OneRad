@@ -9,7 +9,11 @@
 
     <div class="agent-workspace">
       <div class="agent-chat-wrapper">
-        <AgentChat @update:model="selectedModel = $event" @send-message="handleSendMessage" />
+        <AgentChat
+          ref="agentChatRef"
+          @update:model="selectedModel = $event"
+          @send-message="handleSendMessage"
+        />
       </div>
 
       <div class="agent-side-panel">
@@ -55,6 +59,7 @@ const agentStore = useAgentStore()
 const projectStore = useProjectStore()
 
 const selectedModel = ref(DEFAULT_AGENT_MODEL)
+const agentChatRef = ref<InstanceType<typeof AgentChat> | null>(null)
 
 const pageTitle = computed(() => {
   return projectStore.currentProject
@@ -85,6 +90,7 @@ async function handleSendMessage(content: string): Promise<void> {
   }
   try {
     await agentStore.sendMessage(content, 'user')
+    agentChatRef.value?.clearInput()
   } catch {
     // errors handled by axios interceptor
   }
@@ -103,11 +109,10 @@ onUnmounted(() => {
 watch(
   () => projectStore.currentProject?.id,
   (newId, oldId) => {
-    if (!newId) {
+    if (newId !== oldId) {
       agentStore.resetThread()
-      return
     }
-    if (newId !== oldId && agentStore.threadId) {
+    if (newId && agentStore.threadId) {
       void agentStore.reconnect()
     }
   }
