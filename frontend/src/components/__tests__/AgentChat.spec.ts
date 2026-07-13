@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { mount, flushPromises } from '@vue/test-utils'
+import { mount, flushPromises, VueWrapper } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import ElementPlus from 'element-plus'
 import AgentChat from '../AgentChat.vue'
@@ -22,7 +22,6 @@ const mockProject = (): Project => ({
     covariates: '',
     model: 'logistic',
     analysis_model: 'logistic',
-    llm_model: 'deepseek-v4-pro',
     api_key: '',
   },
 })
@@ -159,5 +158,38 @@ describe('AgentChat', () => {
     await flushPromises()
 
     expect(agentStore.sendMessage).not.toHaveBeenCalled()
+  })
+
+  it('defaults the model selector to deepseek-v4-flash', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.threadId = 'thread-1'
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    const select = wrapper.findComponent('.model-selector') as VueWrapper<any>
+    expect(select.exists()).toBe(true)
+    expect(select.props('modelValue')).toBe('deepseek-v4-flash')
+  })
+
+  it('emits update:model when the model selector changes', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.threadId = 'thread-1'
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    const select = wrapper.findComponent('.model-selector') as VueWrapper<any>
+    select.vm.$emit('change', 'deepseek-v4-pro')
+    await flushPromises()
+
+    expect(wrapper.emitted('update:model')).toHaveLength(1)
+    expect(wrapper.emitted('update:model')![0]).toEqual(['deepseek-v4-pro'])
   })
 })
