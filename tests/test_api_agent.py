@@ -47,6 +47,15 @@ def test_create_thread(client):
     assert "thread_id" in data
 
 
+def test_create_thread_rejects_invalid_llm_model(client):
+    project = _create_project(client)
+    response = client.post(
+        f"/api/agent/threads?project_id={project['id']}",
+        json={"api_key": "", "llm_model": "gpt-4"},
+    )
+    assert response.status_code == 422, response.text
+
+
 def test_get_thread(client):
     project = _create_project(client)
     thread_id = _create_thread(client, project['id'])["thread_id"]

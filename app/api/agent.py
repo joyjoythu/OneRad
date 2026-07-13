@@ -34,7 +34,7 @@ class CreateThreadRequest(BaseModel):
     """Request body for creating an agent thread."""
 
     api_key: str = ""
-    llm_model: str = "deepseek-v4-pro"
+    llm_model: Literal["deepseek-v4-pro", "deepseek-v4-flash"] = "deepseek-v4-pro"
 
 
 class UpdatePlanRequest(BaseModel):
