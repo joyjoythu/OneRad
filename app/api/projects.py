@@ -56,7 +56,6 @@ class UpdateConfigRequest(BaseModel):
     covariates: str = ""
     model: str = "logistic"
     analysis_model: str = "logistic"
-    llm_model: str = "deepseek-v4-pro"
     api_key: str = ""
 
 
