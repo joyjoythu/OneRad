@@ -9,7 +9,7 @@
 
     <div class="agent-workspace">
       <div class="agent-chat-wrapper">
-        <AgentChat />
+        <AgentChat @update:model="selectedModel = $event" />
       </div>
 
       <div class="agent-side-panel">
@@ -42,7 +42,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useAgentStore } from '@/stores/agent'
 import { useProjectStore } from '@/stores/project'
 import AgentChat from '@/components/AgentChat.vue'
@@ -52,6 +52,8 @@ import ScriptPanel from '@/components/ScriptPanel.vue'
 
 const agentStore = useAgentStore()
 const projectStore = useProjectStore()
+
+const selectedModel = ref('deepseek-v4-flash')
 
 const pageTitle = computed(() => {
   return projectStore.currentProject
@@ -80,7 +82,7 @@ async function initThread(projectId: string): Promise<void> {
     if (!config) {
       return
     }
-    await agentStore.ensureThread(projectId, config.api_key, 'deepseek-v4-flash')
+    await agentStore.ensureThread(projectId, config.api_key, selectedModel.value)
   }
 }
 
