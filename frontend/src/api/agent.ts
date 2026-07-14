@@ -63,6 +63,20 @@ export interface UpdatePlanRequest {
   plan: PendingPlan
 }
 
+export interface ThreadSummary {
+  id: string
+  project_id: string
+  title: string
+  llm_model: string
+  created_at: string
+  updated_at: string
+}
+
+export interface LoadThreadRequest {
+  api_key: string
+  llm_model: string
+}
+
 export interface AgentEventCallbacks {
   onState?: (state: AgentState) => void
   onEnd?: () => void
@@ -118,6 +132,41 @@ export const confirm = async (threadId: string): Promise<{ thread_id: string }> 
 
 export const cancel = async (threadId: string): Promise<{ thread_id: string }> => {
   const res = await client.post(`/agent/threads/${encodeURIComponent(threadId)}/cancel`)
+  return res.data
+}
+
+export const listThreads = async (
+  projectId: string
+): Promise<{ threads: ThreadSummary[] }> => {
+  const res = await client.get('/agent/threads', {
+    params: { project_id: projectId },
+  })
+  return res.data
+}
+
+export const deleteThread = async (threadId: string): Promise<void> => {
+  await client.delete(`/agent/threads/${encodeURIComponent(threadId)}`)
+}
+
+export const renameThread = async (
+  threadId: string,
+  title: string
+): Promise<{ thread: ThreadSummary }> => {
+  const res = await client.patch(
+    `/agent/threads/${encodeURIComponent(threadId)}`,
+    { title }
+  )
+  return res.data
+}
+
+export const resumeThread = async (
+  threadId: string,
+  payload: LoadThreadRequest
+): Promise<AgentState & { thread_id: string }> => {
+  const res = await client.post(
+    `/agent/threads/${encodeURIComponent(threadId)}/resume`,
+    payload
+  )
   return res.data
 }
 
