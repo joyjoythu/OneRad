@@ -80,6 +80,8 @@ export const useAgentStore = defineStore('agent', () => {
     }
     await syncThread()
     await listThreads(projectId)
+    currentThread.value =
+      threads.value.find((t) => t.id === threadId.value) || currentThread.value
     connect()
     return thread_id
   }
@@ -92,7 +94,7 @@ export const useAgentStore = defineStore('agent', () => {
 
   async function listThreads(projectId: string): Promise<void> {
     const data = await api.listThreads(projectId)
-    threads.value = data.threads
+    threads.value = data.threads ?? []
   }
 
   async function loadThread(
@@ -107,7 +109,14 @@ export const useAgentStore = defineStore('agent', () => {
     })
     threadId.value = state.thread_id
     currentThread.value =
-      threads.value.find((t) => t.id === threadIdToLoad) || null
+      threads.value.find((t) => t.id === threadIdToLoad) || {
+        id: threadIdToLoad,
+        project_id: '',
+        title: '',
+        llm_model: llmModel,
+        created_at: '',
+        updated_at: '',
+      }
     applyState(state)
     connect()
   }
@@ -132,6 +141,8 @@ export const useAgentStore = defineStore('agent', () => {
       updated_at: '',
     }
     await listThreads(projectId)
+    currentThread.value =
+      threads.value.find((t) => t.id === threadId.value) || currentThread.value
     connect()
     return thread_id
   }
@@ -154,9 +165,8 @@ export const useAgentStore = defineStore('agent', () => {
   ): Promise<void> {
     await api.renameThread(threadIdToRename, title)
     await listThreads(projectId)
-    if (currentThread.value?.id === threadIdToRename) {
-      currentThread.value.title = title
-    }
+    currentThread.value =
+      threads.value.find((t) => t.id === threadIdToRename) || currentThread.value
   }
 
   function connect(): void {
