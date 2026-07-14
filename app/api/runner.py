@@ -124,6 +124,16 @@ def run_pipeline(
         error_event = {"type": "pipeline_error", "message": str(exc), "traceback": tb}
         publish_event(bridge, loop, run_id, error_event)
         store.record_run_end(run_id, "failed", f"{exc}\n{tb}")
+    except BaseException as exc:
+        # Raised when the asyncio task is cancelled from outside.
+        publish_event(
+            bridge,
+            loop,
+            run_id,
+            {"type": "pipeline_cancelled", "message": "用户取消运行"},
+        )
+        store.record_run_end(run_id, "cancelled", "用户取消")
+        raise
 
 
 def start_pipeline_task(
