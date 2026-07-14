@@ -27,6 +27,7 @@ async def lifespan(app: FastAPI):
     app.state.project_store = ProjectStore(db_path=str(data_dir / "projects.db"))
     app.state.event_bridge = EventBridge(str(app.state.project_store.db_path))
     app.state.pipeline_tasks = set()
+    app.state.pipeline_task_map = {}
     app.state.active_agent_streams = set()
     app.state.agent_api_keys = {}
     app.state.agent_llm_models = {}

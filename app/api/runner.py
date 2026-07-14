@@ -140,6 +140,7 @@ def start_pipeline_task(
     async def _tracked_run() -> None:
         task = asyncio.current_task()
         app.state.pipeline_tasks.add(task)
+        app.state.pipeline_task_map[run_id] = task
         try:
             await run_in_threadpool(
                 run_pipeline,
@@ -152,5 +153,6 @@ def start_pipeline_task(
             )
         finally:
             app.state.pipeline_tasks.discard(task)
+            app.state.pipeline_task_map.pop(run_id, None)
 
     return asyncio.create_task(_tracked_run())
