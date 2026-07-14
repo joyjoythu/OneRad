@@ -56,7 +56,7 @@ class LoadThreadRequest(BaseModel):
     llm_model: Literal["deepseek-v4-pro", "deepseek-v4-flash"] = "deepseek-v4-pro"
 
 
-def _agent_config(thread_id: str, app) -> Dict[str, Any]:
+async def _agent_config(thread_id: str, app) -> Dict[str, Any]:
     """Build the RunnableConfig for a thread.
 
     api_key and llm_model are normally set when the thread is created or
@@ -70,7 +70,8 @@ def _agent_config(thread_id: str, app) -> Dict[str, Any]:
     if not llm_model:
         store = getattr(app.state, "project_store", None)
         if store is not None:
-            meta = store.get_thread_meta(thread_id)
+            loop = asyncio.get_event_loop()
+            meta = await loop.run_in_executor(None, store.get_thread_meta, thread_id)
             llm_model = meta.get("llm_model", "deepseek-v4-pro") if meta else "deepseek-v4-pro"
     return {
         "configurable": {
@@ -186,7 +187,7 @@ async def _stream_agent(
         app.state.pipeline_tasks.discard(task)
 
 
-def _start_stream(
+async def _start_stream(
     thread_id: str,
     graph,
     bridge,
@@ -194,7 +195,7 @@ def _start_stream(
     input_value: Any = None,
 ) -> None:
     """Launch a background task that streams graph values for a thread."""
-    config = _agent_config(thread_id, app)
+    config = await _agent_config(thread_id, app)
     asyncio.create_task(
         _stream_agent(thread_id, graph, config, bridge, app, input_value)
     )
@@ -226,9 +227,9 @@ async def create_thread(
     llm_model = payload.llm_model
     request.app.state.agent_api_keys[thread_id] = api_key
     request.app.state.agent_llm_models[thread_id] = llm_model
-    store.record_thread(project_id, thread_id, "", llm_model)
     initial_state = build_initial_state(project, api_key=api_key, llm_model=llm_model)
-    await graph.aupdate_state(_agent_config(thread_id, request.app), initial_state)
+    await graph.aupdate_state(await _agent_config(thread_id, request.app), initial_state)
+    store.record_thread(project_id, thread_id, "", llm_model)
     return {"thread_id": thread_id}
 
 
@@ -245,7 +246,7 @@ async def get_thread(
             status_code=status.HTTP_404_NOT_FOUND, detail="thread not found"
         )
     try:
-        snapshot = await graph.aget_state(_agent_config(thread_id, request.app))
+        snapshot = await graph.aget_state(await _agent_config(thread_id, request.app))
     except KeyError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="thread not found"
@@ -271,7 +272,6 @@ async def list_threads(
 async def delete_thread(
     thread_id: str,
     request: Request,
-    graph=Depends(get_agent_graph),
     store: ProjectStore = Depends(get_project_store),
 ) -> None:
     """Delete a thread and all associated checkpoints/events."""
@@ -280,10 +280,16 @@ async def delete_thread(
             status_code=status.HTTP_404_NOT_FOUND, detail="thread not found"
         )
     checkpointer = request.app.state.checkpointer
-    await checkpointer.adelete_thread(thread_id)
-    store.delete_thread(thread_id)
-    request.app.state.agent_api_keys.pop(thread_id, None)
-    request.app.state.agent_llm_models.pop(thread_id, None)
+    try:
+        await checkpointer.adelete_thread(thread_id)
+        store.delete_thread(thread_id)
+        request.app.state.agent_api_keys.pop(thread_id, None)
+        request.app.state.agent_llm_models.pop(thread_id, None)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"failed to delete thread: {exc}",
+        ) from exc
     return None
 
 
@@ -317,7 +323,7 @@ async def resume_thread(
         )
     request.app.state.agent_api_keys[thread_id] = payload.api_key
     request.app.state.agent_llm_models[thread_id] = payload.llm_model
-    snapshot = await graph.aget_state(_agent_config(thread_id, request.app))
+    snapshot = await graph.aget_state(await _agent_config(thread_id, request.app))
     payload_out = _sync_payload(snapshot.values)
     payload_out["thread_id"] = thread_id
     return payload_out
@@ -335,7 +341,7 @@ async def send_message(
     graph=Depends(get_agent_graph),
 ) -> Dict[str, Any]:
     """Append a user message to a thread and start streaming the agent response."""
-    config = _agent_config(thread_id, request.app)
+    config = await _agent_config(thread_id, request.app)
     try:
         await graph.aget_state(config)
     except KeyError:
@@ -345,7 +351,7 @@ async def send_message(
 
     message = _make_message(payload.role, payload.content)
     bridge = get_bridge(request)
-    _start_stream(
+    await _start_stream(
         thread_id,
         graph,
         bridge,
@@ -363,7 +369,7 @@ async def update_plan(
     graph=Depends(get_agent_graph),
 ) -> Dict[str, Any]:
     """Update the pending plan on a thread without running the graph."""
-    config = _agent_config(thread_id, request.app)
+    config = await _agent_config(thread_id, request.app)
     try:
         await graph.aupdate_state(config, {"pending_plan": payload.plan})
         snapshot = await graph.aget_state(config)
@@ -385,7 +391,7 @@ async def confirm_interrupt(
     graph=Depends(get_agent_graph),
 ) -> Dict[str, Any]:
     """Resume a thread waiting on an interrupt with a confirmation."""
-    config = _agent_config(thread_id, request.app)
+    config = await _agent_config(thread_id, request.app)
     try:
         await graph.aget_state(config)
     except KeyError:
@@ -394,7 +400,7 @@ async def confirm_interrupt(
         )
 
     bridge = get_bridge(request)
-    _start_stream(
+    await _start_stream(
         thread_id,
         graph,
         bridge,
@@ -415,7 +421,7 @@ async def cancel_interrupt(
     graph=Depends(get_agent_graph),
 ) -> Dict[str, Any]:
     """Resume a thread waiting on an interrupt with a cancellation."""
-    config = _agent_config(thread_id, request.app)
+    config = await _agent_config(thread_id, request.app)
     try:
         await graph.aget_state(config)
     except KeyError:
@@ -424,7 +430,7 @@ async def cancel_interrupt(
         )
 
     bridge = get_bridge(request)
-    _start_stream(
+    await _start_stream(
         thread_id,
         graph,
         bridge,
@@ -443,7 +449,7 @@ async def thread_events(
 ) -> StreamingResponse:
     """Stream agent events for a thread as server-sent events."""
     try:
-        await graph.aget_state(_agent_config(thread_id, request.app))
+        await graph.aget_state(await _agent_config(thread_id, request.app))
     except KeyError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="thread not found"
