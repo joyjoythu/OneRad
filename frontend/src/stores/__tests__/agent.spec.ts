@@ -317,4 +317,63 @@ describe('useAgentStore', () => {
     expect(listSpy).toHaveBeenCalledWith('project-1')
     expect(store.currentThread?.title).toBe('Renamed Title')
   })
+
+  it('renameThread does not change currentThread when renaming another thread', async () => {
+    const store = useAgentStore()
+    store.threads = [
+      {
+        id: 'thread-current',
+        project_id: 'project-1',
+        title: 'Current',
+        llm_model: 'deepseek-v4-flash',
+        created_at: '2024-01-01T00:00:00Z',
+        updated_at: '2024-01-01T00:00:00Z',
+      },
+      {
+        id: 'thread-other',
+        project_id: 'project-1',
+        title: 'Other',
+        llm_model: 'deepseek-v4-flash',
+        created_at: '2024-01-01T00:00:00Z',
+        updated_at: '2024-01-01T00:00:00Z',
+      },
+    ]
+    store.currentThread = store.threads[0]
+
+    vi.spyOn(agentApi, 'renameThread').mockResolvedValueOnce({
+      thread: {
+        id: 'thread-other',
+        project_id: 'project-1',
+        title: 'Renamed Other',
+        llm_model: 'deepseek-v4-flash',
+        created_at: '2024-01-01T00:00:00Z',
+        updated_at: '2024-01-02T00:00:00Z',
+      },
+    })
+    vi.spyOn(agentApi, 'listThreads').mockResolvedValueOnce({
+      threads: [
+        {
+          id: 'thread-current',
+          project_id: 'project-1',
+          title: 'Current',
+          llm_model: 'deepseek-v4-flash',
+          created_at: '2024-01-01T00:00:00Z',
+          updated_at: '2024-01-01T00:00:00Z',
+        },
+        {
+          id: 'thread-other',
+          project_id: 'project-1',
+          title: 'Renamed Other',
+          llm_model: 'deepseek-v4-flash',
+          created_at: '2024-01-01T00:00:00Z',
+          updated_at: '2024-01-02T00:00:00Z',
+        },
+      ],
+    })
+
+    await store.renameThread('thread-other', 'Renamed Other', 'project-1')
+
+    expect(store.currentThread?.id).toBe('thread-current')
+    expect(store.currentThread?.title).toBe('Current')
+  })
 })

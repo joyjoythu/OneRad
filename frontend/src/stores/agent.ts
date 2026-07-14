@@ -176,8 +176,10 @@ export const useAgentStore = defineStore('agent', () => {
   ): Promise<void> {
     await api.renameThread(threadIdToRename, title)
     await listThreads(projectId)
-    currentThread.value =
-      threads.value.find((t) => t.id === threadIdToRename) || currentThread.value
+    if (currentThread.value?.id === threadIdToRename) {
+      currentThread.value =
+        threads.value.find((t) => t.id === threadIdToRename) || currentThread.value
+    }
   }
 
   function connect(): void {

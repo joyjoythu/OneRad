@@ -52,7 +52,7 @@ import { Plus, Edit, Delete, ChatDotRound } from '@element-plus/icons-vue'
 import { ElMessageBox } from 'element-plus'
 import type { ThreadSummary } from '@/api/agent'
 
-const props = defineProps<{
+defineProps<{
   threads: ThreadSummary[]
   currentThreadId: string | null
 }>()
