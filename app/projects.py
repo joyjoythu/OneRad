@@ -70,6 +70,19 @@ class ProjectStore:
                 )
                 """
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS threads (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    title TEXT,
+                    llm_model TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+                )
+                """
+            )
         finally:
             conn.close()
 
@@ -188,6 +201,86 @@ class ProjectStore:
         conn = sqlite3.connect(str(self.db_path))
         try:
             conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))
+            conn.commit()
+        finally:
+            conn.close()
+
+    def record_thread(
+        self, project_id: str, thread_id: str, title: str, llm_model: str
+    ) -> Dict[str, Any]:
+        now = self._now()
+        conn = sqlite3.connect(str(self.db_path))
+        try:
+            conn.execute(
+                """
+                INSERT INTO threads (id, project_id, title, llm_model, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (thread_id, project_id, title or "", llm_model, now, now),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        return self.get_thread_meta(thread_id)
+
+    def list_threads(self, project_id: str) -> List[Dict[str, Any]]:
+        conn = sqlite3.connect(str(self.db_path))
+        try:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                """
+                SELECT id, project_id, title, llm_model, created_at, updated_at
+                FROM threads WHERE project_id = ? ORDER BY updated_at DESC
+                """,
+                (project_id,),
+            ).fetchall()
+            return [dict(row) for row in rows]
+        finally:
+            conn.close()
+
+    def get_thread_meta(self, thread_id: str) -> Optional[Dict[str, Any]]:
+        conn = sqlite3.connect(str(self.db_path))
+        try:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                """
+                SELECT id, project_id, title, llm_model, created_at, updated_at
+                FROM threads WHERE id = ?
+                """,
+                (thread_id,),
+            ).fetchone()
+            return dict(row) if row else None
+        finally:
+            conn.close()
+
+    def update_thread_title(self, thread_id: str, title: str) -> Optional[Dict[str, Any]]:
+        conn = sqlite3.connect(str(self.db_path))
+        try:
+            conn.execute("UPDATE threads SET title = ? WHERE id = ?", (title, thread_id))
+            conn.commit()
+        finally:
+            conn.close()
+        return self.get_thread_meta(thread_id)
+
+    def update_thread_timestamp(self, thread_id: str) -> None:
+        now = self._now()
+        conn = sqlite3.connect(str(self.db_path))
+        try:
+            conn.execute(
+                "UPDATE threads SET updated_at = ? WHERE id = ?", (now, thread_id)
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def delete_thread(self, thread_id: str) -> None:
+        conn = sqlite3.connect(str(self.db_path))
+        try:
+            conn.execute("DELETE FROM threads WHERE id = ?", (thread_id,))
+            conn.execute(
+                "DELETE FROM sse_events WHERE scope = ? AND scope_id = ?",
+                ("agent", thread_id),
+            )
             conn.commit()
         finally:
             conn.close()

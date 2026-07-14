@@ -89,3 +89,26 @@ def test_load_project_returns_default_analysis_for_missing_yaml(temp_db):
     (Path(p["path"]) / "project.yaml").unlink()
     loaded = store.load_project(p["id"])
     assert loaded["analysis"]["modality"] == "auto"
+
+
+def test_record_and_list_threads(tmp_path):
+    store = ProjectStore(db_path=str(tmp_path / "projects.db"))
+    store.create_project(name="P1", path=str(tmp_path / "p1"))
+    project = store.list_projects()[0]
+    store.record_thread(project["id"], "t1", "First chat", "deepseek-v4-pro")
+    store.record_thread(project["id"], "t2", "Second chat", "deepseek-v4-flash")
+    threads = store.list_threads(project["id"])
+    assert len(threads) == 2
+    assert threads[0]["id"] == "t2"
+    assert threads[1]["title"] == "First chat"
+
+
+def test_delete_thread_removes_sse_events(tmp_path):
+    store = ProjectStore(db_path=str(tmp_path / "projects.db"))
+    store.create_project(name="P1", path=str(tmp_path / "p1"))
+    project = store.list_projects()[0]
+    store.record_thread(project["id"], "t1", "Chat", "deepseek-v4-pro")
+    store.record_sse_event("agent", "t1", 1, "{}")
+    store.delete_thread("t1")
+    assert store.get_thread_meta("t1") is None
+    assert store.list_sse_events("agent", "t1") == []
