@@ -287,14 +287,14 @@ async def delete_thread(
         )
     checkpointer = request.app.state.checkpointer
     try:
-        await _run_store_sync(store.delete_thread, thread_id)
         await checkpointer.adelete_thread(thread_id)
+        await _run_store_sync(store.delete_thread, thread_id)
         request.app.state.agent_api_keys.pop(thread_id, None)
         request.app.state.agent_llm_models.pop(thread_id, None)
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"failed to delete thread: {exc}",
+            detail="failed to delete thread",
         ) from exc
     return None
 

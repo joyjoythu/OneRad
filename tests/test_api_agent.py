@@ -105,6 +105,20 @@ def test_delete_thread(client, app):
     assert response.status_code == 404
 
 
+def test_delete_thread_cleans_checkpoints(client, app):
+    project = _create_project(client)
+    thread_id = _create_thread(client, project["id"])["thread_id"]
+
+    mock_adelete = AsyncMock()
+    app.state.checkpointer.adelete_thread = mock_adelete
+
+    response = client.delete(f"/api/agent/threads/{thread_id}")
+    assert response.status_code == 204, response.text
+
+    mock_adelete.assert_awaited_once_with(thread_id)
+    assert _list_threads(client, project["id"]) == []
+
+
 def test_rename_thread(client):
     project = _create_project(client)
     thread_id = _create_thread(client, project["id"])["thread_id"]
