@@ -23,7 +23,7 @@ class ProjectStore:
         self._init_db()
 
     def _init_db(self) -> None:
-        conn = sqlite3.connect(str(self.db_path))
+        conn = self._connect()
         try:
             conn.execute(
                 """
@@ -83,11 +83,20 @@ class ProjectStore:
                 )
                 """
             )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_threads_project_updated "
+                "ON threads(project_id, updated_at DESC)"
+            )
         finally:
             conn.close()
 
     def _now(self) -> str:
         return datetime.now(timezone.utc).isoformat()
+
+    def _connect(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(str(self.db_path))
+        conn.execute("PRAGMA foreign_keys = ON")
+        return conn
 
     def create_project(self, name: str, path: str, description: str = "") -> Dict[str, Any]:
         project_path = Path(path).resolve()
@@ -98,7 +107,7 @@ class ProjectStore:
 
         project_id = str(uuid.uuid4())
         now = self._now()
-        conn = sqlite3.connect(str(self.db_path))
+        conn = self._connect()
         try:
             conn.execute(
                 "INSERT INTO projects (id, name, path, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
@@ -149,7 +158,7 @@ class ProjectStore:
         }
 
     def list_projects(self) -> List[Dict[str, Any]]:
-        conn = sqlite3.connect(str(self.db_path))
+        conn = self._connect()
         try:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
@@ -160,7 +169,7 @@ class ProjectStore:
             conn.close()
 
     def load_project(self, project_id: str) -> Optional[Dict[str, Any]]:
-        conn = sqlite3.connect(str(self.db_path))
+        conn = self._connect()
         try:
             conn.row_factory = sqlite3.Row
             row = conn.execute(
@@ -198,7 +207,7 @@ class ProjectStore:
         }
 
     def delete_project(self, project_id: str) -> None:
-        conn = sqlite3.connect(str(self.db_path))
+        conn = self._connect()
         try:
             conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))
             conn.commit()
@@ -206,10 +215,10 @@ class ProjectStore:
             conn.close()
 
     def record_thread(
-        self, project_id: str, thread_id: str, title: str, llm_model: str
+        self, project_id: str, thread_id: str, title: Optional[str], llm_model: str
     ) -> Dict[str, Any]:
         now = self._now()
-        conn = sqlite3.connect(str(self.db_path))
+        conn = self._connect()
         try:
             conn.execute(
                 """
@@ -224,7 +233,7 @@ class ProjectStore:
         return self.get_thread_meta(thread_id)
 
     def list_threads(self, project_id: str) -> List[Dict[str, Any]]:
-        conn = sqlite3.connect(str(self.db_path))
+        conn = self._connect()
         try:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
@@ -239,7 +248,7 @@ class ProjectStore:
             conn.close()
 
     def get_thread_meta(self, thread_id: str) -> Optional[Dict[str, Any]]:
-        conn = sqlite3.connect(str(self.db_path))
+        conn = self._connect()
         try:
             conn.row_factory = sqlite3.Row
             row = conn.execute(
@@ -254,9 +263,12 @@ class ProjectStore:
             conn.close()
 
     def update_thread_title(self, thread_id: str, title: str) -> Optional[Dict[str, Any]]:
-        conn = sqlite3.connect(str(self.db_path))
+        conn = self._connect()
         try:
-            conn.execute("UPDATE threads SET title = ? WHERE id = ?", (title, thread_id))
+            conn.execute(
+                "UPDATE threads SET title = ?, updated_at = ? WHERE id = ?",
+                (title, self._now(), thread_id),
+            )
             conn.commit()
         finally:
             conn.close()
@@ -264,7 +276,7 @@ class ProjectStore:
 
     def update_thread_timestamp(self, thread_id: str) -> None:
         now = self._now()
-        conn = sqlite3.connect(str(self.db_path))
+        conn = self._connect()
         try:
             conn.execute(
                 "UPDATE threads SET updated_at = ? WHERE id = ?", (now, thread_id)
@@ -274,7 +286,7 @@ class ProjectStore:
             conn.close()
 
     def delete_thread(self, thread_id: str) -> None:
-        conn = sqlite3.connect(str(self.db_path))
+        conn = self._connect()
         try:
             conn.execute("DELETE FROM threads WHERE id = ?", (thread_id,))
             conn.execute(
@@ -316,7 +328,7 @@ class ProjectStore:
         with open(yaml_path, "w", encoding="utf-8") as f:
             yaml.safe_dump(project_data, f, allow_unicode=True, sort_keys=False)
 
-        conn = sqlite3.connect(str(self.db_path))
+        conn = self._connect()
         try:
             conn.execute(
                 "UPDATE projects SET updated_at = ? WHERE id = ?",
@@ -331,7 +343,7 @@ class ProjectStore:
     def record_run_start(self, project_id: str, analysis_config: Dict[str, Any]) -> str:
         run_id = str(uuid.uuid4())
         now = self._now()
-        conn = sqlite3.connect(str(self.db_path))
+        conn = self._connect()
         try:
             conn.execute(
                 """
@@ -370,7 +382,7 @@ class ProjectStore:
         report_path: str = "",
     ) -> None:
         now = self._now()
-        conn = sqlite3.connect(str(self.db_path))
+        conn = self._connect()
         try:
             conn.execute(
                 "UPDATE runs SET status = ?, log_summary = ?, report_path = ?, finished_at = ? WHERE id = ?",
@@ -381,7 +393,7 @@ class ProjectStore:
             conn.close()
 
     def list_runs(self, project_id: str, limit: int = 50) -> List[Dict[str, Any]]:
-        conn = sqlite3.connect(str(self.db_path))
+        conn = self._connect()
         try:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
@@ -393,7 +405,7 @@ class ProjectStore:
             conn.close()
 
     def get_run(self, run_id: str) -> Optional[Dict[str, Any]]:
-        conn = sqlite3.connect(str(self.db_path))
+        conn = self._connect()
         try:
             conn.row_factory = sqlite3.Row
             row = conn.execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone()
@@ -402,7 +414,7 @@ class ProjectStore:
             conn.close()
 
     def record_sse_event(self, scope: str, scope_id: str, event_id: int, data: str) -> None:
-        conn = sqlite3.connect(str(self.db_path))
+        conn = self._connect()
         try:
             conn.execute(
                 """
@@ -418,7 +430,7 @@ class ProjectStore:
     def list_sse_events(
         self, scope: str, scope_id: str, after_event_id: int = 0, limit: int = 200
     ) -> List[Dict[str, Any]]:
-        conn = sqlite3.connect(str(self.db_path))
+        conn = self._connect()
         try:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
@@ -436,7 +448,7 @@ class ProjectStore:
             conn.close()
 
     def get_max_event_id(self, scope: str, scope_id: str) -> int:
-        conn = sqlite3.connect(str(self.db_path))
+        conn = self._connect()
         try:
             row = conn.execute(
                 """
@@ -451,7 +463,7 @@ class ProjectStore:
             conn.close()
 
     def delete_sse_events(self, scope: str, scope_id: str) -> None:
-        conn = sqlite3.connect(str(self.db_path))
+        conn = self._connect()
         try:
             conn.execute(
                 "DELETE FROM sse_events WHERE scope = ? AND scope_id = ?",
@@ -462,7 +474,7 @@ class ProjectStore:
             conn.close()
 
     def has_running_run(self, project_id: str) -> bool:
-        conn = sqlite3.connect(str(self.db_path))
+        conn = self._connect()
         try:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
