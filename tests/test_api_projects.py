@@ -61,6 +61,33 @@ def test_create_and_list_project(client, temp_db):
     assert projects[0]["name"] == "new-project"
 
 
+def test_list_projects_includes_analysis_config(client, temp_db):
+    store, root = temp_db
+    project = store.create_project("A", str(root / "a"), "")
+    store.save_project_config(
+        project["id"],
+        {
+            "image_dir": "/data/images",
+            "clinical_path": "/data/clinical.csv",
+            "output_dir": "./out",
+            "modality": "CT",
+            "covariates": "age,gender",
+            "model": "random_forest",
+            "analysis_model": "random_forest",
+            "api_key": "secret",
+        },
+    )
+
+    response = client.get("/api/projects")
+    assert response.status_code == 200
+    projects = response.json()
+    assert len(projects) == 1
+    assert "analysis" in projects[0]
+    assert projects[0]["analysis"]["modality"] == "CT"
+    assert projects[0]["analysis"]["covariates"] == "age,gender"
+    assert projects[0]["analysis"]["analysis_model"] == "random_forest"
+
+
 def test_get_project(client, temp_db):
     store, root = temp_db
     project = store.create_project("A", str(root / "a"), "")

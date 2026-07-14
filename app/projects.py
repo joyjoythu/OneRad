@@ -164,7 +164,7 @@ class ProjectStore:
             rows = conn.execute(
                 "SELECT id, name, path, description, created_at, updated_at FROM projects ORDER BY updated_at DESC"
             ).fetchall()
-            return [dict(row) for row in rows]
+            return [self.load_project(row["id"]) for row in rows]
         finally:
             conn.close()
 
