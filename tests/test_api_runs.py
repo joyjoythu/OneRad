@@ -121,19 +121,6 @@ def test_get_run_events_sse(client, temp_db, monkeypatch):
         assert any("pipeline" in line for line in lines)
 
 
-def _slow_config():
-    return {
-        "image_dir": "",
-        "clinical_path": "",
-        "output_dir": "./outputs",
-        "modality": "auto",
-        "covariates": "",
-        "model": "logistic",
-        "analysis_model": "logistic",
-        "api_key": "",
-    }
-
-
 def test_cancel_run_records_cancelled_status(client, temp_db, monkeypatch):
     store, root = temp_db
     project = store.create_project("Cancel", str(root / "cancel"), "")
@@ -141,12 +128,12 @@ def test_cancel_run_records_cancelled_status(client, temp_db, monkeypatch):
     def slow_pipeline(project_id, run_id, config, bridge, store_arg, loop):
         import time
 
-        time.sleep(2)
+        time.sleep(5)
         store_arg.record_run_end(run_id, "completed", "", "")
 
     monkeypatch.setattr("app.api.runner.run_pipeline", slow_pipeline)
 
-    start = client.post(f"/api/projects/{project['id']}/runs", json=_slow_config())
+    start = client.post(f"/api/projects/{project['id']}/runs", json=_run_config())
     assert start.status_code == 202
     run_id = start.json()["run_id"]
 
@@ -154,6 +141,10 @@ def test_cancel_run_records_cancelled_status(client, temp_db, monkeypatch):
     assert cancel.status_code == 202
 
     # Wait for the cancelled task to finish updating the DB.
-    time.sleep(0.5)
-    run = store.get_run(run_id)
+    deadline = time.time() + 3
+    while time.time() < deadline:
+        run = store.get_run(run_id)
+        if run["status"] == "cancelled":
+            break
+        time.sleep(0.1)
     assert run["status"] == "cancelled"
