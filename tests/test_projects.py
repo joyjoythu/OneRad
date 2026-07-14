@@ -127,9 +127,11 @@ def test_thread_meta_update_and_timestamp(tmp_path):
     assert meta["llm_model"] == "deepseek-v4-pro"
     assert store.get_thread_meta("missing") is None
 
+    old_updated_at = meta["updated_at"]
     store.update_thread_title("t1", "Renamed chat")
     updated = store.get_thread_meta("t1")
     assert updated["title"] == "Renamed chat"
+    assert updated["updated_at"] > old_updated_at
 
     threads = store.list_threads(project["id"])
     assert [t["id"] for t in threads] == ["t1", "t2"]
@@ -137,3 +139,14 @@ def test_thread_meta_update_and_timestamp(tmp_path):
     store.update_thread_timestamp("t2")
     threads = store.list_threads(project["id"])
     assert [t["id"] for t in threads] == ["t2", "t1"]
+
+
+def test_delete_project_cleans_thread_sse_events(tmp_path):
+    store = ProjectStore(db_path=str(tmp_path / "projects.db"))
+    store.create_project(name="P1", path=str(tmp_path / "p1"))
+    project = store.list_projects()[0]
+    store.record_thread(project["id"], "t1", "Chat", "deepseek-v4-pro")
+    store.record_sse_event("agent", "t1", 1, "{}")
+    store.delete_project(project["id"])
+    assert store.get_thread_meta("t1") is None
+    assert store.list_sse_events("agent", "t1") == []

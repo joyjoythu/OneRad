@@ -209,6 +209,14 @@ class ProjectStore:
     def delete_project(self, project_id: str) -> None:
         conn = self._connect()
         try:
+            rows = conn.execute(
+                "SELECT id FROM threads WHERE project_id = ?", (project_id,)
+            ).fetchall()
+            for (thread_id,) in rows:
+                conn.execute(
+                    "DELETE FROM sse_events WHERE scope = ? AND scope_id = ?",
+                    ("agent", thread_id),
+                )
             conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))
             conn.commit()
         finally:
