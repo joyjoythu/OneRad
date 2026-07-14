@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useAgentStore } from '../agent'
 import client from '@/api/client'
+import * as agentApi from '@/api/agent'
 import type { AgentState } from '@/api/agent'
 
 vi.mock('@/api/client', () => ({
@@ -108,5 +109,12 @@ describe('useAgentStore', () => {
 
     expect(store.messages).toEqual([{ role: 'assistant', content: 'Welcome back' }])
     expect(MockEventSource.instances).toHaveLength(1)
+  })
+
+  it('lists threads for a project', async () => {
+    const store = useAgentStore()
+    vi.spyOn(agentApi, 'listThreads').mockResolvedValueOnce({ threads: [] })
+    await store.listThreads('p1')
+    expect(store.threads).toEqual([])
   })
 })
