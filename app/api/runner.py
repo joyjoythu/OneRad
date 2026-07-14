@@ -123,6 +123,9 @@ def run_pipeline(
             run_status = "cancelled"
         store.record_run_end(run_id, run_status, log_summary, report_path)
     except Exception as exc:
+        current_run = store.get_run(run_id)
+        if current_run is not None and current_run.get("status") == "cancelled":
+            return
         tb = traceback.format_exc()
         error_event = {"type": "pipeline_error", "message": str(exc), "traceback": tb}
         publish_event(bridge, loop, run_id, error_event)
