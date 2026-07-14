@@ -117,4 +117,31 @@ describe('useRunStore', () => {
     expect(store.running).toBe(false)
     expect(store.reportUrl).toBe(`/reports/${completedRun.id}.pdf`)
   })
+
+  it('stopRun calls cancel API and updates state', async () => {
+    vi.mocked(client.post).mockResolvedValueOnce({ data: { run_id: 'run-1' } })
+    vi.mocked(client.post).mockResolvedValueOnce({ data: { run_id: 'run-1', status: 'cancelling' } })
+    const store = useRunStore()
+    await store.startRun('project-1', mockConfig)
+
+    const promise = store.stopRun('run-1')
+    expect(store.cancelling).toBe(true)
+    await promise
+
+    expect(client.post).toHaveBeenLastCalledWith('/runs/run-1/cancel')
+    expect(store.running).toBe(false)
+    expect(store.cancelling).toBe(false)
+    expect(store.currentRun?.status).toBe('cancelled')
+  })
+
+  it('marks run as cancelled on pipeline_cancelled event', async () => {
+    const store = useRunStore()
+    await store.startRun('project-1', mockConfig)
+    const es = MockEventSource.instances[0]
+
+    es.emit('pipeline', { type: 'pipeline_cancelled' })
+
+    expect(store.running).toBe(false)
+    expect(store.currentRun?.status).toBe('cancelled')
+  })
 })
