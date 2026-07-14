@@ -54,7 +54,6 @@
           v-model="selectedModel"
           class="model-selector"
           placeholder="模型（仅新会话）"
-          @change="handleModelChange"
         >
           <el-option label="DeepSeek-V4 Flash" value="deepseek-v4-flash" />
           <el-option label="DeepSeek-V4 Pro" value="deepseek-v4-pro" />
@@ -87,9 +86,16 @@ const emit = defineEmits<{
   'send-message': [content: string]
 }>()
 
+const props = defineProps<{
+  model?: string
+}>()
+
 const input = ref('')
 const messageContainer = ref<HTMLDivElement | null>(null)
-const selectedModel = ref(DEFAULT_AGENT_MODEL)
+const selectedModel = computed({
+  get: () => props.model ?? DEFAULT_AGENT_MODEL,
+  set: (value) => emit('update:model', value),
+})
 
 const canSend = computed(() => {
   return projectStore.currentProject !== null && input.value.trim().length > 0
@@ -114,10 +120,6 @@ function handleKeydown(event: KeyboardEvent): void {
     event.preventDefault()
     handleSend()
   }
-}
-
-function handleModelChange(value: string): void {
-  emit('update:model', value)
 }
 
 async function handleSend(): Promise<void> {

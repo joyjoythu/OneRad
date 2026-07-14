@@ -19,6 +19,7 @@
       <div class="agent-chat-wrapper">
         <AgentChat
           ref="agentChatRef"
+          :model="selectedModel"
           @update:model="selectedModel = $event"
           @send-message="handleSendMessage"
         />

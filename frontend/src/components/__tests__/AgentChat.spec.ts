@@ -187,7 +187,7 @@ describe('AgentChat', () => {
     await flushPromises()
 
     const select = wrapper.findComponent('.model-selector') as VueWrapper<any>
-    select.vm.$emit('change', 'deepseek-v4-pro')
+    select.vm.$emit('update:modelValue', 'deepseek-v4-pro')
     await flushPromises()
 
     expect(wrapper.emitted('update:model')).toHaveLength(1)
