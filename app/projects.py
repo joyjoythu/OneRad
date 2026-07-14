@@ -314,7 +314,7 @@ class ProjectStore:
         project_path = Path(project["path"])
         yaml_path = project_path / "project.yaml"
 
-        analysis_model = analysis_config.get("analysis_model", "logistic")
+        analysis_model = analysis_config.get("analysis_model") or analysis_config.get("model", "logistic")
         project_data = {
             "name": project["name"],
             "description": project.get("description", ""),

@@ -193,3 +193,44 @@ def test_update_config_does_not_persist_api_key(client, temp_db):
     with open(yaml_path, "r", encoding="utf-8") as f:
         data = yaml.safe_load(f)
     assert data["analysis"]["api_key"] == ""
+
+
+def test_update_config_unifies_model_and_analysis_model(client, temp_db):
+    store, root = temp_db
+    project = store.create_project("A", str(root / "a"), "")
+    response = client.put(
+        f"/api/projects/{project['id']}/config",
+        json={
+            "image_dir": "/data/images",
+            "clinical_path": "/data/clinical.csv",
+            "output_dir": "./out",
+            "modality": "CT",
+            "covariates": "age,gender",
+            "model": "logistic",
+            "analysis_model": "random_forest",
+            "api_key": "secret",
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["analysis"]["analysis_model"] == "random_forest"
+    assert data["analysis"]["model"] == "random_forest"
+
+    # Verify fallback to `model` when `analysis_model` is empty.
+    response = client.put(
+        f"/api/projects/{project['id']}/config",
+        json={
+            "image_dir": "/data/images",
+            "clinical_path": "/data/clinical.csv",
+            "output_dir": "./out",
+            "modality": "CT",
+            "covariates": "age,gender",
+            "model": "xgboost",
+            "analysis_model": "",
+            "api_key": "secret",
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["analysis"]["analysis_model"] == "xgboost"
+    assert data["analysis"]["model"] == "xgboost"
