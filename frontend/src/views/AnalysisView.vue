@@ -10,6 +10,7 @@
       @update:config="handleConfigUpdate"
       @save="handleSave"
       @run="handleRun"
+      @stop="handleStop"
     />
 
     <div v-if="reportHref" class="analysis-report">
@@ -62,6 +63,9 @@ const statusTag = computed(() => {
   }
   if (runStore.currentRun?.status === 'completed') {
     return { label: '已完成', type: 'success' as const }
+  }
+  if (runStore.currentRun?.status === 'cancelled') {
+    return { label: '已取消', type: 'warning' as const }
   }
   if (runStore.currentRun?.status === 'failed') {
     return { label: '运行失败', type: 'danger' as const }
@@ -130,6 +134,20 @@ async function handleRun(): Promise<void> {
       projectStore.currentProject.id,
       projectStore.currentConfig
     )
+  } catch {
+    // 错误已由 axios 拦截器统一提示
+  }
+}
+
+async function handleStop(): Promise<void> {
+  if (!runStore.currentRun) {
+    ElMessage.warning('没有正在运行的分析')
+    return
+  }
+
+  try {
+    await runStore.stopRun(runStore.currentRun.id)
+    ElMessage.success('分析已停止')
   } catch {
     // 错误已由 axios 拦截器统一提示
   }
