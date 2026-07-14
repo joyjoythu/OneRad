@@ -37,6 +37,7 @@ function setupWrapper() {
 describe('AgentView', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
+    localStorage.clear()
   })
 
   it('resets the agent thread when the selected project changes', async () => {
@@ -56,5 +57,50 @@ describe('AgentView', () => {
     await flushPromises()
 
     expect(resetThreadSpy).toHaveBeenCalled()
+  })
+
+  it('persists thread list collapse state in localStorage', async () => {
+    const projectStore = useProjectStore()
+    const agentStore = useAgentStore()
+    vi.spyOn(agentStore, 'listThreads').mockResolvedValue(undefined)
+    vi.spyOn(agentStore, 'loadThread').mockResolvedValue(undefined)
+
+    const project = mockProject('1')
+    projectStore.projects = [project]
+    projectStore.selectProject(project.id)
+
+    const wrapper = setupWrapper()
+
+    await flushPromises()
+
+    const collapseButton = wrapper.find('.thread-list-header button')
+    expect(collapseButton.exists()).toBe(true)
+
+    await collapseButton.trigger('click')
+    expect(localStorage.getItem('onerad:agent:threadListCollapsed')).toBe('true')
+    expect(wrapper.find('.thread-list').classes()).toContain('thread-list--collapsed')
+
+    await collapseButton.trigger('click')
+    expect(localStorage.getItem('onerad:agent:threadListCollapsed')).toBe('false')
+    expect(wrapper.find('.thread-list').classes()).not.toContain('thread-list--collapsed')
+  })
+
+  it('restores thread list collapse state from localStorage on mount', async () => {
+    localStorage.setItem('onerad:agent:threadListCollapsed', 'true')
+
+    const projectStore = useProjectStore()
+    const agentStore = useAgentStore()
+    vi.spyOn(agentStore, 'listThreads').mockResolvedValue(undefined)
+    vi.spyOn(agentStore, 'loadThread').mockResolvedValue(undefined)
+
+    const project = mockProject('1')
+    projectStore.projects = [project]
+    projectStore.selectProject(project.id)
+
+    const wrapper = setupWrapper()
+
+    await flushPromises()
+
+    expect(wrapper.find('.thread-list').classes()).toContain('thread-list--collapsed')
   })
 })

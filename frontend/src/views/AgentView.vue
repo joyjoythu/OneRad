@@ -11,10 +11,12 @@
       <ThreadList
         :threads="agentStore.threads"
         :current-thread-id="agentStore.currentThread?.id ?? null"
+        :collapsed="isThreadListCollapsed"
         @select="handleSelectThread"
         @create="handleCreateThread"
         @rename="handleRenameThread"
         @delete="handleDeleteThread"
+        @toggle-collapse="handleToggleThreadListCollapse"
       />
       <div class="agent-chat-wrapper">
         <AgentChat
@@ -70,6 +72,26 @@ const projectStore = useProjectStore()
 
 const selectedModel = ref(DEFAULT_AGENT_MODEL)
 const agentChatRef = ref<InstanceType<typeof AgentChat> | null>(null)
+
+const THREAD_LIST_COLLAPSED_KEY = 'onerad:agent:threadListCollapsed'
+
+function loadThreadListCollapsed(): boolean {
+  try {
+    return localStorage.getItem(THREAD_LIST_COLLAPSED_KEY) === 'true'
+  } catch {
+    return false
+  }
+}
+
+function saveThreadListCollapsed(value: boolean): void {
+  try {
+    localStorage.setItem(THREAD_LIST_COLLAPSED_KEY, String(value))
+  } catch {
+    // ignore
+  }
+}
+
+const isThreadListCollapsed = ref(loadThreadListCollapsed())
 
 const pageTitle = computed(() => {
   return projectStore.currentProject
@@ -135,6 +157,11 @@ async function handleDeleteThread(threadId: string): Promise<void> {
   const projectId = projectStore.currentProject?.id
   if (!projectId) return
   await agentStore.deleteThread(threadId, projectId)
+}
+
+function handleToggleThreadListCollapse(): void {
+  isThreadListCollapsed.value = !isThreadListCollapsed.value
+  saveThreadListCollapsed(isThreadListCollapsed.value)
 }
 
 onMounted(() => {
