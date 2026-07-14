@@ -56,6 +56,12 @@ class LoadThreadRequest(BaseModel):
     llm_model: Literal["deepseek-v4-pro", "deepseek-v4-flash"] = "deepseek-v4-pro"
 
 
+async def _run_store_sync(fn, *args):
+    """Run a synchronous ProjectStore method in the default executor."""
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, fn, *args)
+
+
 async def _agent_config(thread_id: str, app) -> Dict[str, Any]:
     """Build the RunnableConfig for a thread.
 
@@ -70,8 +76,7 @@ async def _agent_config(thread_id: str, app) -> Dict[str, Any]:
     if not llm_model:
         store = getattr(app.state, "project_store", None)
         if store is not None:
-            loop = asyncio.get_event_loop()
-            meta = await loop.run_in_executor(None, store.get_thread_meta, thread_id)
+            meta = await _run_store_sync(store.get_thread_meta, thread_id)
             llm_model = meta.get("llm_model", "deepseek-v4-pro") if meta else "deepseek-v4-pro"
     return {
         "configurable": {
@@ -215,7 +220,7 @@ async def create_thread(
     store: ProjectStore = Depends(get_project_store),
 ) -> Dict[str, Any]:
     """Create a new agent thread and seed it with the project's initial state."""
-    project = store.load_project(project_id)
+    project = await _run_store_sync(store.load_project, project_id)
     if project is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="项目不存在"
@@ -229,7 +234,7 @@ async def create_thread(
     request.app.state.agent_llm_models[thread_id] = llm_model
     initial_state = build_initial_state(project, api_key=api_key, llm_model=llm_model)
     await graph.aupdate_state(await _agent_config(thread_id, request.app), initial_state)
-    store.record_thread(project_id, thread_id, "", llm_model)
+    await _run_store_sync(store.record_thread, project_id, thread_id, "", llm_model)
     return {"thread_id": thread_id}
 
 
@@ -241,7 +246,7 @@ async def get_thread(
     store: ProjectStore = Depends(get_project_store),
 ) -> Dict[str, Any]:
     """Return the current state for an agent thread."""
-    if store.get_thread_meta(thread_id) is None:
+    if await _run_store_sync(store.get_thread_meta, thread_id) is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="thread not found"
         )
@@ -263,7 +268,7 @@ async def list_threads(
     store: ProjectStore = Depends(get_project_store),
 ) -> Dict[str, Any]:
     """Return all threads belonging to a project."""
-    return {"threads": store.list_threads(project_id)}
+    return {"threads": await _run_store_sync(store.list_threads, project_id)}
 
 
 @router.delete(
@@ -275,14 +280,14 @@ async def delete_thread(
     store: ProjectStore = Depends(get_project_store),
 ) -> None:
     """Delete a thread and all associated checkpoints/events."""
-    if store.get_thread_meta(thread_id) is None:
+    if await _run_store_sync(store.get_thread_meta, thread_id) is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="thread not found"
         )
     checkpointer = request.app.state.checkpointer
     try:
+        await _run_store_sync(store.delete_thread, thread_id)
         await checkpointer.adelete_thread(thread_id)
-        store.delete_thread(thread_id)
         request.app.state.agent_api_keys.pop(thread_id, None)
         request.app.state.agent_llm_models.pop(thread_id, None)
     except Exception as exc:
@@ -300,11 +305,11 @@ async def patch_thread(
     store: ProjectStore = Depends(get_project_store),
 ) -> Dict[str, Any]:
     """Rename a thread."""
-    if store.get_thread_meta(thread_id) is None:
+    if await _run_store_sync(store.get_thread_meta, thread_id) is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="thread not found"
         )
-    updated = store.update_thread_title(thread_id, payload.title)
+    updated = await _run_store_sync(store.update_thread_title, thread_id, payload.title)
     return {"thread": updated}
 
 
@@ -317,7 +322,7 @@ async def resume_thread(
     store: ProjectStore = Depends(get_project_store),
 ) -> Dict[str, Any]:
     """Resume an existing thread, refreshing api_key/llm_model in memory."""
-    if store.get_thread_meta(thread_id) is None:
+    if await _run_store_sync(store.get_thread_meta, thread_id) is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="thread not found"
         )
