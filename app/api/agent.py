@@ -345,6 +345,7 @@ async def send_message(
     payload: MessageRequest,
     request: Request,
     graph=Depends(get_agent_graph),
+    store: ProjectStore = Depends(get_project_store),
 ) -> Dict[str, Any]:
     """Append a user message to a thread and start streaming the agent response."""
     config = await _agent_config(thread_id, request.app)
@@ -356,6 +357,13 @@ async def send_message(
         )
 
     message = _make_message(payload.role, payload.content)
+    await _run_store_sync(store.update_thread_timestamp, thread_id)
+    if payload.role == "user":
+        meta = await _run_store_sync(store.get_thread_meta, thread_id)
+        if meta and not meta.get("title"):
+            title = payload.content[:30] if payload.content else ""
+            await _run_store_sync(store.update_thread_title, thread_id, title)
+
     bridge = get_bridge(request)
     await _start_stream(
         thread_id,

@@ -130,6 +130,23 @@ def test_resume_thread(client):
     assert data["messages"] == []
 
 
+def test_thread_title_set_on_first_message(client, app):
+    project = _create_project(client)
+    thread_id = _create_thread(client, project["id"])["thread_id"]
+
+    threads = _list_threads(client, project["id"])
+    assert threads[0]["title"] == ""
+
+    response = client.post(
+        f"/api/agent/threads/{thread_id}/messages",
+        json={"role": "user", "content": "hello world this is a test"},
+    )
+    assert response.status_code == 202, response.text
+
+    threads = _list_threads(client, project["id"])
+    assert threads[0]["title"] == "hello world this is a test"[:30]
+
+
 def test_send_message_publishes_events(client, app):
     """Mock the graph to verify message sending stores events for SSE replay."""
     project = _create_project(client)
