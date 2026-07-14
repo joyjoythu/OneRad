@@ -197,16 +197,18 @@ describe('useAgentStore', () => {
   it('deleteThread removes the current thread and resets internal state', async () => {
     const store = useAgentStore()
     vi.spyOn(agentApi, 'createThread').mockResolvedValueOnce({ thread_id: 'thread-del' })
-    vi.spyOn(agentApi, 'listThreads').mockResolvedValue([
-      {
-        id: 'thread-del',
-        project_id: 'project-1',
-        title: 'To Delete',
-        llm_model: 'deepseek-v4-flash',
-        created_at: '2024-01-01T00:00:00Z',
-        updated_at: '2024-01-01T00:00:00Z',
-      },
-    ])
+    vi.spyOn(agentApi, 'listThreads').mockResolvedValue({
+      threads: [
+        {
+          id: 'thread-del',
+          project_id: 'project-1',
+          title: 'To Delete',
+          llm_model: 'deepseek-v4-flash',
+          created_at: '2024-01-01T00:00:00Z',
+          updated_at: '2024-01-01T00:00:00Z',
+        },
+      ],
+    })
     await store.createThread('project-1', 'sk-test', 'deepseek-v4-flash')
 
     vi.spyOn(agentApi, 'deleteThread').mockResolvedValueOnce(undefined)
@@ -225,24 +227,26 @@ describe('useAgentStore', () => {
   it('deleteThread refreshes the list without resetting state when deleting another thread', async () => {
     const store = useAgentStore()
     vi.spyOn(agentApi, 'createThread').mockResolvedValueOnce({ thread_id: 'thread-current' })
-    vi.spyOn(agentApi, 'listThreads').mockResolvedValue([
-      {
-        id: 'thread-current',
-        project_id: 'project-1',
-        title: 'Current',
-        llm_model: 'deepseek-v4-flash',
-        created_at: '2024-01-01T00:00:00Z',
-        updated_at: '2024-01-01T00:00:00Z',
-      },
-      {
-        id: 'thread-other',
-        project_id: 'project-1',
-        title: 'Other',
-        llm_model: 'deepseek-v4-flash',
-        created_at: '2024-01-01T00:00:00Z',
-        updated_at: '2024-01-01T00:00:00Z',
-      },
-    ])
+    vi.spyOn(agentApi, 'listThreads').mockResolvedValue({
+      threads: [
+        {
+          id: 'thread-current',
+          project_id: 'project-1',
+          title: 'Current',
+          llm_model: 'deepseek-v4-flash',
+          created_at: '2024-01-01T00:00:00Z',
+          updated_at: '2024-01-01T00:00:00Z',
+        },
+        {
+          id: 'thread-other',
+          project_id: 'project-1',
+          title: 'Other',
+          llm_model: 'deepseek-v4-flash',
+          created_at: '2024-01-01T00:00:00Z',
+          updated_at: '2024-01-01T00:00:00Z',
+        },
+      ],
+    })
     await store.createThread('project-1', 'sk-test', 'deepseek-v4-flash')
 
     vi.spyOn(agentApi, 'deleteThread').mockResolvedValueOnce(undefined)
@@ -270,16 +274,18 @@ describe('useAgentStore', () => {
   it('renameThread renames a thread, refreshes the list and updates currentThread.title', async () => {
     const store = useAgentStore()
     vi.spyOn(agentApi, 'createThread').mockResolvedValueOnce({ thread_id: 'thread-ren' })
-    vi.spyOn(agentApi, 'listThreads').mockResolvedValue([
-      {
-        id: 'thread-ren',
-        project_id: 'project-1',
-        title: 'Old Title',
-        llm_model: 'deepseek-v4-flash',
-        created_at: '2024-01-01T00:00:00Z',
-        updated_at: '2024-01-01T00:00:00Z',
-      },
-    ])
+    vi.spyOn(agentApi, 'listThreads').mockResolvedValue({
+      threads: [
+        {
+          id: 'thread-ren',
+          project_id: 'project-1',
+          title: 'Old Title',
+          llm_model: 'deepseek-v4-flash',
+          created_at: '2024-01-01T00:00:00Z',
+          updated_at: '2024-01-01T00:00:00Z',
+        },
+      ],
+    })
     await store.createThread('project-1', 'sk-test', 'deepseek-v4-flash')
 
     vi.spyOn(agentApi, 'renameThread').mockResolvedValueOnce({
