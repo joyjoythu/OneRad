@@ -1,9 +1,10 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import ElementPlus from 'element-plus'
 import AnalysisForm from '../AnalysisForm.vue'
 import { useProjectStore } from '@/stores/project'
+import { useRunStore } from '@/stores/run'
 import type { Project, AnalysisConfig } from '@/api/projects'
 
 const mockConfig = (): AnalysisConfig => ({
@@ -48,6 +49,11 @@ async function selectProject() {
 describe('AnalysisForm', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it('renders placeholder when no project is selected', async () => {
@@ -73,6 +79,14 @@ describe('AnalysisForm', () => {
     expect(selects.length).toBeGreaterThanOrEqual(2)
 
     expect(wrapper.find('input[placeholder="请输入 API 密钥"]').exists()).toBe(true)
+  })
+
+  it('shows api key hint', async () => {
+    const { store } = await selectProject()
+    const wrapper = setupWrapper(store.currentConfig)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('API 密钥仅在当前会话中保留')
   })
 
   it('emits save event when clicking the save button', async () => {
@@ -101,6 +115,40 @@ describe('AnalysisForm', () => {
     await runButton!.trigger('click')
 
     expect(wrapper.emitted('run')).toHaveLength(1)
+  })
+
+  it('emits stop event when clicking the stop button during run', async () => {
+    const { store } = await selectProject()
+    const runStore = useRunStore()
+    runStore.running = true
+    const wrapper = setupWrapper(store.currentConfig)
+    await flushPromises()
+
+    const stopButton = wrapper
+      .findAll('button')
+      .find((b) => b.text().includes('停止分析'))
+    expect(stopButton).toBeDefined()
+    await stopButton!.trigger('click')
+
+    expect(wrapper.emitted('stop')).toHaveLength(1)
+  })
+
+  it('emits save event when a field is edited (auto-save)', async () => {
+    const { store } = await selectProject()
+    const wrapper = setupWrapper(store.currentConfig)
+    await flushPromises()
+
+    const input = wrapper.find('input[placeholder="请输入影像目录路径"]')
+    await input.setValue('/new/images')
+    await flushPromises()
+
+    // Auto-save is debounced by 500ms.
+    expect(wrapper.emitted('save')).toBeUndefined()
+    await vi.advanceTimersByTimeAsync(600)
+
+    const events = wrapper.emitted('save')
+    expect(events).toBeDefined()
+    expect(events!.length).toBeGreaterThan(0)
   })
 
   it('emits update:config when a field is edited', async () => {
