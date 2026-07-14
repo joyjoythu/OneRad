@@ -78,6 +78,7 @@ async def _agent_config(thread_id: str, app) -> Dict[str, Any]:
         if store is not None:
             meta = await _run_store_sync(store.get_thread_meta, thread_id)
             llm_model = meta.get("llm_model", "deepseek-v4-pro") if meta else "deepseek-v4-pro"
+    llm_model = llm_model or "deepseek-v4-pro"
     return {
         "configurable": {
             "thread_id": thread_id,
