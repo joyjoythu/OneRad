@@ -1,6 +1,7 @@
 import asyncio
 import shutil
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -126,9 +127,7 @@ def test_cancel_run_records_cancelled_status(client, temp_db, monkeypatch):
     project = store.create_project("Cancel", str(root / "cancel"), "")
 
     def slow_pipeline(project_id, run_id, config, bridge, store_arg, loop):
-        import time
-
-        time.sleep(5)
+        time.sleep(1)
 
     monkeypatch.setattr("app.api.runner.run_pipeline", slow_pipeline)
 
@@ -136,16 +135,34 @@ def test_cancel_run_records_cancelled_status(client, temp_db, monkeypatch):
     assert start.status_code == 202
     run_id = start.json()["run_id"]
 
+    # Stream events in a background thread so we can capture the cancelled event.
+    event_lines = []
+
+    def collect_events():
+        with client.stream("GET", f"/api/runs/{run_id}/events") as response:
+            for line in response.iter_lines():
+                event_lines.append(line)
+                if "pipeline_cancelled" in line:
+                    break
+
+    event_thread = threading.Thread(target=collect_events, daemon=True)
+    event_thread.start()
+    time.sleep(0.2)  # Let the SSE subscription start.
+
     task = client.app.state.pipeline_task_map.get(run_id)
     assert task is not None
     task.cancel()
 
-    deadline = time.time() + 6
+    deadline = time.time() + 2
     run = None
     while time.time() < deadline:
         run = store.get_run(run_id)
         if run["status"] == "cancelled":
             break
         time.sleep(0.1)
+
+    event_thread.join(timeout=2)
+
     assert run is not None
     assert run["status"] == "cancelled"
+    assert any("pipeline_cancelled" in line for line in event_lines)

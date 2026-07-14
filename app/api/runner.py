@@ -59,6 +59,11 @@ def publish_event(
         logger.exception("Failed to publish event for run %s", run_id)
 
 
+def _is_cancelled(store: ProjectStore, run_id: str) -> bool:
+    run = store.get_run(run_id)
+    return run is not None and run.get("status") == "cancelled"
+
+
 def run_pipeline(
     project_id: str,
     run_id: str,
@@ -118,13 +123,12 @@ def run_pipeline(
         error_log = orch.state.get("error_log", [])
         log_summary = "\n".join(str(entry) for entry in error_log)
 
-        current_run = store.get_run(run_id)
-        if current_run is not None and current_run.get("status") == "cancelled":
+        if _is_cancelled(store, run_id):
             run_status = "cancelled"
+            log_summary = "用户取消"
         store.record_run_end(run_id, run_status, log_summary, report_path)
     except Exception as exc:
-        current_run = store.get_run(run_id)
-        if current_run is not None and current_run.get("status") == "cancelled":
+        if _is_cancelled(store, run_id):
             return
         tb = traceback.format_exc()
         error_event = {"type": "pipeline_error", "message": str(exc), "traceback": tb}
