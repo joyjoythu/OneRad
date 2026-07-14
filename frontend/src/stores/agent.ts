@@ -63,6 +63,17 @@ export const useAgentStore = defineStore('agent', () => {
     llmModel: string
   ): Promise<string> {
     if (threadId.value) {
+      if (!currentThread.value) {
+        currentThread.value =
+          threads.value.find((t) => t.id === threadId.value) || {
+            id: threadId.value,
+            project_id: projectId,
+            title: '',
+            llm_model: llmModel,
+            created_at: '',
+            updated_at: '',
+          }
+      }
       return threadId.value
     }
     const { thread_id } = await api.createThread(projectId, {
