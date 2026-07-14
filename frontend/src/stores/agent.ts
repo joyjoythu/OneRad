@@ -7,6 +7,7 @@ import type {
   PendingPlan,
   PendingCommand,
   PendingScript,
+  ThreadSummary,
 } from '@/api/agent'
 
 export const useAgentStore = defineStore('agent', () => {
@@ -17,6 +18,9 @@ export const useAgentStore = defineStore('agent', () => {
   const pendingPlan = ref<PendingPlan | null>(null)
   const pendingCommand = ref<PendingCommand | null>(null)
   const pendingScript = ref<PendingScript | null>(null)
+
+  const threads = ref<ThreadSummary[]>([])
+  const currentThread = ref<ThreadSummary | null>(null)
 
   let es: EventSource | null = null
 
@@ -41,6 +45,18 @@ export const useAgentStore = defineStore('agent', () => {
     }
   }
 
+  function resetInternalState(): void {
+    disconnect()
+    threadId.value = null
+    messages.value = []
+    interrupt.value = null
+    operationLog.value = []
+    pendingPlan.value = null
+    pendingCommand.value = null
+    pendingScript.value = null
+    currentThread.value = null
+  }
+
   async function ensureThread(
     projectId: string,
     apiKey: string,
@@ -54,7 +70,16 @@ export const useAgentStore = defineStore('agent', () => {
       llm_model: llmModel,
     })
     threadId.value = thread_id
+    currentThread.value = {
+      id: thread_id,
+      project_id: projectId,
+      title: '',
+      llm_model: llmModel,
+      created_at: '',
+      updated_at: '',
+    }
     await syncThread()
+    await listThreads(projectId)
     connect()
     return thread_id
   }
@@ -63,6 +88,75 @@ export const useAgentStore = defineStore('agent', () => {
     if (!threadId.value) return
     const state = await api.getThread(threadId.value)
     applyState(state)
+  }
+
+  async function listThreads(projectId: string): Promise<void> {
+    const data = await api.listThreads(projectId)
+    threads.value = data.threads
+  }
+
+  async function loadThread(
+    threadIdToLoad: string,
+    apiKey: string,
+    llmModel: string
+  ): Promise<void> {
+    resetInternalState()
+    const state = await api.resumeThread(threadIdToLoad, {
+      api_key: apiKey,
+      llm_model: llmModel,
+    })
+    threadId.value = state.thread_id
+    currentThread.value =
+      threads.value.find((t) => t.id === threadIdToLoad) || null
+    applyState(state)
+    connect()
+  }
+
+  async function createThread(
+    projectId: string,
+    apiKey: string,
+    llmModel: string
+  ): Promise<string> {
+    resetInternalState()
+    const { thread_id } = await api.createThread(projectId, {
+      api_key: apiKey,
+      llm_model: llmModel,
+    })
+    threadId.value = thread_id
+    currentThread.value = {
+      id: thread_id,
+      project_id: projectId,
+      title: '',
+      llm_model: llmModel,
+      created_at: '',
+      updated_at: '',
+    }
+    await listThreads(projectId)
+    connect()
+    return thread_id
+  }
+
+  async function deleteThread(
+    threadIdToDelete: string,
+    projectId: string
+  ): Promise<void> {
+    await api.deleteThread(threadIdToDelete)
+    if (currentThread.value?.id === threadIdToDelete) {
+      resetInternalState()
+    }
+    await listThreads(projectId)
+  }
+
+  async function renameThread(
+    threadIdToRename: string,
+    title: string,
+    projectId: string
+  ): Promise<void> {
+    await api.renameThread(threadIdToRename, title)
+    await listThreads(projectId)
+    if (currentThread.value?.id === threadIdToRename) {
+      currentThread.value.title = title
+    }
   }
 
   function connect(): void {
@@ -124,14 +218,8 @@ export const useAgentStore = defineStore('agent', () => {
   }
 
   function resetThread(): void {
-    disconnect()
-    threadId.value = null
-    messages.value = []
-    interrupt.value = null
-    operationLog.value = []
-    pendingPlan.value = null
-    pendingCommand.value = null
-    pendingScript.value = null
+    resetInternalState()
+    threads.value = []
   }
 
   return {
@@ -142,6 +230,8 @@ export const useAgentStore = defineStore('agent', () => {
     pendingPlan,
     pendingCommand,
     pendingScript,
+    threads,
+    currentThread,
     ensureThread,
     reconnect,
     sendMessage,
@@ -150,5 +240,10 @@ export const useAgentStore = defineStore('agent', () => {
     cancel,
     disconnect,
     resetThread,
+    listThreads,
+    loadThread,
+    createThread,
+    deleteThread,
+    renameThread,
   }
 })
