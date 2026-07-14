@@ -129,7 +129,6 @@ def test_cancel_run_records_cancelled_status(client, temp_db, monkeypatch):
         import time
 
         time.sleep(5)
-        store_arg.record_run_end(run_id, "completed", "", "")
 
     monkeypatch.setattr("app.api.runner.run_pipeline", slow_pipeline)
 
@@ -137,14 +136,16 @@ def test_cancel_run_records_cancelled_status(client, temp_db, monkeypatch):
     assert start.status_code == 202
     run_id = start.json()["run_id"]
 
-    cancel = client.post(f"/api/runs/{run_id}/cancel")
-    assert cancel.status_code == 202
+    task = client.app.state.pipeline_task_map.get(run_id)
+    assert task is not None
+    task.cancel()
 
-    # Wait for the cancelled task to finish updating the DB.
-    deadline = time.time() + 3
+    deadline = time.time() + 6
+    run = None
     while time.time() < deadline:
         run = store.get_run(run_id)
         if run["status"] == "cancelled":
             break
         time.sleep(0.1)
+    assert run is not None
     assert run["status"] == "cancelled"

@@ -118,6 +118,9 @@ def run_pipeline(
         error_log = orch.state.get("error_log", [])
         log_summary = "\n".join(str(entry) for entry in error_log)
 
+        current_run = store.get_run(run_id)
+        if current_run is not None and current_run.get("status") == "cancelled":
+            run_status = "cancelled"
         store.record_run_end(run_id, run_status, log_summary, report_path)
     except Exception as exc:
         tb = traceback.format_exc()
@@ -152,13 +155,12 @@ def start_pipeline_task(
                 loop,
             )
         except asyncio.CancelledError:
-            publish_event(
-                bridge,
-                loop,
-                run_id,
-                {"type": "pipeline_cancelled", "message": "用户取消运行"},
-                wait=True,
-            )
+            try:
+                await bridge.publish(
+                    "run", run_id, {"type": "pipeline_cancelled", "message": "用户取消运行"}
+                )
+            except Exception:
+                logger.exception("Failed to publish cancellation event for run %s", run_id)
             store.record_run_end(run_id, "cancelled", "用户取消")
             raise
         finally:
