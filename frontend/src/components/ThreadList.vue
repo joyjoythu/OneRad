@@ -1,8 +1,19 @@
 <template>
-  <div class="thread-list">
+  <div
+    class="thread-list"
+    :class="{ 'thread-list--collapsed': collapsed }"
+  >
     <div class="thread-list-header">
-      <span class="thread-list-title">历史会话</span>
       <el-button
+        link
+        size="small"
+        :icon="collapsed ? Expand : Fold"
+        aria-label="折叠/展开历史会话面板"
+        @click="emit('toggle-collapse')"
+      />
+      <span v-show="!collapsed" class="thread-list-title">历史会话</span>
+      <el-button
+        v-show="!collapsed"
         type="primary"
         size="small"
         :icon="Plus"
@@ -12,49 +23,59 @@
       </el-button>
     </div>
 
-    <div v-if="threads.length === 0" class="thread-list-empty">
-      <el-empty description="暂无历史会话" :image-size="60" />
-    </div>
+    <div v-show="!collapsed">
+      <div v-if="threads.length === 0" class="thread-list-empty">
+        <el-empty description="暂无历史会话" :image-size="60" />
+      </div>
 
-    <ul v-else class="thread-list-items">
-      <li
-        v-for="thread in threads"
-        :key="thread.id"
-        :class="['thread-item', { 'thread-item--active': currentThreadId === thread.id }]"
-        @click="handleSelect(thread.id)"
-      >
-        <div class="thread-item-content">
-          <el-icon class="thread-item-icon"><ChatDotRound /></el-icon>
-          <span class="thread-item-title">{{ thread.title || '未命名会话' }}</span>
-        </div>
-        <div class="thread-item-actions">
-          <el-button
-            link
-            size="small"
-            :icon="Edit"
-            @click.stop="handleRename(thread)"
-          />
-          <el-button
-            link
-            size="small"
-            type="danger"
-            :icon="Delete"
-            @click.stop="handleDelete(thread)"
-          />
-        </div>
-      </li>
-    </ul>
+      <ul v-else class="thread-list-items">
+        <li
+          v-for="thread in threads"
+          :key="thread.id"
+          :class="['thread-item', { 'thread-item--active': currentThreadId === thread.id }]"
+          @click="handleSelect(thread.id)"
+        >
+          <div class="thread-item-content">
+            <el-icon class="thread-item-icon"><ChatDotRound /></el-icon>
+            <span class="thread-item-title">{{ thread.title || '未命名会话' }}</span>
+          </div>
+          <div class="thread-item-actions">
+            <el-button
+              link
+              size="small"
+              :icon="Edit"
+              @click.stop="handleRename(thread)"
+            />
+            <el-button
+              link
+              size="small"
+              type="danger"
+              :icon="Delete"
+              @click.stop="handleDelete(thread)"
+            />
+          </div>
+        </li>
+      </ul>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { Plus, Edit, Delete, ChatDotRound } from '@element-plus/icons-vue'
+import {
+  Plus,
+  Edit,
+  Delete,
+  ChatDotRound,
+  Fold,
+  Expand,
+} from '@element-plus/icons-vue'
 import { ElMessageBox } from 'element-plus'
 import type { ThreadSummary } from '@/api/agent'
 
 defineProps<{
   threads: ThreadSummary[]
   currentThreadId: string | null
+  collapsed?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -62,6 +83,7 @@ const emit = defineEmits<{
   create: []
   rename: [threadId: string, title: string]
   delete: [threadId: string]
+  'toggle-collapse': []
 }>()
 
 function handleSelect(threadId: string): void {
@@ -117,6 +139,18 @@ async function handleDelete(thread: ThreadSummary): Promise<void> {
   height: 100%;
   border-right: 1px solid #e4e7ed;
   background-color: #f5f7fa;
+  transition: width 0.2s ease;
+}
+
+.thread-list--collapsed {
+  width: 40px;
+  align-items: center;
+}
+
+.thread-list--collapsed .thread-list-header {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
 }
 
 .thread-list-header {

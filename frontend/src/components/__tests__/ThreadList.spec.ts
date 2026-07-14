@@ -21,7 +21,7 @@ const threads = [
   { id: 't2', project_id: 'p1', title: 'Second', llm_model: 'deepseek-v4-flash', created_at: '2026-01-01', updated_at: '2026-01-03' },
 ]
 
-function mountThreadList(props: { threads: typeof threads; currentThreadId: string | null }) {
+function mountThreadList(props: { threads: typeof threads; currentThreadId: string | null; collapsed?: boolean }) {
   return mount(ThreadList, {
     props,
     global: {
@@ -46,8 +46,8 @@ describe('ThreadList', () => {
   })
 
   it('emits create event', async () => {
-    const wrapper = mountThreadList({ threads, currentThreadId: null })
-    await wrapper.find('button').trigger('click')
+    const wrapper = mountThreadList({ threads, currentThreadId: null, collapsed: false })
+    await wrapper.findAll('.thread-list-header button')[1].trigger('click')
     expect(wrapper.emitted('create')).toBeTruthy()
   })
 
@@ -57,5 +57,36 @@ describe('ThreadList', () => {
     await wrapper.findAll('.thread-item')[0].findAll('button')[1].trigger('click')
     await nextTick()
     expect(ElMessageBox.confirm).toHaveBeenCalled()
+  })
+
+  it('emits toggle-collapse when collapse button is clicked', async () => {
+    const wrapper = mount(ThreadList, {
+      props: { threads, currentThreadId: null, collapsed: false },
+      global: { plugins: [ElementPlus] },
+    })
+    const buttons = wrapper.findAll('.thread-list-header button')
+    // 第一个按钮是折叠按钮
+    await buttons[0].trigger('click')
+    expect(wrapper.emitted('toggle-collapse')).toBeTruthy()
+  })
+
+  it('hides content when collapsed', () => {
+    const wrapper = mount(ThreadList, {
+      props: { threads, currentThreadId: null, collapsed: true },
+      global: { plugins: [ElementPlus] },
+    })
+    expect(wrapper.find('.thread-list-title').isVisible()).toBe(false)
+    expect(wrapper.find('.thread-list-items').isVisible()).toBe(false)
+    expect(wrapper.classes()).toContain('thread-list--collapsed')
+  })
+
+  it('shows content when expanded', () => {
+    const wrapper = mount(ThreadList, {
+      props: { threads, currentThreadId: null, collapsed: false },
+      global: { plugins: [ElementPlus] },
+    })
+    expect(wrapper.find('.thread-list-title').isVisible()).toBe(true)
+    expect(wrapper.find('.thread-list-items').exists()).toBe(true)
+    expect(wrapper.classes()).not.toContain('thread-list--collapsed')
   })
 })
