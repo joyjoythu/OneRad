@@ -46,6 +46,10 @@ export const getRun = async (runId: string): Promise<RunRecord> => {
   return res.data
 }
 
+export const cancelRun = async (runId: string): Promise<void> => {
+  await client.post(`/runs/${encodeURIComponent(runId)}/cancel`)
+}
+
 export const connectRunEvents = (
   runId: string,
   callbacks: RunEventCallbacks = {}
