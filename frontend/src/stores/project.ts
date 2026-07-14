@@ -63,7 +63,7 @@ export const useProjectStore = defineStore('project', () => {
       }
       if (currentProject.value?.id === projectId) {
         currentProject.value = updated
-        currentConfig.value = { ...updated.analysis }
+        currentConfig.value = { ...updated.analysis, api_key: config.api_key }
       }
       return updated
     } finally {

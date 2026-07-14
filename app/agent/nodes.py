@@ -1,4 +1,5 @@
 import json
+import os
 from typing import Literal, Optional
 
 from langchain_core.messages import ToolMessage
@@ -21,7 +22,7 @@ def _build_llm(
     if config is not None:
         model = config.get("configurable", {}).get("llm_model") or model
     return ChatOpenAI(
-        api_key=api_key,
+        api_key=api_key or None,
         base_url=state["base_url"],
         model=model,
         temperature=0.2,
@@ -29,12 +30,19 @@ def _build_llm(
 
 
 def _resolve_api_key(state: AgentState, config: Optional[RunnableConfig] = None) -> str:
-    """优先从 RunnableConfig 读取 api_key，兼容旧测试直接传入 state。"""
+    """优先从 RunnableConfig 读取 api_key，兼容旧测试直接传入 state。
+
+    未在请求中显式提供时，回退到 OPENAI_API_KEY 或 DEEPSEEK_API_KEY 环境变量，
+    保证 Agent 与直接分析流程在凭证获取上保持一致。
+    """
     if config is not None:
         api_key = config.get("configurable", {}).get("api_key", "")
         if api_key:
             return api_key
-    return state.get("api_key", "")
+    api_key = state.get("api_key", "")
+    if api_key:
+        return api_key
+    return os.getenv("OPENAI_API_KEY") or os.getenv("DEEPSEEK_API_KEY") or ""
 
 
 def call_llm(state: AgentState, config: Optional[RunnableConfig] = None) -> dict:

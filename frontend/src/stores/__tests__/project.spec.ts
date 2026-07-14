@@ -106,6 +106,20 @@ describe('useProjectStore', () => {
     expect(store.currentConfig?.modality).toBe('CT')
   })
 
+  it('preserves api_key in currentConfig after saving since it is not persisted', async () => {
+    const original = mockProject('1')
+    vi.mocked(api.updateConfig).mockResolvedValue(original)
+
+    const store = useProjectStore()
+    store.projects = [original]
+    store.selectProject('1')
+    const cfg = { ...store.currentConfig!, api_key: 'secret-key' }
+
+    await store.saveConfig('1', cfg)
+
+    expect(store.currentConfig?.api_key).toBe('secret-key')
+  })
+
   it('deletes a project and clears the current selection', async () => {
     vi.mocked(api.deleteProject).mockResolvedValue(undefined)
     const store = useProjectStore()
