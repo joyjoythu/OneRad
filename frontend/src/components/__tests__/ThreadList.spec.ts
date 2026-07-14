@@ -47,7 +47,7 @@ describe('ThreadList', () => {
 
   it('emits create event', async () => {
     const wrapper = mountThreadList({ threads, currentThreadId: null, collapsed: false })
-    await wrapper.findAll('.thread-list-header button')[1].trigger('click')
+    await wrapper.find('[data-testid="thread-list-create"]').trigger('click')
     expect(wrapper.emitted('create')).toBeTruthy()
   })
 
@@ -64,9 +64,7 @@ describe('ThreadList', () => {
       props: { threads, currentThreadId: null, collapsed: false },
       global: { plugins: [ElementPlus] },
     })
-    const buttons = wrapper.findAll('.thread-list-header button')
-    // 第一个按钮是折叠按钮
-    await buttons[0].trigger('click')
+    await wrapper.find('[data-testid="thread-list-toggle-collapse"]').trigger('click')
     expect(wrapper.emitted('toggle-collapse')).toBeTruthy()
   })
 

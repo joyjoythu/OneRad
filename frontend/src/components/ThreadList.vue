@@ -8,7 +8,8 @@
         link
         size="small"
         :icon="collapsed ? Expand : Fold"
-        aria-label="折叠/展开历史会话面板"
+        :aria-label="collapsed ? '展开历史会话面板' : '折叠历史会话面板'"
+        data-testid="thread-list-toggle-collapse"
         @click="emit('toggle-collapse')"
       />
       <span v-show="!collapsed" class="thread-list-title">历史会话</span>
@@ -17,13 +18,14 @@
         type="primary"
         size="small"
         :icon="Plus"
+        data-testid="thread-list-create"
         @click="handleCreate"
       >
         新建对话
       </el-button>
     </div>
 
-    <div v-show="!collapsed">
+    <div v-show="!collapsed" class="thread-list-content">
       <div v-if="threads.length === 0" class="thread-list-empty">
         <el-empty description="暂无历史会话" :image-size="60" />
       </div>
@@ -151,6 +153,13 @@ async function handleDelete(thread: ThreadSummary): Promise<void> {
   justify-content: center;
   padding-left: 0;
   padding-right: 0;
+}
+
+.thread-list-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .thread-list-header {
