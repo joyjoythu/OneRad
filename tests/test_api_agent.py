@@ -1,5 +1,6 @@
 import json
 import time
+import uuid
 from unittest.mock import AsyncMock
 
 import pytest
@@ -24,9 +25,10 @@ def client(app):
 
 
 def _create_project(client):
+    suffix = uuid.uuid4().hex[:8]
     response = client.post(
         "/api/projects",
-        json={"name": "AgentTest", "path": "agent-test", "description": ""},
+        json={"name": f"AgentTest-{suffix}", "path": f"agent-test-{suffix}", "description": ""},
     )
     assert response.status_code == 201, response.text
     return response.json()
@@ -67,6 +69,65 @@ def test_get_thread(client):
     assert data["interrupt_type"] is None
     assert data["messages"] == []
     assert data["operation_log"] == []
+
+
+def _list_threads(client, project_id):
+    response = client.get(f"/api/agent/threads?project_id={project_id}")
+    assert response.status_code == 200, response.text
+    return response.json()["threads"]
+
+
+def test_list_threads_by_project(client):
+    project_a = _create_project(client)
+    project_b = _create_project(client)
+    t_a = _create_thread(client, project_a["id"])["thread_id"]
+    t_b = _create_thread(client, project_b["id"])["thread_id"]
+
+    threads_a = _list_threads(client, project_a["id"])
+    threads_b = _list_threads(client, project_b["id"])
+
+    assert len(threads_a) == 1
+    assert threads_a[0]["id"] == t_a
+    assert len(threads_b) == 1
+    assert threads_b[0]["id"] == t_b
+
+
+def test_delete_thread(client, app):
+    project = _create_project(client)
+    thread_id = _create_thread(client, project["id"])["thread_id"]
+
+    response = client.delete(f"/api/agent/threads/{thread_id}")
+    assert response.status_code == 204, response.text
+
+    assert _list_threads(client, project["id"]) == []
+
+    response = client.get(f"/api/agent/threads/{thread_id}")
+    assert response.status_code == 404
+
+
+def test_rename_thread(client):
+    project = _create_project(client)
+    thread_id = _create_thread(client, project["id"])["thread_id"]
+
+    response = client.patch(
+        f"/api/agent/threads/{thread_id}", json={"title": "Renamed chat"}
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["thread"]["title"] == "Renamed chat"
+
+
+def test_resume_thread(client):
+    project = _create_project(client)
+    thread_id = _create_thread(client, project["id"])["thread_id"]
+
+    response = client.post(
+        f"/api/agent/threads/{thread_id}/resume",
+        json={"api_key": "key123", "llm_model": "deepseek-v4-flash"},
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["thread_id"] == thread_id
+    assert data["messages"] == []
 
 
 def test_send_message_publishes_events(client, app):

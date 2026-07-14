@@ -43,13 +43,42 @@ class UpdatePlanRequest(BaseModel):
     plan: Dict[str, Any]
 
 
+class ThreadPatchRequest(BaseModel):
+    """Request body for renaming a thread."""
+
+    title: str
+
+
+class LoadThreadRequest(BaseModel):
+    """Request body for resuming an existing thread."""
+
+    api_key: str = ""
+    llm_model: Literal["deepseek-v4-pro", "deepseek-v4-flash"] = "deepseek-v4-pro"
+
+
 def _agent_config(thread_id: str, app) -> Dict[str, Any]:
-    """Build the RunnableConfig for a thread, including the api_key from app state."""
+    """Build the RunnableConfig for a thread.
+
+    api_key and llm_model are normally set when the thread is created or
+    resumed. If the server has restarted, fall back to the model stored in the
+    threads table.
+    """
     api_key = getattr(app.state, "agent_api_keys", {}).get(thread_id, "")
     llm_model = getattr(app.state, "agent_llm_models", {}).get(
-        thread_id, "deepseek-v4-pro"
+        thread_id, ""
     )
-    return {"configurable": {"thread_id": thread_id, "api_key": api_key, "llm_model": llm_model}}
+    if not llm_model:
+        store = getattr(app.state, "project_store", None)
+        if store is not None:
+            meta = store.get_thread_meta(thread_id)
+            llm_model = meta.get("llm_model", "deepseek-v4-pro") if meta else "deepseek-v4-pro"
+    return {
+        "configurable": {
+            "thread_id": thread_id,
+            "api_key": api_key,
+            "llm_model": llm_model,
+        }
+    }
 
 
 def _render_messages(values: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -197,6 +226,7 @@ async def create_thread(
     llm_model = payload.llm_model
     request.app.state.agent_api_keys[thread_id] = api_key
     request.app.state.agent_llm_models[thread_id] = llm_model
+    store.record_thread(project_id, thread_id, "", llm_model)
     initial_state = build_initial_state(project, api_key=api_key, llm_model=llm_model)
     await graph.aupdate_state(_agent_config(thread_id, request.app), initial_state)
     return {"thread_id": thread_id}
@@ -207,8 +237,13 @@ async def get_thread(
     request: Request,
     thread_id: str,
     graph=Depends(get_agent_graph),
+    store: ProjectStore = Depends(get_project_store),
 ) -> Dict[str, Any]:
     """Return the current state for an agent thread."""
+    if store.get_thread_meta(thread_id) is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="thread not found"
+        )
     try:
         snapshot = await graph.aget_state(_agent_config(thread_id, request.app))
     except KeyError:
@@ -219,6 +254,73 @@ async def get_thread(
     payload = _sync_payload(snapshot.values)
     payload["thread_id"] = thread_id
     return payload
+
+
+@router.get("/threads", response_model=Dict[str, Any])
+async def list_threads(
+    project_id: str = Query(..., description="Project to list threads for"),
+    store: ProjectStore = Depends(get_project_store),
+) -> Dict[str, Any]:
+    """Return all threads belonging to a project."""
+    return {"threads": store.list_threads(project_id)}
+
+
+@router.delete(
+    "/threads/{thread_id}", status_code=status.HTTP_204_NO_CONTENT
+)
+async def delete_thread(
+    thread_id: str,
+    request: Request,
+    graph=Depends(get_agent_graph),
+    store: ProjectStore = Depends(get_project_store),
+) -> None:
+    """Delete a thread and all associated checkpoints/events."""
+    if store.get_thread_meta(thread_id) is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="thread not found"
+        )
+    checkpointer = request.app.state.checkpointer
+    await checkpointer.adelete_thread(thread_id)
+    store.delete_thread(thread_id)
+    request.app.state.agent_api_keys.pop(thread_id, None)
+    request.app.state.agent_llm_models.pop(thread_id, None)
+    return None
+
+
+@router.patch("/threads/{thread_id}", response_model=Dict[str, Any])
+async def patch_thread(
+    thread_id: str,
+    payload: ThreadPatchRequest,
+    store: ProjectStore = Depends(get_project_store),
+) -> Dict[str, Any]:
+    """Rename a thread."""
+    if store.get_thread_meta(thread_id) is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="thread not found"
+        )
+    updated = store.update_thread_title(thread_id, payload.title)
+    return {"thread": updated}
+
+
+@router.post("/threads/{thread_id}/resume", response_model=Dict[str, Any])
+async def resume_thread(
+    request: Request,
+    thread_id: str,
+    payload: LoadThreadRequest,
+    graph=Depends(get_agent_graph),
+    store: ProjectStore = Depends(get_project_store),
+) -> Dict[str, Any]:
+    """Resume an existing thread, refreshing api_key/llm_model in memory."""
+    if store.get_thread_meta(thread_id) is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="thread not found"
+        )
+    request.app.state.agent_api_keys[thread_id] = payload.api_key
+    request.app.state.agent_llm_models[thread_id] = payload.llm_model
+    snapshot = await graph.aget_state(_agent_config(thread_id, request.app))
+    payload_out = _sync_payload(snapshot.values)
+    payload_out["thread_id"] = thread_id
+    return payload_out
 
 
 @router.post(
