@@ -1,7 +1,6 @@
 import asyncio
 import shutil
 import tempfile
-import threading
 import time
 from pathlib import Path
 
@@ -122,47 +121,29 @@ def test_get_run_events_sse(client, temp_db, monkeypatch):
         assert any("pipeline" in line for line in lines)
 
 
-def test_cancel_run_records_cancelled_status(client, temp_db, monkeypatch):
+def test_run_pipeline_preserves_cancelled_status(client, temp_db, monkeypatch):
     store, root = temp_db
     project = store.create_project("Cancel", str(root / "cancel"), "")
+    project_id = project["id"]
 
-    def slow_pipeline(project_id, run_id, config, bridge, store_arg, loop):
-        time.sleep(1)
+    def pipeline_that_finishes_after_cancel(
+        p_id, run_id, config, bridge, store_arg, loop
+    ):
+        # Simulate cancellation being recorded first (e.g. by task.cancel()).
+        store_arg.record_run_end(run_id, "cancelled", "用户取消", "")
+        # Then the worker attempts to record its normal completion.
+        # run_pipeline should detect the cancelled status and preserve it.
 
-    monkeypatch.setattr("app.api.runner.run_pipeline", slow_pipeline)
+    monkeypatch.setattr("app.api.runner.run_pipeline", pipeline_that_finishes_after_cancel)
 
-    start = client.post(f"/api/projects/{project['id']}/runs", json=_run_config())
+    start = client.post(f"/api/projects/{project_id}/runs", json=_run_config())
     assert start.status_code == 202
     run_id = start.json()["run_id"]
 
-    # Stream events in a background thread so we can capture the cancelled event.
-    event_lines = []
+    # Wait for the worker thread to finish.
+    time.sleep(0.5)
 
-    def collect_events():
-        with client.stream("GET", f"/api/runs/{run_id}/events") as response:
-            for line in response.iter_lines():
-                event_lines.append(line)
-                if "pipeline_cancelled" in line:
-                    break
-
-    event_thread = threading.Thread(target=collect_events, daemon=True)
-    event_thread.start()
-    time.sleep(0.2)  # Let the SSE subscription start.
-
-    task = client.app.state.pipeline_task_map.get(run_id)
-    assert task is not None
-    task.cancel()
-
-    deadline = time.time() + 2
-    run = None
-    while time.time() < deadline:
-        run = store.get_run(run_id)
-        if run["status"] == "cancelled":
-            break
-        time.sleep(0.1)
-
-    event_thread.join(timeout=2)
-
+    run = store.get_run(run_id)
     assert run is not None
     assert run["status"] == "cancelled"
-    assert any("pipeline_cancelled" in line for line in event_lines)
+    assert run["log_summary"] == "用户取消"

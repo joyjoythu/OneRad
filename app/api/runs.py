@@ -47,7 +47,11 @@ async def run_events(
                 except asyncio.TimeoutError:
                     run = store.get_run(run_id)
                     if run is not None and run.get("status") != "running":
-                        # Run has finished; no further events will be produced.
+                        # Run has finished; flush any queued events before closing.
+                        while not queue.empty():
+                            event = queue.get_nowait()
+                            data = json.dumps(event["data"], ensure_ascii=False)
+                            yield f"id: {event['event_id']}\nevent: pipeline\ndata: {data}\n\n"
                         yield f": run {run['status']}\n\n"
                         break
                     yield ": keep-alive\n\n"
