@@ -1,6 +1,7 @@
 import asyncio
 import shutil
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -147,3 +148,48 @@ def test_run_pipeline_preserves_cancelled_status(client, temp_db, monkeypatch):
     assert run is not None
     assert run["status"] == "cancelled"
     assert run["log_summary"] == "用户取消"
+
+
+def test_cancel_missing_run_returns_404(client):
+    response = client.post("/api/runs/non-existent-id/cancel")
+    assert response.status_code == 404
+
+
+def test_cancel_completed_run_returns_409(client, temp_db, monkeypatch):
+    store, root = temp_db
+    project = store.create_project("Done", str(root / "done"), "")
+
+    def fast_pipeline(project_id, run_id, config, bridge, store_arg, loop):
+        store_arg.record_run_end(run_id, "completed", "", "")
+
+    monkeypatch.setattr("app.api.runner.run_pipeline", fast_pipeline)
+
+    start = client.post(f"/api/projects/{project['id']}/runs", json=_run_config())
+    run_id = start.json()["run_id"]
+    time.sleep(0.2)
+
+    response = client.post(f"/api/runs/{run_id}/cancel")
+    assert response.status_code == 409
+
+
+def test_cancel_running_run_returns_202(client, temp_db, monkeypatch):
+    store, root = temp_db
+    project = store.create_project("Running", str(root / "running"), "")
+
+    stop_event = threading.Event()
+
+    def slow_pipeline(project_id, run_id, config, bridge, store_arg, loop):
+        stop_event.wait(timeout=10)
+
+    monkeypatch.setattr("app.api.runner.run_pipeline", slow_pipeline)
+
+    start = client.post(f"/api/projects/{project['id']}/runs", json=_run_config())
+    assert start.status_code == 202
+    run_id = start.json()["run_id"]
+
+    response = client.post(f"/api/runs/{run_id}/cancel")
+    assert response.status_code == 202
+    assert response.json()["run_id"] == run_id
+    assert response.json()["status"] == "cancelling"
+
+    stop_event.set()

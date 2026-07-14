@@ -59,3 +59,28 @@ async def run_events(
             await bridge.unsubscribe("run", run_id, queue)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+@router.post("/{run_id}/cancel", status_code=status.HTTP_202_ACCEPTED)
+async def cancel_run(
+    run_id: str,
+    request: Request,
+    store: ProjectStore = Depends(get_project_store),
+) -> Dict[str, Any]:
+    """Cancel a running pipeline run."""
+    run = store.get_run(run_id)
+    if run is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="运行记录不存在")
+    if run.get("status") != "running":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="运行不在运行中"
+        )
+
+    task = request.app.state.pipeline_task_map.get(run_id)
+    if task is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="未找到运行任务"
+        )
+
+    task.cancel()
+    return {"run_id": run_id, "status": "cancelling"}
