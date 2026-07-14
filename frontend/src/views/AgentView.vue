@@ -8,6 +8,14 @@
     </header>
 
     <div class="agent-workspace">
+      <ThreadList
+        :threads="agentStore.threads"
+        :current-thread-id="agentStore.currentThread?.id ?? null"
+        @select="handleSelectThread"
+        @create="handleCreateThread"
+        @rename="handleRenameThread"
+        @delete="handleDeleteThread"
+      />
       <div class="agent-chat-wrapper">
         <AgentChat
           ref="agentChatRef"
@@ -50,6 +58,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useAgentStore } from '@/stores/agent'
 import { useProjectStore } from '@/stores/project'
 import AgentChat from '@/components/AgentChat.vue'
+import ThreadList from '@/components/ThreadList.vue'
 import PlanPanel from '@/components/PlanPanel.vue'
 import CommandPanel from '@/components/CommandPanel.vue'
 import ScriptPanel from '@/components/ScriptPanel.vue'
@@ -96,10 +105,39 @@ async function handleSendMessage(content: string): Promise<void> {
   }
 }
 
+async function handleSelectThread(threadId: string): Promise<void> {
+  const projectId = projectStore.currentProject?.id
+  const config = projectStore.currentConfig
+  if (!projectId || !config) return
+  if (threadId === agentStore.currentThread?.id) return
+  const thread = agentStore.threads.find((t) => t.id === threadId)
+  if (!thread) return
+  selectedModel.value = thread.llm_model
+  await agentStore.loadThread(threadId, config.api_key, thread.llm_model)
+}
+
+async function handleCreateThread(): Promise<void> {
+  const projectId = projectStore.currentProject?.id
+  const config = projectStore.currentConfig
+  if (!projectId || !config) return
+  await agentStore.createThread(projectId, config.api_key, selectedModel.value)
+  agentChatRef.value?.clearInput()
+}
+
+async function handleRenameThread(threadId: string, title: string): Promise<void> {
+  const projectId = projectStore.currentProject?.id
+  if (!projectId) return
+  await agentStore.renameThread(threadId, title, projectId)
+}
+
+async function handleDeleteThread(threadId: string): Promise<void> {
+  const projectId = projectStore.currentProject?.id
+  if (!projectId) return
+  await agentStore.deleteThread(threadId, projectId)
+}
+
 onMounted(() => {
-  if (projectStore.currentProject && agentStore.threadId) {
-    void agentStore.reconnect()
-  }
+  // 项目切换 watcher 已设置 immediate: true，首次加载会自动处理。
 })
 
 onUnmounted(() => {
@@ -108,14 +146,27 @@ onUnmounted(() => {
 
 watch(
   () => projectStore.currentProject?.id,
-  (newId, oldId) => {
+  async (newId, oldId) => {
     if (newId !== oldId) {
       agentStore.resetThread()
+      if (newId) {
+        await agentStore.listThreads(newId)
+        if (agentStore.threads.length > 0) {
+          const config = projectStore.currentConfig
+          if (config) {
+            const latest = agentStore.threads[0]
+            await agentStore.loadThread(
+              latest.id,
+              config.api_key,
+              latest.llm_model
+            )
+            selectedModel.value = latest.llm_model
+          }
+        }
+      }
     }
-    if (newId && agentStore.threadId) {
-      void agentStore.reconnect()
-    }
-  }
+  },
+  { immediate: true }
 )
 </script>
 

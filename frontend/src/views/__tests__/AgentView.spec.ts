@@ -42,6 +42,8 @@ describe('AgentView', () => {
   it('resets the agent thread when the selected project changes', async () => {
     const projectStore = useProjectStore()
     const agentStore = useAgentStore()
+    vi.spyOn(agentStore, 'listThreads').mockResolvedValue(undefined)
+    vi.spyOn(agentStore, 'loadThread').mockResolvedValue(undefined)
     const resetThreadSpy = vi.spyOn(agentStore, 'resetThread')
 
     projectStore.currentProject = mockProject('1')
