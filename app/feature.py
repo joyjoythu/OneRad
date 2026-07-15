@@ -42,7 +42,7 @@ def _h5_path_for_image(h5_dir: str, image_path: str, common_parent: str) -> str:
         name = p.name
         if name.endswith(".nii.gz"):
             p = p.with_name(name[:-7])
-        elif p.suffix in {".nii", ".gz"}:
+        elif name.endswith(".nii"):
             p = p.with_suffix("")
         else:
             break

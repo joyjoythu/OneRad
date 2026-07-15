@@ -38,6 +38,8 @@ def test_feature_agent_outputs_h5(mock_extractor, tmp_path, yaml_path):
     with h5py.File(out_dir / "h5" / "case_001_T1.h5", "r") as f:
         assert "f_values" in f
         assert f["f_values"].shape == (1, 2)
+        assert "feature_names" in f
+        assert list(f["feature_names"].asstr()[:]) == ["feature_a", "feature_b"]
 
 
 @patch("app.feature.cir_get_features")
