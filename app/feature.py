@@ -2,14 +2,39 @@ import os
 import tempfile
 import time
 import logging
+from pathlib import Path
 from typing import List, Dict, Any, Tuple, Optional
 
+import h5py
+import numpy as np
 import pandas as pd
 import yaml
 
 from app.cir_features import cir_get_features
 
 logger = logging.getLogger(__name__)
+
+
+def _h5_path_for_image(h5_dir: str, image_path: str, common_parent: str) -> str:
+    """Derive an h5 file path from ``image_path``.
+
+    The file name preserves directory names below ``common_parent`` and the
+    image file stem, joined by underscores. If ``image_path`` cannot be made
+    relative to ``common_parent``, only the file stem is used.
+    """
+    try:
+        rel = os.path.relpath(image_path, common_parent)
+    except ValueError:
+        rel = os.path.basename(image_path)
+
+    p = Path(rel)
+    while p.suffix in {".nii", ".gz", ".nii.gz"}:
+        p = p.with_suffix("")
+
+    stem = str(p).replace(os.sep, "_").replace("/", "_")
+    if not stem:
+        stem = "features"
+    return os.path.join(h5_dir, f"{stem}.h5")
 
 
 def _prepare_yaml(
@@ -98,6 +123,12 @@ class FeatureAgent:
             return {"success": False, "message": f"准备 YAML 失败: {e}"}
 
         t0 = time.time()
+
+        image_paths = [p["image_path"] for p in pairs]
+        common_parent = os.path.commonpath(image_paths)
+        if os.path.isfile(common_parent):
+            common_parent = os.path.dirname(common_parent)
+
         results = [
             self._extract_single((p["patient_id"], p["image_path"], p["mask_path"], effective_yaml))
             for p in pairs
@@ -105,7 +136,8 @@ class FeatureAgent:
 
         rows = []
         failed_ids = []
-        for pid, feats, err in results:
+        successes = []
+        for pid, feats, err, image_path in results:
             if err:
                 failed_ids.append(pid)
                 logger.warning("特征提取失败 %s: %s", pid, err)
@@ -113,6 +145,7 @@ class FeatureAgent:
                 row = {"patient_id": pid}
                 row.update(feats)
                 rows.append(row)
+                successes.append((pid, image_path))
 
         if tmp_yaml is not None:
             try:
@@ -130,7 +163,7 @@ class FeatureAgent:
             df = df.drop(columns=nan_cols)
             logger.info("剔除全为 NaN 的特征列: %s", nan_cols)
 
-        zero_var = [c for c in df.columns if df[c].nunique(dropna=True) <= 1]
+        zero_var = [c for c in df.columns if len(df) > 1 and df[c].nunique(dropna=True) <= 1]
         if zero_var:
             df = df.drop(columns=zero_var)
             logger.info("剔除零方差特征列: %s", zero_var)
@@ -152,6 +185,17 @@ class FeatureAgent:
             if failed_ids:
                 failed_path = os.path.join(save_dir, "failed_feature_cases.csv")
                 pd.DataFrame({"patient_id": failed_ids}).to_csv(failed_path, index=False)
+
+            h5_dir = os.path.join(save_dir, "h5")
+            os.makedirs(h5_dir, exist_ok=True)
+            pid_to_image = dict(successes)
+            for pid in df.index:
+                values = df.loc[pid].values.reshape(1, -1)
+                h5_path = _h5_path_for_image(h5_dir, pid_to_image[pid], common_parent)
+                with h5py.File(h5_path, "w") as hf:
+                    hf.create_dataset("f_values", data=values, dtype="float64")
+                logger.info("单病例特征已保存: %s", h5_path)
+
             logger.info("特征矩阵已保存: %s", feature_path)
 
         return {
@@ -170,16 +214,16 @@ class FeatureAgent:
     def _extract_single(self, args):
         extractor = self._get_extractor()
         if extractor is None:
-            patient_id = args[0]
-            return patient_id, None, "cir_get_features 不可用（导入失败）"
+            patient_id, image_path = args[0], args[1]
+            return patient_id, None, "cir_get_features 不可用（导入失败）", image_path
 
         patient_id, image_path, mask_path, yaml_path = args
         try:
             if not os.path.exists(image_path):
-                return patient_id, None, f"影像不存在: {image_path}"
+                return patient_id, None, f"影像不存在: {image_path}", image_path
             if not os.path.exists(mask_path):
-                return patient_id, None, f"Mask 不存在: {mask_path}"
+                return patient_id, None, f"Mask 不存在: {mask_path}", image_path
             feats = extractor(image_path, mask_path, yaml_path)
-            return patient_id, feats, None
+            return patient_id, feats, None, image_path
         except Exception as e:
-            return patient_id, None, str(e)
+            return patient_id, None, str(e), image_path
