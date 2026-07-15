@@ -124,6 +124,65 @@ def test_execute_confirmed_radiomics_execution_failure(tmp_path):
     assert "feature extraction failed" in content["error"]
 
 
+def test_execute_confirmed_radiomics_execution_valueerror_not_path_error(tmp_path):
+    state = AgentState(
+        messages=[],
+        project_path=str(tmp_path),
+        base_url="https://api.deepseek.com/v1",
+        model="deepseek-v4-pro",
+        api_key="",
+        interrupt_type="radiomics_execution",
+        confirmed=True,
+        pending_radiomics_execution={
+            "tool_call_id": "tc2",
+            "pairs": [{"patient_id": "case_001", "image_path": "images/case_001.nii.gz", "mask_path": "masks/case_001.nii.gz"}],
+            "yaml_path": "Params_labels.yaml",
+            "output_dir": str(tmp_path / "radiomics_features"),
+        },
+    )
+
+    with patch("app.agent.nodes.FeatureAgent") as mock_agent_cls:
+        mock_agent = MagicMock()
+        mock_agent.run.side_effect = ValueError("bad feature config")
+        mock_agent_cls.return_value = mock_agent
+        result = execute_confirmed(state)
+
+    assert len(result["messages"]) == 1
+    assert isinstance(result["messages"][0], ToolMessage)
+    content = json.loads(result["messages"][0].content)
+    assert content["success"] is False
+    assert "bad feature config" in content["error"]
+    assert "路径超出项目目录" not in content["error"]
+
+
+def test_execute_confirmed_radiomics_execution_path_escape(tmp_path):
+    state = AgentState(
+        messages=[],
+        project_path=str(tmp_path),
+        base_url="https://api.deepseek.com/v1",
+        model="deepseek-v4-pro",
+        api_key="",
+        interrupt_type="radiomics_execution",
+        confirmed=True,
+        pending_radiomics_execution={
+            "tool_call_id": "tc2",
+            "pairs": [{"patient_id": "case_001", "image_path": "../escaped.nii.gz", "mask_path": "masks/case_001.nii.gz"}],
+            "yaml_path": "Params_labels.yaml",
+            "output_dir": str(tmp_path / "radiomics_features"),
+        },
+    )
+
+    with patch("app.agent.nodes.FeatureAgent") as mock_agent_cls:
+        result = execute_confirmed(state)
+        mock_agent_cls.assert_not_called()
+
+    assert len(result["messages"]) == 1
+    assert isinstance(result["messages"][0], ToolMessage)
+    content = json.loads(result["messages"][0].content)
+    assert content["success"] is False
+    assert "路径超出项目目录" in content["error"]
+
+
 def test_execute_confirmed_radiomics_execution_cancelled(tmp_path):
     state = AgentState(
         messages=[],

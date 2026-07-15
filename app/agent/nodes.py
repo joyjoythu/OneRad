@@ -374,6 +374,25 @@ def _run_system_command(command: dict, project_path: str) -> dict:
         return {"error": str(e)}
 
 
+class PathEscapeError(ValueError):
+    """Raised when a requested path resolves outside the project sandbox."""
+
+
+def _resolve_within_project(sandbox: Sandbox, path) -> str:
+    """Resolve *path* inside *sandbox* and re-raise sandbox escapes as PathEscapeError.
+
+    This lets callers distinguish path-escape failures from unrelated ValueErrors
+    raised by downstream code (e.g. FeatureAgent.run).
+    """
+    try:
+        return str(sandbox.resolve(path, must_exist=False))
+    except ValueError as e:
+        msg = str(e).lower()
+        if "outside project sandbox" in msg or "sandbox" in msg:
+            raise PathEscapeError(str(e)) from e
+        raise
+
+
 def _run_radiomics_execution(pending: dict, project_path: str) -> dict:
     """执行已确认的影像组学特征提取任务。"""
     sandbox = Sandbox(project_path)
@@ -381,18 +400,18 @@ def _run_radiomics_execution(pending: dict, project_path: str) -> dict:
     output_dir = pending.get("output_dir") or str(Path(project_path) / "radiomics_features")
     pairs = pending.get("pairs", [])
     try:
-        yaml_path = str(sandbox.resolve(yaml_path))
-        output_dir = str(sandbox.resolve(output_dir, must_exist=False))
+        yaml_path = _resolve_within_project(sandbox, yaml_path)
+        output_dir = _resolve_within_project(sandbox, output_dir)
         resolved_pairs = []
         for pair in pairs:
             resolved_pairs.append({
                 "patient_id": pair.get("patient_id"),
-                "image_path": str(sandbox.resolve(pair.get("image_path"))),
-                "mask_path": str(sandbox.resolve(pair.get("mask_path"))),
+                "image_path": _resolve_within_project(sandbox, pair.get("image_path")),
+                "mask_path": _resolve_within_project(sandbox, pair.get("mask_path")),
             })
         agent = FeatureAgent(output_dir=output_dir)
         return agent.run(resolved_pairs, yaml_path=yaml_path)
-    except ValueError:
+    except PathEscapeError:
         return {"success": False, "error": "路径超出项目目录"}
     except Exception as e:
         return {"success": False, "error": str(e)}
