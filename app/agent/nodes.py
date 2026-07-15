@@ -143,9 +143,21 @@ def process_tool_calls(state: AgentState, config: Optional[RunnableConfig] = Non
                 updates["script_risk_level"] = parsed["script"]["risk_level"]
             elif name == "discover_radiomics_pairs":
                 interrupt_type = "radiomics_plan"
+                if not isinstance(parsed, dict):
+                    updates["messages"].append(ToolMessage(
+                        content=json.dumps({"error": f"Tool {name} returned invalid payload"}),
+                        tool_call_id=tool_call_id,
+                    ))
+                    continue
                 updates["pending_radiomics_plan"] = {"tool_call_id": tool_call_id, **parsed}
             elif name == "extract_radiomics_features":
                 interrupt_type = "radiomics_execution"
+                if not isinstance(parsed, dict) or not isinstance(parsed.get("meta"), dict):
+                    updates["messages"].append(ToolMessage(
+                        content=json.dumps({"error": f"Tool {name} returned invalid payload"}),
+                        tool_call_id=tool_call_id,
+                    ))
+                    continue
                 updates["pending_radiomics_execution"] = {"tool_call_id": tool_call_id, **parsed["meta"]}
             # 需要确认的工具不在此处生成 ToolMessage，由 execute_confirmed 在用户确认/取消后统一补齐。
         else:
@@ -345,12 +357,23 @@ def _run_system_command(command: dict, project_path: str) -> dict:
 
 def _run_radiomics_execution(pending: dict, project_path: str) -> dict:
     """执行已确认的影像组学特征提取任务。"""
+    sandbox = Sandbox(project_path)
     yaml_path = pending.get("yaml_path") or str(Path(project_path) / "Params_labels.yaml")
     output_dir = pending.get("output_dir") or str(Path(project_path) / "radiomics_features")
     pairs = pending.get("pairs", [])
     try:
+        yaml_path = str(sandbox.resolve(yaml_path))
+        resolved_pairs = []
+        for pair in pairs:
+            resolved_pairs.append({
+                "patient_id": pair.get("patient_id"),
+                "image_path": str(sandbox.resolve(pair.get("image_path"))),
+                "mask_path": str(sandbox.resolve(pair.get("mask_path"))),
+            })
         agent = FeatureAgent(output_dir=output_dir)
-        return agent.run(pairs, yaml_path=yaml_path)
+        return agent.run(resolved_pairs, yaml_path=yaml_path)
+    except ValueError:
+        return {"success": False, "error": "路径超出项目目录"}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
