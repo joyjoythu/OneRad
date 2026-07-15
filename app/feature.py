@@ -18,18 +18,34 @@ logger = logging.getLogger(__name__)
 def _h5_path_for_image(h5_dir: str, image_path: str, common_parent: str) -> str:
     """Derive an h5 file path from ``image_path``.
 
-    The file name preserves directory names below ``common_parent`` and the
-    image file stem, joined by underscores. If ``image_path`` cannot be made
-    relative to ``common_parent``, only the file stem is used.
+    If ``image_path`` contains an ``images/`` directory segment, the stem is
+    built from the relative path below that segment so that sub-directory names
+    are preserved. Otherwise the path is made relative to ``common_parent`` and
+    the same underscore-joining is applied. If neither approach works, only the
+    file stem is used.
     """
-    try:
-        rel = os.path.relpath(image_path, common_parent)
-    except ValueError:
-        rel = os.path.basename(image_path)
+    image_path = os.path.normpath(image_path)
+
+    # Prefer anchoring below an ``images`` directory when present.
+    parts = Path(image_path).parts
+    if "images" in parts:
+        idx = parts.index("images") + 1
+        rel = os.path.join(*parts[idx:]) if idx < len(parts) else os.path.basename(image_path)
+    else:
+        try:
+            rel = os.path.relpath(image_path, common_parent)
+        except ValueError:
+            rel = os.path.basename(image_path)
 
     p = Path(rel)
-    while p.suffix in {".nii", ".gz", ".nii.gz"}:
-        p = p.with_suffix("")
+    while True:
+        name = p.name
+        if name.endswith(".nii.gz"):
+            p = p.with_name(name[:-7])
+        elif p.suffix in {".nii", ".gz"}:
+            p = p.with_suffix("")
+        else:
+            break
 
     stem = str(p).replace(os.sep, "_").replace("/", "_")
     if not stem:
@@ -125,9 +141,12 @@ class FeatureAgent:
         t0 = time.time()
 
         image_paths = [p["image_path"] for p in pairs]
-        common_parent = os.path.commonpath(image_paths)
-        if os.path.isfile(common_parent):
-            common_parent = os.path.dirname(common_parent)
+        try:
+            common_parent = os.path.commonpath(image_paths)
+            if os.path.isfile(common_parent):
+                common_parent = os.path.dirname(common_parent)
+        except ValueError:
+            common_parent = ""
 
         results = [
             self._extract_single((p["patient_id"], p["image_path"], p["mask_path"], effective_yaml))
@@ -135,11 +154,18 @@ class FeatureAgent:
         ]
 
         rows = []
-        failed_ids = []
+        failed_records = []
         successes = []
-        for pid, feats, err, image_path in results:
+        for pid, feats, err, image_path, mask_path in results:
             if err:
-                failed_ids.append(pid)
+                failed_records.append(
+                    {
+                        "patient_id": pid,
+                        "image_path": image_path,
+                        "mask_path": mask_path,
+                        "reason": err,
+                    }
+                )
                 logger.warning("特征提取失败 %s: %s", pid, err)
             else:
                 row = {"patient_id": pid}
@@ -155,6 +181,8 @@ class FeatureAgent:
 
         if not rows:
             return {"success": False, "message": "所有样本特征提取均失败"}
+
+        failed_ids = [r["patient_id"] for r in failed_records]
 
         df = pd.DataFrame(rows).set_index("patient_id")
         df = df.apply(pd.to_numeric, errors="coerce")
@@ -182,18 +210,26 @@ class FeatureAgent:
             os.makedirs(save_dir, exist_ok=True)
             feature_path = os.path.join(save_dir, "radiomics_features.csv")
             df.to_csv(feature_path)
-            if failed_ids:
-                failed_path = os.path.join(save_dir, "failed_feature_cases.csv")
-                pd.DataFrame({"patient_id": failed_ids}).to_csv(failed_path, index=False)
+            if failed_records:
+                failed_path = os.path.join(save_dir, "failed_cases.csv")
+                pd.DataFrame(
+                    failed_records,
+                    columns=["patient_id", "image_path", "mask_path", "reason"],
+                ).to_csv(failed_path, index=False)
 
             h5_dir = os.path.join(save_dir, "h5")
             os.makedirs(h5_dir, exist_ok=True)
             pid_to_image = dict(successes)
+            feature_names = df.columns.tolist()
             for pid in df.index:
                 values = df.loc[pid].values.reshape(1, -1)
                 h5_path = _h5_path_for_image(h5_dir, pid_to_image[pid], common_parent)
                 with h5py.File(h5_path, "w") as hf:
                     hf.create_dataset("f_values", data=values, dtype="float64")
+                    hf.create_dataset(
+                        "feature_names",
+                        data=np.array(feature_names, dtype=h5py.string_dtype(encoding="utf-8")),
+                    )
                 logger.info("单病例特征已保存: %s", h5_path)
 
             logger.info("特征矩阵已保存: %s", feature_path)
@@ -214,16 +250,16 @@ class FeatureAgent:
     def _extract_single(self, args):
         extractor = self._get_extractor()
         if extractor is None:
-            patient_id, image_path = args[0], args[1]
-            return patient_id, None, "cir_get_features 不可用（导入失败）", image_path
+            patient_id, image_path, mask_path = args[0], args[1], args[2]
+            return patient_id, None, "cir_get_features 不可用（导入失败）", image_path, mask_path
 
         patient_id, image_path, mask_path, yaml_path = args
         try:
             if not os.path.exists(image_path):
-                return patient_id, None, f"影像不存在: {image_path}", image_path
+                return patient_id, None, f"影像不存在: {image_path}", image_path, mask_path
             if not os.path.exists(mask_path):
-                return patient_id, None, f"Mask 不存在: {mask_path}", image_path
+                return patient_id, None, f"Mask 不存在: {mask_path}", image_path, mask_path
             feats = extractor(image_path, mask_path, yaml_path)
-            return patient_id, feats, None, image_path
+            return patient_id, feats, None, image_path, mask_path
         except Exception as e:
-            return patient_id, None, str(e), image_path
+            return patient_id, None, str(e), image_path, mask_path

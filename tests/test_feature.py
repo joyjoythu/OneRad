@@ -131,7 +131,7 @@ def test_feature_agent_one_failing_pair(tmp_path):
     assert result["failed_ids"] == ["p3"]
     assert result["feature_path"] == str(out_dir / "radiomics_features.csv")
     assert os.path.exists(result["feature_path"])
-    assert result["failed_path"] == str(out_dir / "failed_feature_cases.csv")
+    assert result["failed_path"] == str(out_dir / "failed_cases.csv")
     assert os.path.exists(result["failed_path"])
 
 
