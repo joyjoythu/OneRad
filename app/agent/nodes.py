@@ -1,5 +1,6 @@
 import json
 import os
+from pathlib import Path
 from typing import Literal, Optional
 
 from langchain_core.messages import ToolMessage
@@ -12,6 +13,7 @@ from app.agent.tools import build_tools
 from app.agent.safety import Sandbox
 from app.actions import execute_plan
 from app.code_runner import execute_script_if_safe
+from app.feature import FeatureAgent
 
 
 def _build_llm(
@@ -108,6 +110,8 @@ def process_tool_calls(state: AgentState, config: Optional[RunnableConfig] = Non
             "find_files",
             "get_file_info",
             "plan_file_operations",
+            "discover_radiomics_pairs",
+            "extract_radiomics_features",
         } or (
             name == "execute_python_script"
             and isinstance(parsed, dict)
@@ -137,6 +141,12 @@ def process_tool_calls(state: AgentState, config: Optional[RunnableConfig] = Non
                 interrupt_type = "python_script"
                 updates["pending_script"] = {"tool_call_id": tool_call_id, **parsed["script"]}
                 updates["script_risk_level"] = parsed["script"]["risk_level"]
+            elif name == "discover_radiomics_pairs":
+                interrupt_type = "radiomics_plan"
+                updates["pending_radiomics_plan"] = {"tool_call_id": tool_call_id, **parsed}
+            elif name == "extract_radiomics_features":
+                interrupt_type = "radiomics_execution"
+                updates["pending_radiomics_execution"] = {"tool_call_id": tool_call_id, **parsed["meta"]}
             # 需要确认的工具不在此处生成 ToolMessage，由 execute_confirmed 在用户确认/取消后统一补齐。
         else:
             updates["messages"].append(ToolMessage(content=tool_result, tool_call_id=tool_call_id))
@@ -157,6 +167,8 @@ def human_review(state: AgentState) -> dict:
         "plan": state.get("pending_plan"),
         "command": state.get("pending_command"),
         "script": state.get("pending_script"),
+        "radiomics_plan": state.get("pending_radiomics_plan"),
+        "radiomics_execution": state.get("pending_radiomics_execution"),
     })
     if not isinstance(value, dict):
         value = {"action": "cancel"}
@@ -165,9 +177,15 @@ def human_review(state: AgentState) -> dict:
     if "plan" in value and pending_plan:
         pending_plan = {"tool_call_id": pending_plan["tool_call_id"], "plan": value["plan"]}
 
+    pending_radiomics_plan = state.get("pending_radiomics_plan")
+    if "radiomics_plan" in value and pending_radiomics_plan:
+        pending_radiomics_plan = {"tool_call_id": pending_radiomics_plan["tool_call_id"], **value["radiomics_plan"]}
+
     return {
         "confirmed": value.get("action") == "confirm",
         "pending_plan": pending_plan,
+        "pending_radiomics_plan": pending_radiomics_plan,
+        "pending_radiomics_execution": state.get("pending_radiomics_execution"),
     }
 
 
@@ -177,6 +195,8 @@ def _resolve_tool_call_id(state: AgentState) -> str:
         state.get("pending_plan"),
         state.get("pending_command"),
         state.get("pending_script"),
+        state.get("pending_radiomics_plan"),
+        state.get("pending_radiomics_execution"),
     ):
         if pending:
             return pending.get("tool_call_id", "") or ""
@@ -194,6 +214,8 @@ def execute_confirmed(state: AgentState) -> dict:
     pending_plan = state.get("pending_plan")
     pending_command = state.get("pending_command")
     pending_script = state.get("pending_script")
+    pending_radiomics_plan = state.get("pending_radiomics_plan")
+    pending_radiomics_execution = state.get("pending_radiomics_execution")
 
     if itype == "file_plan":
         tool_call_id = (pending_plan or {}).get("tool_call_id", "") or _resolve_tool_call_id(state)
@@ -228,6 +250,28 @@ def execute_confirmed(state: AgentState) -> dict:
                     tool_call_id=tool_call_id,
                 )]
             })
+    elif itype == "radiomics_plan":
+        tool_call_id = (pending_radiomics_plan or {}).get("tool_call_id", "") or _resolve_tool_call_id(state)
+        if not pending_radiomics_plan:
+            if not tool_call_id:
+                raise RuntimeError("Missing pending radiomics plan and cannot resolve tool_call_id")
+            return _clear_interrupt({
+                "messages": [ToolMessage(
+                    content=json.dumps({"error": "Missing pending radiomics plan"}),
+                    tool_call_id=tool_call_id,
+                )]
+            })
+    elif itype == "radiomics_execution":
+        tool_call_id = (pending_radiomics_execution or {}).get("tool_call_id", "") or _resolve_tool_call_id(state)
+        if not pending_radiomics_execution:
+            if not tool_call_id:
+                raise RuntimeError("Missing pending radiomics execution and cannot resolve tool_call_id")
+            return _clear_interrupt({
+                "messages": [ToolMessage(
+                    content=json.dumps({"error": "Missing pending radiomics execution"}),
+                    tool_call_id=tool_call_id,
+                )]
+            })
     else:
         tool_call_id = _resolve_tool_call_id(state)
         if not tool_call_id:
@@ -247,6 +291,11 @@ def execute_confirmed(state: AgentState) -> dict:
         results = _run_system_command(state["pending_command"], state["project_path"])
     elif itype == "python_script":
         results = execute_script_if_safe(state["pending_script"], state["project_path"])
+    elif itype == "radiomics_plan":
+        plan = state["pending_radiomics_plan"]
+        results = {k: v for k, v in plan.items() if k != "tool_call_id"}
+    elif itype == "radiomics_execution":
+        results = _run_radiomics_execution(state["pending_radiomics_execution"], state["project_path"])
     else:
         results = {"error": "unknown interrupt type"}
 
@@ -294,6 +343,18 @@ def _run_system_command(command: dict, project_path: str) -> dict:
         return {"error": str(e)}
 
 
+def _run_radiomics_execution(pending: dict, project_path: str) -> dict:
+    """执行已确认的影像组学特征提取任务。"""
+    yaml_path = pending.get("yaml_path") or str(Path(project_path) / "Params_labels.yaml")
+    output_dir = pending.get("output_dir") or str(Path(project_path) / "radiomics_features")
+    pairs = pending.get("pairs", [])
+    try:
+        agent = FeatureAgent(output_dir=output_dir)
+        return agent.run(pairs, yaml_path=yaml_path)
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 def _clear_interrupt(updates: dict) -> dict:
     """清空中断相关状态字段。"""
     updates.update({
@@ -301,6 +362,8 @@ def _clear_interrupt(updates: dict) -> dict:
         "pending_plan": None,
         "pending_command": None,
         "pending_script": None,
+        "pending_radiomics_plan": None,
+        "pending_radiomics_execution": None,
         "script_risk_level": None,
         "confirmed": None,
     })
