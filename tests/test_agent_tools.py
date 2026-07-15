@@ -89,6 +89,18 @@ def test_discover_radiomics_pairs_returns_direct_error_without_images_dir(tmp_pa
     assert "images" in data["message"].lower()
 
 
+def test_discover_radiomics_pairs_error_when_masks_missing(tmp_path):
+    fake_llm = MagicMock()
+    (tmp_path / "images").mkdir()
+    (tmp_path / "images" / "case_001.nii.gz").write_text("image")
+    tools = build_tools(str(tmp_path), fake_llm)
+    result = tools["discover_radiomics_pairs"].invoke({})
+    data = json.loads(result)
+    assert "_pending_tool" not in data
+    assert data["success"] is False
+    assert "masks" in data["message"].lower()
+
+
 def test_extract_radiomics_features_returns_pending(tmp_path):
     fake_llm = MagicMock()
     (tmp_path / "Params_labels.yaml").write_text("dummy")
@@ -143,3 +155,17 @@ def test_extract_radiomics_features_returns_error_for_path_escape(tmp_path):
     data = json.loads(result)
     assert data["success"] is False
     assert "路径超出项目目录" in data["error"]
+
+
+@pytest.mark.parametrize("pair,expected_key", [
+    ({"patient_id": "case_001", "mask_path": "b.nii.gz"}, "image_path"),
+    ({"patient_id": "case_001", "image_path": "a.nii.gz"}, "mask_path"),
+])
+def test_extract_radiomics_features_returns_error_for_missing_pair_keys(tmp_path, pair, expected_key):
+    fake_llm = MagicMock()
+    (tmp_path / "Params_labels.yaml").write_text("dummy")
+    tools = build_tools(str(tmp_path), fake_llm)
+    result = tools["extract_radiomics_features"].invoke({"pairs": [pair]})
+    data = json.loads(result)
+    assert data["success"] is False
+    assert expected_key in data["error"]

@@ -75,20 +75,22 @@ def build_tools(project_path: str, llm):
         if not pairs:
             return json.dumps({"success": False, "error": "pairs must be a non-empty list"})
         if not yaml_path:
-            yaml_path = str(Path(project_path) / "Params_labels.yaml")
-        if not Path(yaml_path).exists():
+            yaml_path = "Params_labels.yaml"
+        try:
+            yaml_path = str(sandbox.resolve(yaml_path, must_exist=True))
+        except FileNotFoundError:
             return json.dumps({"success": False, "error": f"YAML 配置不存在: {yaml_path}"})
+        except ValueError:
+            return json.dumps({"success": False, "error": f"路径超出项目目录: {yaml_path}"})
 
-        root = Path(project_path).resolve()
         for pair in pairs:
             for key in ("image_path", "mask_path"):
                 rel_path = pair.get(key)
                 if rel_path is None:
                     return json.dumps({"success": False, "error": f"pair missing {key}"})
-                target = Path(rel_path)
-                if not target.is_absolute():
-                    target = (root / target).resolve()
-                if not target.is_relative_to(root):
+                try:
+                    sandbox.resolve(rel_path, must_exist=False)
+                except ValueError:
                     return json.dumps({"success": False, "error": f"路径超出项目目录: {rel_path}"})
 
         output_dir = str(Path(project_path) / "radiomics_features")
