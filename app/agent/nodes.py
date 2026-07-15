@@ -404,11 +404,14 @@ def _run_radiomics_execution(pending: dict, project_path: str) -> dict:
         output_dir = _resolve_within_project(sandbox, output_dir)
         resolved_pairs = []
         for pair in pairs:
-            resolved_pairs.append({
-                "patient_id": pair.get("patient_id"),
-                "image_path": _resolve_within_project(sandbox, pair.get("image_path")),
-                "mask_path": _resolve_within_project(sandbox, pair.get("mask_path")),
-            })
+            resolved = dict(pair)
+            resolved["image_path"] = _resolve_within_project(
+                sandbox, pair.get("image_path")
+            )
+            resolved["mask_path"] = _resolve_within_project(
+                sandbox, pair.get("mask_path")
+            )
+            resolved_pairs.append(resolved)
         agent = FeatureAgent(output_dir=output_dir)
         return agent.run(resolved_pairs, yaml_path=yaml_path)
     except PathEscapeError:
