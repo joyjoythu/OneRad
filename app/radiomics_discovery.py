@@ -110,8 +110,7 @@ def discover_pairs(project_path: str) -> Dict[str, Any]:
             })
 
     # Medium confidence: suffix stripping or unique token intersection.
-    remaining_images = list(remaining_images)
-    for image_path in remaining_images:
+    for image_path in remaining_images[:]:
         image_rel = image_path.relative_to(images_dir)
         image_base = _stem(image_path)
 
@@ -143,8 +142,7 @@ def discover_pairs(project_path: str) -> Dict[str, Any]:
     # Low confidence: remaining images get only their ambiguous plausible
     # candidates (masks that still look like a medium-confidence match),
     # not every leftover mask.
-    remaining_images = list(remaining_images)
-    for image_path in remaining_images:
+    for image_path in remaining_images[:]:
         image_rel = image_path.relative_to(images_dir)
         image_base = _stem(image_path)
 

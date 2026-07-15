@@ -71,6 +71,21 @@ def test_low_confidence_unrelated_masks_are_unmatched(tmp_path):
     assert "masks/xyz_seg.nii.gz" in result["unmatched_masks"]
 
 
+def test_all_unmatched_images_reported_when_no_masks(tmp_path):
+    (tmp_path / "images").mkdir()
+    (tmp_path / "masks").mkdir()
+    (tmp_path / "images" / "img_a.nii.gz").write_text("img1")
+    (tmp_path / "images" / "img_b.nii.gz").write_text("img2")
+    (tmp_path / "images" / "img_c.nii.gz").write_text("img3")
+
+    result = discover_pairs(str(tmp_path))
+    assert result["images_found"] == 3
+    assert len(result["unmatched_images"]) == 3
+    assert "images/img_a.nii.gz" in result["unmatched_images"]
+    assert "images/img_b.nii.gz" in result["unmatched_images"]
+    assert "images/img_c.nii.gz" in result["unmatched_images"]
+
+
 def test_flat_filename_without_underscore_yields_patient_id(tmp_path):
     (tmp_path / "images").mkdir()
     (tmp_path / "masks").mkdir()
