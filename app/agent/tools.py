@@ -65,22 +65,41 @@ def build_tools(project_path: str, llm):
     def discover_radiomics_pairs() -> str:
         """扫描项目下的 images/ 和 masks/，发现图像与掩膜的匹配计划。执行前需要用户确认。"""
         result = discover_pairs(project_path)
+        if not result.get("success", True):
+            return json.dumps(result)
         return json.dumps({"_pending_tool": "discover_radiomics_pairs", **result})
 
     @tool
     def extract_radiomics_features(pairs: List[Dict[str, str]], yaml_path: str = "") -> str:
         """根据 image/mask 配对批量提取影像组学特征。执行前需要用户确认。"""
         if not pairs:
-            return json.dumps({"error": "pairs must be a non-empty list"})
+            return json.dumps({"success": False, "error": "pairs must be a non-empty list"})
         if not yaml_path:
             yaml_path = str(Path(project_path) / "Params_labels.yaml")
+        if not Path(yaml_path).exists():
+            return json.dumps({"success": False, "error": f"YAML 配置不存在: {yaml_path}"})
+
+        root = Path(project_path).resolve()
+        for pair in pairs:
+            for key in ("image_path", "mask_path"):
+                rel_path = pair.get(key)
+                if rel_path is None:
+                    return json.dumps({"success": False, "error": f"pair missing {key}"})
+                target = Path(rel_path)
+                if not target.is_absolute():
+                    target = (root / target).resolve()
+                if not target.is_relative_to(root):
+                    return json.dumps({"success": False, "error": f"路径超出项目目录: {rel_path}"})
+
         output_dir = str(Path(project_path) / "radiomics_features")
         return json.dumps({
             "_pending_tool": "extract_radiomics_features",
             "meta": {
                 "pairs": pairs,
+                "n_cases": len(pairs),
                 "yaml_path": yaml_path,
                 "output_dir": output_dir,
+                "expected_outputs": ["radiomics_features.csv", "failed_cases.csv", "h5/*.h5"],
             },
         })
 
