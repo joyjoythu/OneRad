@@ -8,6 +8,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 
 from app.agent.safety import Sandbox, validate_plan
 from app.code_runner import classify_risk, prepare_script, execute_script_if_safe
+from app.radiomics_discovery import discover_pairs
 
 
 SYSTEM_PLAN_PROMPT = """你是一个医学影像项目文件整理助手。
@@ -60,11 +61,36 @@ def build_tools(project_path: str, llm):
         meta = prepare_script(code, description, project_path)
         return json.dumps({"_pending_tool": "execute_python_script", "script": meta})
 
+    @tool
+    def discover_radiomics_pairs() -> str:
+        """扫描项目下的 images/ 和 masks/，发现图像与掩膜的匹配计划。执行前需要用户确认。"""
+        result = discover_pairs(project_path)
+        return json.dumps({"_pending_tool": "discover_radiomics_pairs", **result})
+
+    @tool
+    def extract_radiomics_features(pairs: List[Dict[str, str]], yaml_path: str = "") -> str:
+        """根据 image/mask 配对批量提取影像组学特征。执行前需要用户确认。"""
+        if not pairs:
+            return json.dumps({"error": "pairs must be a non-empty list"})
+        if not yaml_path:
+            yaml_path = str(Path(project_path) / "Params_labels.yaml")
+        output_dir = str(Path(project_path) / "radiomics_features")
+        return json.dumps({
+            "_pending_tool": "extract_radiomics_features",
+            "meta": {
+                "pairs": pairs,
+                "yaml_path": yaml_path,
+                "output_dir": output_dir,
+            },
+        })
+
     tools["list_directory"] = list_directory
     tools["find_files"] = find_files
     tools["get_file_info"] = get_file_info
     tools["plan_file_operations"] = plan_file_operations
     tools["execute_python_script"] = execute_python_script
+    tools["discover_radiomics_pairs"] = discover_radiomics_pairs
+    tools["extract_radiomics_features"] = extract_radiomics_features
     return tools
 
 

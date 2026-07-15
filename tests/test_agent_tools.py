@@ -57,3 +57,29 @@ def test_execute_python_script_returns_low_pending(tmp_path):
     data = __import__("json").loads(result)
     assert data["_pending_tool"] == "execute_python_script"
     assert data["script"]["risk_level"] == "low"
+
+
+def test_discover_radiomics_pairs_tool_exists(tmp_path):
+    fake_llm = MagicMock()
+    tools = build_tools(str(tmp_path), fake_llm)
+    assert "discover_radiomics_pairs" in tools
+    assert "extract_radiomics_features" in tools
+
+
+def test_discover_radiomics_pairs_returns_pending(tmp_path):
+    fake_llm = MagicMock()
+    tools = build_tools(str(tmp_path), fake_llm)
+    result = tools["discover_radiomics_pairs"].invoke({})
+    data = __import__("json").loads(result)
+    assert data["_pending_tool"] == "discover_radiomics_pairs"
+
+
+def test_extract_radiomics_features_returns_pending(tmp_path):
+    fake_llm = MagicMock()
+    tools = build_tools(str(tmp_path), fake_llm)
+    pairs = [{"patient_id": "case_001", "image_path": "a.nii.gz", "mask_path": "b.nii.gz"}]
+    result = tools["extract_radiomics_features"].invoke({"pairs": pairs})
+    data = __import__("json").loads(result)
+    assert data["_pending_tool"] == "extract_radiomics_features"
+    assert data["meta"]["yaml_path"] == str(tmp_path / "Params_labels.yaml")
+    assert data["meta"]["output_dir"] == str(tmp_path / "radiomics_features")
