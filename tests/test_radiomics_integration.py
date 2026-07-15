@@ -26,7 +26,8 @@ def test_discovery_to_feature_agent_with_mocked_extractor(tmp_path, monkeypatch)
     (tmp_path / "masks" / "case_001" / "T1.nii.gz").write_text("mask")
 
     yaml_path = tmp_path / "Params_labels.yaml"
-    yaml.safe_dump({"setting": {"label": 1, "binWidth": 25}}, yaml_path.open("w"))
+    with yaml_path.open("w") as f:
+        yaml.safe_dump({"setting": {"label": 1, "binWidth": 25}}, f)
 
     discovery = discover_pairs(str(tmp_path))
     assert discovery["success"]
@@ -96,7 +97,8 @@ def test_agent_tool_flow_discovers_and_extracts(tmp_path):
     (tmp_path / "masks" / "case_001" / "T1.nii.gz").write_text("mask")
 
     yaml_path = tmp_path / "Params_labels.yaml"
-    yaml.safe_dump({"setting": {"label": 1, "binWidth": 25}}, yaml_path.open("w"))
+    with yaml_path.open("w") as f:
+        yaml.safe_dump({"setting": {"label": 1, "binWidth": 25}}, f)
 
     with patch("app.agent.nodes.ChatOpenAI"):
         # Step 1: discovery tool call triggers a radiomics_plan interrupt.
