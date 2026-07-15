@@ -87,19 +87,22 @@ def discover_pairs(project_path: str) -> Dict[str, Any]:
     available_masks = {m: _stem(m) for m in mask_paths}
     unmatched_images_list = list(image_paths)
 
+    def _rel_to_project(path: Path) -> str:
+        return str(path.relative_to(project).as_posix())
+
     # High confidence: identical relative path under images/ and masks/.
     for image_path in image_paths:
         image_rel = image_path.relative_to(images_dir)
         expected_mask = masks_dir / image_rel
         if expected_mask in available_masks:
             mask_path = expected_mask
-            mask_base = available_masks.pop(mask_path)
+            available_masks.pop(mask_path)
             unmatched_images_list.remove(image_path)
             high_pairs.append({
                 "patient_id": _patient_id(image_rel),
                 "sequence": _sequence(image_path),
-                "image_path": str(image_path),
-                "mask_path": str(mask_path),
+                "image_path": _rel_to_project(image_path),
+                "mask_path": _rel_to_project(mask_path),
             })
 
     # Medium confidence: suffix stripping or unique token intersection.
@@ -129,25 +132,45 @@ def discover_pairs(project_path: str) -> Dict[str, Any]:
             medium_pairs.append({
                 "patient_id": _patient_id(image_rel),
                 "sequence": _sequence(image_path),
-                "image_path": str(image_path),
-                "mask_path": str(chosen),
+                "image_path": _rel_to_project(image_path),
+                "mask_path": _rel_to_project(chosen),
             })
 
-    # Low confidence: remaining images get all available masks as candidates.
+    # Low confidence: remaining images get only their ambiguous plausible
+    # candidates (masks that still look like a medium-confidence match),
+    # not every leftover mask.
     remaining_images = list(unmatched_images_list)
     for image_path in remaining_images:
         image_rel = image_path.relative_to(images_dir)
-        candidates = [str(mask_path) for mask_path in available_masks]
+        image_base = _stem(image_path)
+
+        suffix_candidates = [
+            mask_path for mask_path in available_masks
+            if _suffix_match(image_base, available_masks[mask_path])
+        ]
+        token_candidates = [
+            mask_path for mask_path in available_masks
+            if mask_path not in suffix_candidates
+            and _token_match(image_base, available_masks[mask_path])
+        ]
+
+        if suffix_candidates:
+            candidates = suffix_candidates
+        elif token_candidates:
+            candidates = token_candidates
+        else:
+            candidates = []
+
         unmatched_images_list.remove(image_path)
         if candidates:
             low_pairs.append({
                 "patient_id": _patient_id(image_rel),
                 "sequence": _sequence(image_path),
-                "image_path": str(image_path),
-                "candidates": candidates,
+                "image_path": _rel_to_project(image_path),
+                "candidates": [_rel_to_project(mask_path) for mask_path in candidates],
             })
         else:
-            unmatched_images.append(str(image_path))
+            unmatched_images.append(_rel_to_project(image_path))
 
     return {
         "success": True,
@@ -159,5 +182,5 @@ def discover_pairs(project_path: str) -> Dict[str, Any]:
             "low": low_pairs,
         },
         "unmatched_images": unmatched_images,
-        "unmatched_masks": [str(mask_path) for mask_path in available_masks],
+        "unmatched_masks": [_rel_to_project(mask_path) for mask_path in available_masks],
     }
