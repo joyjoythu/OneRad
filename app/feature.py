@@ -156,7 +156,7 @@ class FeatureAgent:
         rows = []
         failed_records = []
         successes = []
-        for pid, feats, err, image_path, mask_path in results:
+        for idx, (pid, feats, err, image_path, mask_path) in enumerate(results):
             if err:
                 failed_records.append(
                     {
@@ -168,7 +168,8 @@ class FeatureAgent:
                 )
                 logger.warning("特征提取失败 %s: %s", pid, err)
             else:
-                row = {"patient_id": pid}
+                pair = pairs[idx]
+                row = {"patient_id": pid, "sequence": pair.get("sequence", "")}
                 row.update(feats)
                 rows.append(row)
                 successes.append((pid, image_path))
@@ -184,19 +185,27 @@ class FeatureAgent:
 
         failed_ids = [r["patient_id"] for r in failed_records]
 
-        df = pd.DataFrame(rows).set_index("patient_id")
-        df = df.apply(pd.to_numeric, errors="coerce")
-        nan_cols = df.columns[df.isna().all()].tolist()
+        df = pd.DataFrame(rows)
+        meta_cols = ["patient_id", "sequence"]
+        feature_cols = [c for c in df.columns if c not in meta_cols]
+
+        # Only feature columns should be coerced to numeric; metadata are strings.
+        if feature_cols:
+            df[feature_cols] = df[feature_cols].apply(pd.to_numeric, errors="coerce")
+
+        nan_cols = [c for c in feature_cols if df[c].isna().all()]
         if nan_cols:
             df = df.drop(columns=nan_cols)
+            feature_cols = [c for c in feature_cols if c not in nan_cols]
             logger.info("剔除全为 NaN 的特征列: %s", nan_cols)
 
-        zero_var = [c for c in df.columns if len(df) > 1 and df[c].nunique(dropna=True) <= 1]
+        zero_var = [c for c in feature_cols if len(df) > 1 and df[c].nunique(dropna=True) <= 1]
         if zero_var:
             df = df.drop(columns=zero_var)
+            feature_cols = [c for c in feature_cols if c not in zero_var]
             logger.info("剔除零方差特征列: %s", zero_var)
 
-        if df.empty:
+        if df.empty or not feature_cols:
             return {"success": False, "message": "有效特征为空"}
 
         settings_used: Dict[str, Any] = {"yaml_path": yaml_path}
@@ -206,10 +215,11 @@ class FeatureAgent:
         save_dir = output_dir or self.output_dir
         feature_path = None
         failed_path = None
+        h5_dir = None
         if save_dir:
             os.makedirs(save_dir, exist_ok=True)
             feature_path = os.path.join(save_dir, "radiomics_features.csv")
-            df.to_csv(feature_path)
+            df.to_csv(feature_path, index=False)
             if failed_records:
                 failed_path = os.path.join(save_dir, "failed_cases.csv")
                 pd.DataFrame(
@@ -219,32 +229,42 @@ class FeatureAgent:
 
             h5_dir = os.path.join(save_dir, "h5")
             os.makedirs(h5_dir, exist_ok=True)
-            pid_to_image = dict(successes)
-            feature_names = df.columns.tolist()
-            for pid in df.index:
-                values = df.loc[pid].values.reshape(1, -1)
-                h5_path = _h5_path_for_image(h5_dir, pid_to_image[pid], common_parent)
+            for idx, (pid, image_path) in enumerate(successes):
+                values = df[feature_cols].iloc[idx].values.astype(np.float64).reshape(1, -1)
+                h5_path = _h5_path_for_image(h5_dir, image_path, common_parent)
                 with h5py.File(h5_path, "w") as hf:
                     hf.create_dataset("f_values", data=values, dtype="float64")
                     hf.create_dataset(
                         "feature_names",
-                        data=np.array(feature_names, dtype=h5py.string_dtype(encoding="utf-8")),
+                        data=np.array(feature_cols, dtype=h5py.string_dtype(encoding="utf-8")),
                     )
                 logger.info("单病例特征已保存: %s", h5_path)
 
             logger.info("特征矩阵已保存: %s", feature_path)
 
+        image_to_pair = {p["image_path"]: p for p in pairs}
+        failed_examples = []
+        for r in failed_records:
+            pair = image_to_pair.get(r["image_path"], {})
+            seq = pair.get("sequence")
+            failed_examples.append(f"{r['patient_id']}_{seq}" if seq else r["patient_id"])
+
         return {
             "success": True,
-            "message": f"特征提取完成: {len(df)}/{len(pairs)} 成功, {len(df.columns)} 特征",
+            "message": f"特征提取完成: {len(df)}/{len(pairs)} 成功, {len(failed_records)} 失败",
             "feature_df": df,
-            "feature_names": df.columns.tolist(),
+            "feature_names": feature_cols,
             "failed_ids": failed_ids,
+            "failed_examples": failed_examples,
             "zero_variance_features": zero_var,
             "settings_used": settings_used,
             "extraction_time_seconds": round(time.time() - t0, 2),
             "feature_path": feature_path,
             "failed_path": failed_path,
+            "h5_dir": h5_dir,
+            "n_samples": len(pairs),
+            "n_success": len(df),
+            "n_failed": len(failed_records),
         }
 
     def _extract_single(self, args):

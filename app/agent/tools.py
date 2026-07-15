@@ -3,6 +3,8 @@ import os
 import re
 from pathlib import Path
 from typing import Dict, Any, List
+
+import yaml
 from langchain_core.tools import tool
 from langchain_core.messages import SystemMessage, HumanMessage
 
@@ -92,6 +94,12 @@ def build_tools(project_path: str, llm):
                     sandbox.resolve(rel_path, must_exist=False)
                 except ValueError:
                     return json.dumps({"success": False, "error": f"路径超出项目目录: {rel_path}"})
+
+        try:
+            with open(yaml_path, "r", encoding="utf-8") as f:
+                yaml.safe_load(f)
+        except yaml.YAMLError as e:
+            return json.dumps({"success": False, "error": f"YAML 解析失败: {e}"})
 
         output_dir = str(Path(project_path) / "radiomics_features")
         return json.dumps({

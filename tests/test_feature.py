@@ -52,14 +52,18 @@ def test_feature_agent_two_valid_pairs(tmp_path):
     )
 
     assert result["success"] is True
-    assert result["feature_df"].shape == (2, 2)
-    assert list(result["feature_df"].index) == ["p1", "p2"]
+    assert result["feature_df"].shape == (2, 4)
+    assert set(result["feature_df"]["patient_id"]) == {"p1", "p2"}
     assert set(result["feature_names"]) == {"f1", "f2"}
     assert result["failed_ids"] == []
     assert result["settings_used"]["yaml_path"] == str(yaml_path)
     assert result["feature_path"] == str(out_dir / "radiomics_features.csv")
     assert os.path.exists(result["feature_path"])
     assert result["failed_path"] is None
+    assert result["n_samples"] == 2
+    assert result["n_success"] == 2
+    assert result["n_failed"] == 0
+    assert result["h5_dir"] == str(out_dir / "h5")
 
 
 def test_feature_agent_overrides_resampled_pixel_spacing(tmp_path):
@@ -126,13 +130,17 @@ def test_feature_agent_one_failing_pair(tmp_path):
         result = FeatureAgent().run(pairs, yaml_path=str(yaml_path), n_jobs=1, output_dir=str(out_dir))
 
     assert result["success"] is True
-    assert result["feature_df"].shape == (2, 2)
-    assert set(result["feature_df"].index) == {"p1", "p2"}
+    assert result["feature_df"].shape == (2, 4)
+    assert set(result["feature_df"]["patient_id"]) == {"p1", "p2"}
     assert result["failed_ids"] == ["p3"]
     assert result["feature_path"] == str(out_dir / "radiomics_features.csv")
     assert os.path.exists(result["feature_path"])
     assert result["failed_path"] == str(out_dir / "failed_cases.csv")
     assert os.path.exists(result["failed_path"])
+    assert result["n_samples"] == 3
+    assert result["n_success"] == 2
+    assert result["n_failed"] == 1
+    assert result["failed_examples"] == ["p3"]
 
 
 def test_feature_agent_all_pairs_failing(tmp_path):
@@ -166,7 +174,7 @@ def test_feature_agent_zero_variance_feature(tmp_path):
     assert "constant" not in result["feature_names"]
     assert "varying" in result["feature_names"]
     assert result["zero_variance_features"] == ["constant"]
-    assert result["feature_df"].shape == (2, 1)
+    assert result["feature_df"].shape == (2, 3)
 
 
 def test_feature_agent_malformed_pair(tmp_path):

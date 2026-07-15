@@ -177,3 +177,50 @@ def test_agent_tool_flow_discovers_and_extracts(tmp_path):
     assert extract_result["success"] is True
     assert extract_result["message"] == "mocked extraction complete"
     mock_agent.run.assert_called_once()
+
+
+def test_feature_agent_return_summary(tmp_path):
+    """FeatureAgent.run() must include h5_dir and sample counts in its summary."""
+    yaml_path = tmp_path / "Params_labels.yaml"
+    with yaml_path.open("w") as f:
+        yaml.safe_dump({"setting": {"label": 1, "binWidth": 25}}, f)
+
+    (tmp_path / "images" / "case_001").mkdir(parents=True)
+    (tmp_path / "masks" / "case_001").mkdir(parents=True)
+    (tmp_path / "images" / "case_001" / "T1.nii.gz").write_text("img")
+    (tmp_path / "masks" / "case_001" / "T1_mask.nii.gz").write_text("mask")
+    (tmp_path / "images" / "case_001" / "T2.nii.gz").write_text("img")
+    (tmp_path / "masks" / "case_001" / "T2_mask.nii.gz").write_text("mask")
+
+    pairs = [
+        {
+            "patient_id": "case_001",
+            "sequence": "T1",
+            "image_path": str(tmp_path / "images" / "case_001" / "T1.nii.gz"),
+            "mask_path": str(tmp_path / "masks" / "case_001" / "T1_mask.nii.gz"),
+        },
+        {
+            "patient_id": "case_001",
+            "sequence": "T2",
+            "image_path": str(tmp_path / "images" / "case_001" / "T2.nii.gz"),
+            "mask_path": str(tmp_path / "masks" / "case_001" / "T2_mask.nii.gz"),
+        },
+    ]
+
+    def extractor(image_path, mask_path, yaml_path):
+        if "T1" in image_path:
+            return {"original_firstorder_Mean": 1.0}
+        raise RuntimeError("mock T2 failure")
+
+    result = FeatureAgent(extractor=extractor).run(
+        pairs, yaml_path=str(yaml_path), output_dir=str(tmp_path / "radiomics_features")
+    )
+
+    assert result["success"] is True
+    assert result["n_samples"] == 2
+    assert result["n_success"] == 1
+    assert result["n_failed"] == 1
+    assert result["h5_dir"] == str(tmp_path / "radiomics_features" / "h5")
+    assert result["failed_examples"] == ["case_001_T2"]
+    assert "1/2 成功" in result["message"]
+    assert "1 失败" in result["message"]

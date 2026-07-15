@@ -146,7 +146,17 @@ def test_extract_radiomics_features_returns_error_for_missing_yaml(tmp_path):
     assert "YAML 配置不存在" in data["error"]
 
 
-def test_extract_radiomics_features_returns_error_for_path_escape(tmp_path):
+def test_extract_radiomics_features_returns_error_for_malformed_yaml(tmp_path):
+    fake_llm = MagicMock()
+    yaml_path = tmp_path / "Params_labels.yaml"
+    yaml_path.write_text("setting:\n  binWidth: [25")  # malformed YAML
+    tools = build_tools(str(tmp_path), fake_llm)
+    pairs = [{"patient_id": "case_001", "image_path": "a.nii.gz", "mask_path": "b.nii.gz"}]
+    result = tools["extract_radiomics_features"].invoke({"pairs": pairs})
+    data = json.loads(result)
+    assert "_pending_tool" not in data
+    assert data["success"] is False
+    assert "YAML 解析失败" in data["error"]
     fake_llm = MagicMock()
     (tmp_path / "Params_labels.yaml").write_text("dummy")
     tools = build_tools(str(tmp_path), fake_llm)
