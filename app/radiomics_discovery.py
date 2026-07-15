@@ -1,0 +1,163 @@
+import logging
+import re
+from pathlib import Path
+from typing import Dict, Any, List, Optional
+
+logger = logging.getLogger(__name__)
+
+MASK_SUFFIXES = ("_mask", "_seg", "_label", "_roi")
+
+
+def _stem(path: Path) -> str:
+    """Return the file stem treating ``.nii.gz`` as a single extension."""
+    name = path.name
+    if name.lower().endswith(".nii.gz"):
+        return name[:-7]
+    return path.stem
+
+
+def _tokens(name: str) -> List[str]:
+    """Split a base name into non-empty tokens on ``_`` or ``-``."""
+    return [token for token in re.split(r"[_\-]", name) if token]
+
+
+def _scan_nii_gz(directory: Path) -> List[Path]:
+    """Recursively collect ``.nii.gz`` files under *directory*."""
+    if not directory.exists():
+        return []
+    return sorted(p for p in directory.rglob("*.nii.gz") if p.is_file())
+
+
+def _patient_id(image_rel: Path) -> str:
+    """Infer patient_id from the first directory component or filename token."""
+    parts = image_rel.parts
+    if len(parts) > 1:
+        return parts[0]
+    stem = _stem(image_rel)
+    if "_" in stem:
+        return stem.split("_", 1)[0]
+    return _tokens(stem)[0]
+
+
+def _sequence(image_path: Path) -> str:
+    """Infer sequence from the image filename stem."""
+    return _stem(image_path)
+
+
+def _suffix_match(image_base: str, mask_base: str) -> bool:
+    """Return True when the mask base equals the image base after stripping a mask suffix."""
+    for suffix in MASK_SUFFIXES:
+        if mask_base.lower().endswith(suffix):
+            return mask_base[: -len(suffix)] == image_base
+    return False
+
+
+def _token_match(image_base: str, mask_base: str) -> bool:
+    """Return True when image and mask share at least one non-empty token."""
+    return bool(set(_tokens(image_base)) & set(_tokens(mask_base)))
+
+
+def discover_pairs(project_path: str) -> Dict[str, Any]:
+    """Discover image/mask pairs under *project_path*.
+
+    Scans ``images/`` and ``masks/`` recursively for ``.nii.gz`` files and
+    matches them with high, medium or low confidence.
+
+    Returns a dict with keys ``success``, ``images_found``, ``masks_found``,
+    ``pairs`` (with ``high``, ``medium``, ``low``), ``unmatched_images`` and
+    ``unmatched_masks``.
+    """
+    project = Path(project_path).resolve()
+    images_dir = project / "images"
+    masks_dir = project / "masks"
+
+    if not images_dir.exists():
+        return {"success": False, "message": f"images directory not found: {images_dir}"}
+    if not masks_dir.exists():
+        return {"success": False, "message": f"masks directory not found: {masks_dir}"}
+
+    image_paths = _scan_nii_gz(images_dir)
+    mask_paths = _scan_nii_gz(masks_dir)
+
+    high_pairs: List[Dict[str, Any]] = []
+    medium_pairs: List[Dict[str, Any]] = []
+    low_pairs: List[Dict[str, Any]] = []
+    unmatched_images: List[str] = []
+
+    available_masks = {m: _stem(m) for m in mask_paths}
+    unmatched_images_list = list(image_paths)
+
+    # High confidence: identical relative path under images/ and masks/.
+    for image_path in image_paths:
+        image_rel = image_path.relative_to(images_dir)
+        expected_mask = masks_dir / image_rel
+        if expected_mask in available_masks:
+            mask_path = expected_mask
+            mask_base = available_masks.pop(mask_path)
+            unmatched_images_list.remove(image_path)
+            high_pairs.append({
+                "patient_id": _patient_id(image_rel),
+                "sequence": _sequence(image_path),
+                "image_path": str(image_path),
+                "mask_path": str(mask_path),
+            })
+
+    # Medium confidence: suffix stripping or unique token intersection.
+    remaining_images = list(unmatched_images_list)
+    for image_path in remaining_images:
+        image_rel = image_path.relative_to(images_dir)
+        image_base = _stem(image_path)
+
+        suffix_candidates: List[Path] = []
+        token_candidates: List[Path] = []
+
+        for mask_path, mask_base in list(available_masks.items()):
+            if _suffix_match(image_base, mask_base):
+                suffix_candidates.append(mask_path)
+            elif _token_match(image_base, mask_base):
+                token_candidates.append(mask_path)
+
+        chosen: Optional[Path] = None
+        if len(suffix_candidates) == 1:
+            chosen = suffix_candidates[0]
+        elif not suffix_candidates and len(token_candidates) == 1:
+            chosen = token_candidates[0]
+
+        if chosen is not None:
+            available_masks.pop(chosen)
+            unmatched_images_list.remove(image_path)
+            medium_pairs.append({
+                "patient_id": _patient_id(image_rel),
+                "sequence": _sequence(image_path),
+                "image_path": str(image_path),
+                "mask_path": str(chosen),
+            })
+
+    # Low confidence: remaining images get all available masks as candidates.
+    remaining_images = list(unmatched_images_list)
+    for image_path in remaining_images:
+        image_rel = image_path.relative_to(images_dir)
+        candidates = [str(mask_path) for mask_path in available_masks]
+        unmatched_images_list.remove(image_path)
+        if candidates:
+            low_pairs.append({
+                "patient_id": _patient_id(image_rel),
+                "sequence": _sequence(image_path),
+                "image_path": str(image_path),
+                "candidates": candidates,
+            })
+        else:
+            unmatched_images.append(str(image_path))
+
+    return {
+        "success": True,
+        "images_found": len(image_paths),
+        "masks_found": len(mask_paths),
+        "pairs": {
+            "high": high_pairs,
+            "medium": medium_pairs,
+            "low": low_pairs,
+        },
+        "unmatched_images": unmatched_images,
+        "unmatched_masks": [str(mask_path) for mask_path in available_masks],
+    }
