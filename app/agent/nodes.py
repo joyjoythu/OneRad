@@ -142,22 +142,41 @@ def process_tool_calls(state: AgentState, config: Optional[RunnableConfig] = Non
                 updates["pending_script"] = {"tool_call_id": tool_call_id, **parsed["script"]}
                 updates["script_risk_level"] = parsed["script"]["risk_level"]
             elif name == "discover_radiomics_pairs":
-                interrupt_type = "radiomics_plan"
                 if not isinstance(parsed, dict):
                     updates["messages"].append(ToolMessage(
                         content=json.dumps({"error": f"Tool {name} returned invalid payload"}),
                         tool_call_id=tool_call_id,
                     ))
                     continue
+                if parsed.get("success") is False and not parsed.get("_pending_tool"):
+                    updates["messages"].append(ToolMessage(
+                        content=json.dumps(parsed),
+                        tool_call_id=tool_call_id,
+                    ))
+                    continue
+                # 需要用户确认：标记为 pending 计划（防御性处理未知 dict）
+                interrupt_type = "radiomics_plan"
                 updates["pending_radiomics_plan"] = {"tool_call_id": tool_call_id, **parsed}
             elif name == "extract_radiomics_features":
-                interrupt_type = "radiomics_execution"
-                if not isinstance(parsed, dict) or not isinstance(parsed.get("meta"), dict):
+                if not isinstance(parsed, dict):
                     updates["messages"].append(ToolMessage(
                         content=json.dumps({"error": f"Tool {name} returned invalid payload"}),
                         tool_call_id=tool_call_id,
                     ))
                     continue
+                if parsed.get("success") is False and not parsed.get("_pending_tool"):
+                    updates["messages"].append(ToolMessage(
+                        content=json.dumps(parsed),
+                        tool_call_id=tool_call_id,
+                    ))
+                    continue
+                if not isinstance(parsed.get("meta"), dict):
+                    updates["messages"].append(ToolMessage(
+                        content=json.dumps({"error": f"Tool {name} returned invalid payload"}),
+                        tool_call_id=tool_call_id,
+                    ))
+                    continue
+                interrupt_type = "radiomics_execution"
                 updates["pending_radiomics_execution"] = {"tool_call_id": tool_call_id, **parsed["meta"]}
             # 需要确认的工具不在此处生成 ToolMessage，由 execute_confirmed 在用户确认/取消后统一补齐。
         else:
@@ -363,6 +382,7 @@ def _run_radiomics_execution(pending: dict, project_path: str) -> dict:
     pairs = pending.get("pairs", [])
     try:
         yaml_path = str(sandbox.resolve(yaml_path))
+        output_dir = str(sandbox.resolve(output_dir, must_exist=False))
         resolved_pairs = []
         for pair in pairs:
             resolved_pairs.append({

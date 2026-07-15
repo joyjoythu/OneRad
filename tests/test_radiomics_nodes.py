@@ -186,3 +186,64 @@ def test_execute_confirmed_radiomics_execution(tmp_path):
     assert isinstance(result["messages"][0], ToolMessage)
     assert result["interrupt_type"] is None
     mock_agent.run.assert_called_once()
+
+
+def test_process_discover_radiomics_pairs_returns_error_when_images_missing(tmp_path):
+    state = AgentState(
+        messages=[
+            AIMessage(content="", tool_calls=[{
+                "id": "tc1",
+                "name": "discover_radiomics_pairs",
+                "args": {}
+            }])
+        ],
+        project_path=str(tmp_path),
+        base_url="https://api.deepseek.com/v1",
+        model="deepseek-v4-pro",
+        api_key="",
+    )
+
+    with patch("app.agent.nodes._resolve_api_key", return_value=""), \
+         patch("app.agent.nodes.ChatOpenAI") as mock_llm_cls:
+        mock_llm = MagicMock()
+        mock_llm_cls.return_value = mock_llm
+        result = process_tool_calls(state)
+
+    assert result["interrupt_type"] is None
+    assert len(result["messages"]) == 1
+    assert isinstance(result["messages"][0], ToolMessage)
+    content = json.loads(result["messages"][0].content)
+    assert content.get("success") is False
+    assert "error" in content or "message" in content
+
+
+def test_process_extract_radiomics_features_returns_error_when_yaml_missing(tmp_path):
+    state = AgentState(
+        messages=[
+            AIMessage(content="", tool_calls=[{
+                "id": "tc2",
+                "name": "extract_radiomics_features",
+                "args": {
+                    "pairs": [{"patient_id": "case_001", "image_path": "images/case_001.nii.gz", "mask_path": "masks/case_001.nii.gz"}],
+                    "yaml_path": "missing_params.yaml",
+                },
+            }])
+        ],
+        project_path=str(tmp_path),
+        base_url="https://api.deepseek.com/v1",
+        model="deepseek-v4-pro",
+        api_key="",
+    )
+
+    with patch("app.agent.nodes._resolve_api_key", return_value=""), \
+         patch("app.agent.nodes.ChatOpenAI") as mock_llm_cls:
+        mock_llm = MagicMock()
+        mock_llm_cls.return_value = mock_llm
+        result = process_tool_calls(state)
+
+    assert result["interrupt_type"] is None
+    assert len(result["messages"]) == 1
+    assert isinstance(result["messages"][0], ToolMessage)
+    content = json.loads(result["messages"][0].content)
+    assert content.get("success") is False
+    assert "error" in content
