@@ -133,8 +133,8 @@ def build_tools(project_path: str, llm):
                 clinical = str(sandbox.resolve(clinical, must_exist=False))
             if output_dir:
                 output_dir = str(sandbox.resolve(output_dir, must_exist=False))
-        except ValueError as e:
-            return json.dumps({"status": "error", "message": f"路径超出项目目录: {e}"})
+        except ValueError:
+            return json.dumps({"status": "error", "message": "路径超出项目目录"})
         cov_list = [c.strip() for c in covariates.split(",") if c.strip()]
         report = inspect_analysis_inputs(
             project_path,

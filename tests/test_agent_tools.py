@@ -244,3 +244,44 @@ def test_run_radiomics_analysis_path_escape_returns_error(tmp_path):
     data = json.loads(result)
     assert data["status"] == "error"
     assert "路径超出项目目录" in data["message"]
+
+
+def test_run_radiomics_analysis_passes_covariates(tmp_path):
+    _make_analysis_project(tmp_path)
+    # 添加 age 协变量列
+    clin = pd.read_csv(tmp_path / "clinical.csv")
+    clin["age"] = 50
+    clin.to_csv(tmp_path / "clinical.csv", index=False)
+    tools = build_tools(str(tmp_path), MagicMock())
+    result = tools["run_radiomics_analysis"].invoke(
+        {"feature_csv": "features.csv", "clinical": "clinical.csv",
+         "covariates": "age, nonexistent"})
+    data = json.loads(result)
+    assert data["_pending_tool"] == "run_radiomics_analysis"
+    assert data["meta"]["covariates"] == ["age"]
+
+
+def test_run_radiomics_analysis_passes_explicit_id_and_label(tmp_path):
+    _make_analysis_project(tmp_path)
+    clin = pd.read_csv(tmp_path / "clinical.csv")
+    clin = clin.rename(columns={"patient_id": "pid", "Label": "outcome"})
+    clin.to_csv(tmp_path / "clinical.csv", index=False)
+    tools = build_tools(str(tmp_path), MagicMock())
+    result = tools["run_radiomics_analysis"].invoke(
+        {"feature_csv": "features.csv", "clinical": "clinical.csv",
+         "id_col": "pid", "label_col": "outcome"})
+    data = json.loads(result)
+    assert data["_pending_tool"] == "run_radiomics_analysis"
+    assert data["meta"]["id_col"] == "pid"
+    assert data["meta"]["label_col"] == "outcome"
+
+
+def test_run_radiomics_analysis_passes_explicit_output_dir(tmp_path):
+    _make_analysis_project(tmp_path)
+    tools = build_tools(str(tmp_path), MagicMock())
+    result = tools["run_radiomics_analysis"].invoke(
+        {"feature_csv": "features.csv", "clinical": "clinical.csv",
+         "output_dir": "my_results"})
+    data = json.loads(result)
+    assert data["_pending_tool"] == "run_radiomics_analysis"
+    assert data["meta"]["output_dir"] == str(tmp_path / "my_results")
