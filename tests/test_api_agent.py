@@ -542,3 +542,32 @@ def test_sync_payload_includes_pending_radiomics_analysis():
 
     payload_missing = _sync_payload({}, running=False)
     assert payload_missing["pending_radiomics_analysis"] is None
+
+
+def test_sync_payload_includes_context_usage():
+    """_sync_payload 必须返回上下文用量与窗口大小，供前端渲染用量指示。"""
+    from app.api.agent import _sync_payload
+
+    values = {
+        "messages": [],
+        "model": "deepseek-v4-pro",
+        "context_usage": {"input_tokens": 1234, "output_tokens": 56, "total_tokens": 1290},
+    }
+
+    payload = _sync_payload(values, running=False)
+
+    assert payload["context_usage"]["input_tokens"] == 1234
+    assert payload["context_window"] == 1_000_000
+
+
+def test_sync_payload_context_usage_defaults():
+    """无用量数据时返回 None；未知模型窗口默认 1M。"""
+    from app.api.agent import _sync_payload
+
+    payload = _sync_payload({}, running=False)
+    assert payload["context_usage"] is None
+    assert payload["context_window"] == 1_000_000
+
+    payload_unknown = _sync_payload({"model": "some-other-model"}, running=False)
+    assert payload_unknown["context_usage"] is None
+    assert payload_unknown["context_window"] == 1_000_000

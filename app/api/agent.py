@@ -128,6 +128,18 @@ def _stringify_content(content: Any) -> str:
         return str(content)
 
 
+DEFAULT_CONTEXT_WINDOW = 1_000_000
+MODEL_CONTEXT_WINDOWS = {
+    "deepseek-v4-pro": 1_000_000,
+    "deepseek-v4-flash": 1_000_000,
+}
+
+
+def _context_window_for_model(model: Optional[str]) -> int:
+    """按模型名查上下文窗口大小，未知模型默认 1M。"""
+    return MODEL_CONTEXT_WINDOWS.get(model or "", DEFAULT_CONTEXT_WINDOW)
+
+
 def _sync_payload(values: Optional[Dict[str, Any]], running: bool) -> Dict[str, Any]:
     """Build a client-safe payload from the current graph state values.
 
@@ -146,6 +158,8 @@ def _sync_payload(values: Optional[Dict[str, Any]], running: bool) -> Dict[str, 
         "pending_radiomics_plan": values.get("pending_radiomics_plan"),
         "pending_radiomics_execution": values.get("pending_radiomics_execution"),
         "pending_radiomics_analysis": values.get("pending_radiomics_analysis"),
+        "context_usage": values.get("context_usage"),
+        "context_window": _context_window_for_model(values.get("model")),
         "running": running,
     }
 
