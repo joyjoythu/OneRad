@@ -80,6 +80,20 @@ export interface PendingRadiomicsExecution {
   expected_outputs?: string[]
 }
 
+export interface PendingRadiomicsAnalysis {
+  tool_call_id: string
+  feature_csv: string
+  clinical: string
+  id_col: string
+  label_col: string
+  covariates: string[]
+  output_dir: string
+  n_feature_cases: number
+  n_features: number
+  n_matched: number
+  available_clinical_columns: string[]
+}
+
 export interface AgentState {
   thread_id?: string
   messages: AgentMessage[]
@@ -90,6 +104,7 @@ export interface AgentState {
   pending_script: PendingScript | null
   pending_radiomics_plan?: PendingRadiomicsPlan | null
   pending_radiomics_execution?: PendingRadiomicsExecution | null
+  pending_radiomics_analysis?: PendingRadiomicsAnalysis | null
   radiomics_progress?: RadiomicsProgress | null
   running?: boolean
   error?: string

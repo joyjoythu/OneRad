@@ -363,6 +363,67 @@ describe('useAgentStore', () => {
     expect(store.interrupt).toBeNull()
   })
 
+  it('tracks pending radiomics analysis from SSE state', async () => {
+    const store = useAgentStore()
+    await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')
+    const es = MockEventSource.instances[0]
+
+    const analysis = {
+      tool_call_id: 'tc-analysis-1',
+      feature_csv: 'path/to/radiomics_features.csv',
+      clinical: 'path/to/clinical.xlsx',
+      id_col: 'patient_id',
+      label_col: 'Label',
+      covariates: ['age', 'gender'],
+      output_dir: 'path/to/output',
+      n_feature_cases: 100,
+      n_features: 120,
+      n_matched: 95,
+      available_clinical_columns: ['age', 'gender', 'Label'],
+    }
+    es.emit('agent', mockState({
+      interrupt_type: 'radiomics_analysis',
+      pending_radiomics_analysis: analysis,
+    }))
+    expect(store.pendingRadiomicsAnalysis).toEqual(analysis)
+    expect(store.interrupt).toBe('radiomics_analysis')
+
+    // 确认/取消后后端返回清空后的状态
+    es.emit('agent', mockState({
+      interrupt_type: null,
+      pending_radiomics_analysis: null,
+    }))
+    expect(store.pendingRadiomicsAnalysis).toBeNull()
+    expect(store.interrupt).toBeNull()
+  })
+
+  it('resetInternalState clears pending radiomics analysis', async () => {
+    const store = useAgentStore()
+    await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')
+    const es = MockEventSource.instances[0]
+
+    es.emit('agent', mockState({
+      pending_radiomics_analysis: {
+        tool_call_id: 'tc-analysis-1',
+        feature_csv: 'path/to/radiomics_features.csv',
+        clinical: 'path/to/clinical.xlsx',
+        id_col: 'patient_id',
+        label_col: 'Label',
+        covariates: ['age', 'gender'],
+        output_dir: 'path/to/output',
+        n_feature_cases: 100,
+        n_features: 120,
+        n_matched: 95,
+        available_clinical_columns: ['age', 'gender', 'Label'],
+      },
+    }))
+    expect(store.pendingRadiomicsAnalysis).not.toBeNull()
+
+    store.resetThread()
+
+    expect(store.pendingRadiomicsAnalysis).toBeNull()
+  })
+
   it('deleteThread removes the current thread and resets internal state', async () => {
     const store = useAgentStore()
     vi.spyOn(agentApi, 'createThread').mockResolvedValueOnce({ thread_id: 'thread-del' })

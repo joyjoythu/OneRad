@@ -10,6 +10,7 @@ import type {
   PendingScript,
   PendingRadiomicsPlan,
   PendingRadiomicsExecution,
+  PendingRadiomicsAnalysis,
   RadiomicsProgress,
   ThreadSummary,
 } from '@/api/agent'
@@ -24,6 +25,7 @@ export const useAgentStore = defineStore('agent', () => {
   const pendingScript = ref<PendingScript | null>(null)
   const pendingRadiomicsPlan = ref<PendingRadiomicsPlan | null>(null)
   const pendingRadiomicsExecution = ref<PendingRadiomicsExecution | null>(null)
+  const pendingRadiomicsAnalysis = ref<PendingRadiomicsAnalysis | null>(null)
 
   const threads = ref<ThreadSummary[]>([])
   const currentThread = ref<ThreadSummary | null>(null)
@@ -70,6 +72,9 @@ export const useAgentStore = defineStore('agent', () => {
     if (state.pending_radiomics_execution !== undefined) {
       pendingRadiomicsExecution.value = state.pending_radiomics_execution
     }
+    if (state.pending_radiomics_analysis !== undefined) {
+      pendingRadiomicsAnalysis.value = state.pending_radiomics_analysis
+    }
     if (state.radiomics_progress !== undefined) {
       radiomicsProgress.value = state.radiomics_progress
     }
@@ -86,6 +91,7 @@ export const useAgentStore = defineStore('agent', () => {
     pendingScript.value = null
     pendingRadiomicsPlan.value = null
     pendingRadiomicsExecution.value = null
+    pendingRadiomicsAnalysis.value = null
     currentThread.value = null
     busy.value = false
     radiomicsProgress.value = null
@@ -325,6 +331,7 @@ export const useAgentStore = defineStore('agent', () => {
     pendingScript,
     pendingRadiomicsPlan,
     pendingRadiomicsExecution,
+    pendingRadiomicsAnalysis,
     radiomicsProgress,
     threads,
     currentThread,
