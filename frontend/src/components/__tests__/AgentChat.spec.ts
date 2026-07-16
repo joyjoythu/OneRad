@@ -194,7 +194,7 @@ describe('AgentChat', () => {
     expect(wrapper.emitted('update:model')![0]).toEqual(['deepseek-v4-pro'])
   })
 
-  it('disables input and send button while the agent is busy', async () => {
+  it('disables input while the agent is busy', async () => {
     const projectStore = useProjectStore()
     projectStore.currentProject = mockProject()
 
@@ -206,10 +206,50 @@ describe('AgentChat', () => {
     await flushPromises()
 
     expect(wrapper.find('textarea').attributes('disabled')).toBeDefined()
+  })
+
+  it('shows a stop button while busy and emits stop on click', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.threadId = 'thread-1'
+    agentStore.busy = true
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    const stopButton = wrapper
+      .findAll('button')
+      .find((b) => b.text().includes('停止'))
+    expect(stopButton).toBeDefined()
     const sendButton = wrapper
       .findAll('button')
       .find((b) => b.text().includes('发送'))
-    expect(sendButton!.attributes('disabled')).toBeDefined()
+    expect(sendButton).toBeUndefined()
+
+    await stopButton!.trigger('click')
+    expect(wrapper.emitted('stop')).toHaveLength(1)
+  })
+
+  it('shows the send button and no stop button when idle', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.threadId = 'thread-1'
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    const sendButton = wrapper
+      .findAll('button')
+      .find((b) => b.text().includes('发送'))
+    expect(sendButton).toBeDefined()
+    const stopButton = wrapper
+      .findAll('button')
+      .find((b) => b.text().includes('停止'))
+    expect(stopButton).toBeUndefined()
   })
 
   it('shows a thinking indicator while the agent is busy', async () => {

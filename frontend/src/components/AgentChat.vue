@@ -72,6 +72,15 @@
           <el-option label="DeepSeek-V4 Pro" value="deepseek-v4-pro" />
         </el-select>
         <el-button
+          v-if="agentStore.busy"
+          type="danger"
+          :icon="CircleClose"
+          @click="handleStop"
+        >
+          停止
+        </el-button>
+        <el-button
+          v-else
           type="primary"
           :icon="Promotion"
           :disabled="!canSend"
@@ -86,7 +95,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watchEffect, nextTick } from 'vue'
-import { Loading, Promotion } from '@element-plus/icons-vue'
+import { Loading, CircleClose, Promotion } from '@element-plus/icons-vue'
 import { useAgentStore } from '@/stores/agent'
 import { useProjectStore } from '@/stores/project'
 import { DEFAULT_AGENT_MODEL } from '@/api/agent'
@@ -98,6 +107,7 @@ const projectStore = useProjectStore()
 const emit = defineEmits<{
   'update:model': [model: string]
   'send-message': [content: string]
+  'stop': []
 }>()
 
 const props = defineProps<{
@@ -177,6 +187,10 @@ async function handleSend(): Promise<void> {
   if (!content) return
 
   emit('send-message', content)
+}
+
+function handleStop(): void {
+  emit('stop')
 }
 
 function clearInput(): void {

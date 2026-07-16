@@ -24,6 +24,7 @@
           :model="selectedModel"
           @update:model="selectedModel = $event"
           @send-message="handleSendMessage"
+          @stop="handleStop"
         />
       </div>
 
@@ -123,6 +124,14 @@ async function handleSendMessage(content: string): Promise<void> {
   try {
     await agentStore.sendMessage(content, 'user')
     agentChatRef.value?.clearInput()
+  } catch {
+    // errors handled by axios interceptor
+  }
+}
+
+async function handleStop(): Promise<void> {
+  try {
+    await agentStore.stop()
   } catch {
     // errors handled by axios interceptor
   }
