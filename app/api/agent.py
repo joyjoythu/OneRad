@@ -1,6 +1,7 @@
 import asyncio
 import json
 import uuid
+from contextlib import suppress
 from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -507,6 +508,69 @@ async def cancel_interrupt(
         Command(resume={"action": "cancel"}),
     )
     return {"thread_id": thread_id}
+
+
+@router.post(
+    "/threads/{thread_id}/stop",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=Dict[str, Any],
+)
+async def stop_stream(
+    thread_id: str,
+    request: Request,
+    graph=Depends(get_agent_graph),
+) -> Dict[str, Any]:
+    """停止线程上正在运行的智能体流式任务，保留对话上下文。
+
+    取消后台任务后，若消息历史末尾仍有未应答的 tool_calls，为每个缺失的
+    tool_call_id 补一条「已停止」ToolMessage，避免下次调用 LLM 时因
+    tool_calls 缺少响应而报 400。
+    """
+    config = await _agent_config(thread_id, request.app)
+    try:
+        await graph.aget_state(config)
+    except KeyError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="thread not found"
+        )
+
+    task = request.app.state.agent_stream_tasks.get(thread_id)
+    if thread_id not in request.app.state.active_agent_streams or task is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="当前没有正在运行的任务",
+        )
+
+    task.cancel()
+    # 等待任务收尾（finally 清理集合与映射）。任务若已因其他异常结束，
+    # 错误已由 _stream_agent 发布，这里不重复抛出。
+    with suppress(asyncio.CancelledError, Exception):
+        await task
+
+    snapshot = await graph.aget_state(config)
+    missing_ids = _unanswered_tool_call_ids(snapshot.values.get("messages", []))
+    if missing_ids:
+        await graph.aupdate_state(
+            config,
+            {
+                "messages": [
+                    ToolMessage(
+                        content=json.dumps(
+                            {"cancelled": True, "reason": "用户停止了操作"},
+                            ensure_ascii=False,
+                        ),
+                        tool_call_id=tc_id,
+                    )
+                    for tc_id in missing_ids
+                ],
+                "operation_log": ["用户停止了当前任务"],
+            },
+        )
+        snapshot = await graph.aget_state(config)
+
+    bridge = get_bridge(request)
+    await bridge.publish("agent", thread_id, _sync_payload(snapshot.values))
+    return {"thread_id": thread_id, "status": "stopped"}
 
 
 @router.get("/threads/{thread_id}/events")

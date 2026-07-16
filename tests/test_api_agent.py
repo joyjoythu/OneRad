@@ -1,3 +1,4 @@
+import asyncio
 import json
 import time
 import uuid
@@ -331,3 +332,97 @@ def test_stream_task_registered_and_cleaned_up(client, app):
         time.sleep(0.05)
     assert thread_id not in app.state.active_agent_streams
     assert thread_id not in app.state.agent_stream_tasks
+
+
+def test_stop_conflict_when_not_running(client, app):
+    """空闲线程上没有正在运行的任务，stop 应返回 409。"""
+    project = _create_project(client)
+    thread_id = _create_thread(client, project['id'])["thread_id"]
+
+    response = client.post(f"/api/agent/threads/{thread_id}/stop")
+    assert response.status_code == 409, response.text
+
+
+def test_stop_cancels_stream_and_repairs_history(client, app):
+    """stop 应取消活动流，并为未应答的 tool_calls 补「已停止」ToolMessage。"""
+    project = _create_project(client)
+    thread_id = _create_thread(client, project['id'])["thread_id"]
+
+    dangling_messages = [
+        HumanMessage(content="hi"),
+        AIMessage(
+            content="",
+            tool_calls=[{"id": "call_1", "name": "list_directory", "args": {}}],
+        ),
+    ]
+    repaired_messages = dangling_messages + [
+        ToolMessage(
+            content=json.dumps(
+                {"cancelled": True, "reason": "用户停止了操作"}, ensure_ascii=False
+            ),
+            tool_call_id="call_1",
+        )
+    ]
+    snapshots = [
+        # ① send_message 发送前检查
+        SimpleNamespace(values={"interrupt_type": None}),
+        # ② stop 存在性检查
+        SimpleNamespace(values={"interrupt_type": None}),
+        # ③ 取消后读取：末条为未应答 tool_calls
+        SimpleNamespace(values={"messages": dangling_messages}),
+        # ④ 修复后读取：用于发布最终状态
+        SimpleNamespace(
+            values={
+                "messages": repaired_messages,
+                "operation_log": ["用户停止了当前任务"],
+            }
+        ),
+    ]
+
+    async def blocking_astream(input_value=None, config=None, stream_mode=None):
+        yield {
+            "messages": [],
+            "interrupt_type": None,
+            "operation_log": ["started"],
+        }
+        await asyncio.sleep(3600)
+
+    mock_graph = AsyncMock()
+    mock_graph.aget_state = AsyncMock(side_effect=snapshots)
+    mock_graph.astream = blocking_astream
+    app.dependency_overrides[get_agent_graph] = lambda: mock_graph
+
+    response = client.post(
+        f"/api/agent/threads/{thread_id}/messages",
+        json={"role": "user", "content": "hi"},
+    )
+    assert response.status_code == 202, response.text
+
+    deadline = time.time() + 2
+    while time.time() < deadline and thread_id not in app.state.agent_stream_tasks:
+        time.sleep(0.05)
+    assert thread_id in app.state.agent_stream_tasks
+
+    response = client.post(f"/api/agent/threads/{thread_id}/stop")
+    assert response.status_code == 202, response.text
+    assert response.json()["status"] == "stopped"
+
+    # 历史修复：补了一条 cancelled ToolMessage，并记录操作日志
+    mock_graph.aupdate_state.assert_awaited_once()
+    updates = mock_graph.aupdate_state.await_args.args[1]
+    assert len(updates["messages"]) == 1
+    tool_msg = updates["messages"][0]
+    assert isinstance(tool_msg, ToolMessage)
+    assert tool_msg.tool_call_id == "call_1"
+    assert json.loads(tool_msg.content)["cancelled"] is True
+    assert updates["operation_log"] == ["用户停止了当前任务"]
+
+    # 任务收尾：线程离开 active 集合，映射清理
+    assert thread_id not in app.state.active_agent_streams
+    assert thread_id not in app.state.agent_stream_tasks
+
+    # 最终状态已通过 SSE 桥发布
+    events = app.state.event_bridge.store.list_sse_events("agent", thread_id)
+    last_payload = json.loads(events[-1]["data"])
+    assert last_payload["operation_log"] == ["用户停止了当前任务"]
+    assert last_payload["messages"][-1]["role"] == "tool"
