@@ -216,12 +216,17 @@ def test_run_radiomics_analysis_returns_pending_when_ready(tmp_path):
 
 
 def test_run_radiomics_analysis_returns_clarification_without_pending(tmp_path):
-    _make_analysis_project(tmp_path)
-    # 增加一个二值列使标签列产生歧义
-    clin = pd.read_csv(tmp_path / "clinical.csv")
-    rng = np.random.RandomState(7)
-    clin["group2"] = rng.randint(0, 2, len(clin))
-    clin.to_csv(tmp_path / "clinical.csv", index=False)
+    ids = [f"P{i:03d}" for i in range(60)]
+    rng = np.random.RandomState(42)
+    label = np.array([i % 2 for i in range(60)])
+    feat = pd.DataFrame({"patient_id": ids})
+    for j in range(6):
+        feat[f"original_sig_{j}"] = rng.randn(60) + label * 1.5
+    feat.to_csv(tmp_path / "features.csv", index=False)
+    # 两个 0/1 列均不叫 Label → 产生歧义
+    pd.DataFrame({"patient_id": ids, "group": label,
+                  "group2": rng.randint(0, 2, 60)}).to_csv(
+        tmp_path / "clinical.csv", index=False)
     tools = build_tools(str(tmp_path), MagicMock())
     result = tools["run_radiomics_analysis"].invoke(
         {"feature_csv": "features.csv", "clinical": "clinical.csv"})
