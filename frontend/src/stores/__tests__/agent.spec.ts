@@ -3,7 +3,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { useAgentStore } from '../agent'
 import client from '@/api/client'
 import * as agentApi from '@/api/agent'
-import type { AgentState } from '@/api/agent'
+import type { AgentState, PendingRadiomicsAnalysis } from '@/api/agent'
 
 vi.mock('@/api/client', () => ({
   default: {
@@ -24,6 +24,20 @@ const mockState = (overrides: Partial<AgentState> = {}): AgentState => ({
   pending_script: null,
   ...overrides,
 })
+
+const mockAnalysis: PendingRadiomicsAnalysis = {
+  tool_call_id: 'tc-analysis-1',
+  feature_csv: 'path/to/radiomics_features.csv',
+  clinical: 'path/to/clinical.xlsx',
+  id_col: 'patient_id',
+  label_col: 'Label',
+  covariates: ['age', 'gender'],
+  output_dir: 'path/to/output',
+  n_feature_cases: 100,
+  n_features: 120,
+  n_matched: 95,
+  available_clinical_columns: ['age', 'gender', 'Label'],
+}
 
 class MockEventSource {
   static instances: MockEventSource[] = []
@@ -368,24 +382,11 @@ describe('useAgentStore', () => {
     await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')
     const es = MockEventSource.instances[0]
 
-    const analysis = {
-      tool_call_id: 'tc-analysis-1',
-      feature_csv: 'path/to/radiomics_features.csv',
-      clinical: 'path/to/clinical.xlsx',
-      id_col: 'patient_id',
-      label_col: 'Label',
-      covariates: ['age', 'gender'],
-      output_dir: 'path/to/output',
-      n_feature_cases: 100,
-      n_features: 120,
-      n_matched: 95,
-      available_clinical_columns: ['age', 'gender', 'Label'],
-    }
     es.emit('agent', mockState({
       interrupt_type: 'radiomics_analysis',
-      pending_radiomics_analysis: analysis,
+      pending_radiomics_analysis: mockAnalysis,
     }))
-    expect(store.pendingRadiomicsAnalysis).toEqual(analysis)
+    expect(store.pendingRadiomicsAnalysis).toEqual(mockAnalysis)
     expect(store.interrupt).toBe('radiomics_analysis')
 
     // 确认/取消后后端返回清空后的状态
@@ -397,25 +398,13 @@ describe('useAgentStore', () => {
     expect(store.interrupt).toBeNull()
   })
 
-  it('resetInternalState clears pending radiomics analysis', async () => {
+  it('resetThread clears pending radiomics analysis', async () => {
     const store = useAgentStore()
     await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')
     const es = MockEventSource.instances[0]
 
     es.emit('agent', mockState({
-      pending_radiomics_analysis: {
-        tool_call_id: 'tc-analysis-1',
-        feature_csv: 'path/to/radiomics_features.csv',
-        clinical: 'path/to/clinical.xlsx',
-        id_col: 'patient_id',
-        label_col: 'Label',
-        covariates: ['age', 'gender'],
-        output_dir: 'path/to/output',
-        n_feature_cases: 100,
-        n_features: 120,
-        n_matched: 95,
-        available_clinical_columns: ['age', 'gender', 'Label'],
-      },
+      pending_radiomics_analysis: mockAnalysis,
     }))
     expect(store.pendingRadiomicsAnalysis).not.toBeNull()
 
