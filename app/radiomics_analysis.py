@@ -18,6 +18,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
+# NOTE: Callable/Tuple/np/_merge_feature_clinical 为 Task 4 编排函数预留，本任务暂不使用
 from app.utils import (
     _load_feature_csv,
     _merge_feature_clinical,
@@ -46,26 +47,50 @@ def _load_table(path: str) -> pd.DataFrame:
     raise ValueError(f"不支持的文件格式: {ext}")
 
 
+def _binary_values(series: pd.Series) -> Optional[set]:
+    """Return the set of numeric values if the series is numeric and all
+    non-null values are exactly 0 or 1 (including "0"/"1" strings and
+    0.0/1.0 floats); otherwise None. No int-truncation."""
+    vals = series.dropna()
+    if vals.empty:
+        return None
+    try:
+        nums = pd.to_numeric(vals, errors="raise")
+    except (ValueError, TypeError):
+        return None
+    unique = set(nums.unique())
+    if unique and unique.issubset({0, 1}):
+        return unique
+    return None
+
+
 def _binary_columns(df: pd.DataFrame, exclude: Optional[str] = None) -> List[str]:
     """Columns whose non-null values are exactly {0, 1}."""
     cols = []
     for col in df.columns:
         if col == exclude:
             continue
-        try:
-            unique = set(df[col].dropna().astype(int).unique())
-        except (ValueError, TypeError):
-            continue
-        if unique == {0, 1}:
+        if _binary_values(df[col]) == {0, 1}:
             cols.append(col)
     return cols
+
+
+def _norm_id(value) -> str:
+    """Normalize an ID for matching: strip, and collapse integral floats
+    like "1.0" to "1"."""
+    s = str(value).strip()
+    if s.endswith(".0"):
+        head = s[:-2]
+        if head.lstrip("-").isdigit():
+            return head
+    return s
 
 
 def _id_match_counts(df: pd.DataFrame, feature_ids: set) -> Dict[str, int]:
     """Per-column count of values present in ``feature_ids`` (string compare)."""
     counts = {}
     for col in df.columns:
-        values = set(df[col].dropna().astype(str))
+        values = {_norm_id(v) for v in df[col].dropna()}
         counts[col] = len(values & feature_ids)
     return counts
 
@@ -84,7 +109,8 @@ def _find_clinical_candidates(project_path: str, feature_ids: set,
     """Scan the project (depth <= 2) for tables with a 0/1 column and an
     ID-like column overlapping the feature patient_ids."""
     candidates = []
-    exclude_abs = os.path.abspath(exclude_path) if exclude_path else ""
+    exclude_abs = (os.path.normcase(os.path.abspath(exclude_path))
+                   if exclude_path else "")
     for base, dirs, files in os.walk(project_path):
         dirs[:] = [d for d in dirs if not d.startswith(".") and d != "node_modules"]
         rel = os.path.relpath(base, project_path)
@@ -95,7 +121,7 @@ def _find_clinical_candidates(project_path: str, feature_ids: set,
             if os.path.splitext(name)[1].lower() not in _CLINICAL_EXTS:
                 continue
             path = os.path.join(base, name)
-            if os.path.abspath(path) == exclude_abs:
+            if os.path.normcase(os.path.abspath(path)) == exclude_abs:
                 continue
             try:
                 df = _load_table(path)
@@ -133,8 +159,9 @@ def inspect_analysis_inputs(
         feature_df = _load_feature_csv(feature_csv)
     except (FileNotFoundError, ValueError) as e:
         return {"status": "error",
-                "message": f"{e}。请先提取特征或通过 feature_csv 指定路径"}
-    feature_ids = set(feature_df["patient_id"].astype(str))
+                "message": f"{e}。请先提取特征或通过 feature_csv 指定路径",
+                "detected": {}}
+    feature_ids = {_norm_id(v) for v in feature_df["patient_id"]}
     n_features = len([c for c in feature_df.columns
                       if any(c.startswith(p) for p in _RADIOMIC_PREFIXES)])
     detected: Dict[str, Any] = {
@@ -164,6 +191,10 @@ def inspect_analysis_inputs(
         clinical_df = _load_table(clinical)
     except (FileNotFoundError, ValueError) as e:
         return {"status": "error", "message": str(e), "detected": detected}
+    except Exception as e:
+        return {"status": "error",
+                "message": f"读取临床表格失败: {e}",
+                "detected": detected}
     detected["clinical"] = clinical
 
     questions: List[Dict[str, Any]] = []
@@ -174,6 +205,13 @@ def inspect_analysis_inputs(
         if id_col not in clinical_df.columns:
             return {"status": "error",
                     "message": f"指定的 ID 列 '{id_col}' 不存在",
+                    "detected": detected}
+        if counts.get(id_col, 0) == 0:
+            feat_examples = sorted(feature_ids)[:3]
+            clin_examples = sorted({_norm_id(v) for v in clinical_df[id_col].dropna()})[:3]
+            return {"status": "error",
+                    "message": f"指定的 ID 列 '{id_col}' 与特征 patient_id 无任何匹配"
+                               f"（特征 ID 示例: {feat_examples}; 临床 ID 示例: {clin_examples}）",
                     "detected": detected}
     else:
         best = max(counts, key=counts.get) if counts else None
@@ -206,11 +244,8 @@ def inspect_analysis_inputs(
             return {"status": "error",
                     "message": f"指定的标签列 '{label_col}' 不存在",
                     "detected": detected}
-        try:
-            values = set(clinical_df[label_col].dropna().astype(int).unique())
-        except (ValueError, TypeError):
-            values = set()
-        if not values or not values.issubset({0, 1}):
+        values = _binary_values(clinical_df[label_col])
+        if values is None:
             return {"status": "error",
                     "message": f"标签列 '{label_col}' 必须为 0/1 二分类",
                     "detected": detected}
@@ -256,6 +291,6 @@ def inspect_analysis_inputs(
         "output_dir": output_dir,
         "n_feature_cases": detected["n_feature_cases"],
         "n_features": n_features,
-        "n_matched": detected["n_matched"],
+        "n_matched": counts.get(id_col, 0),
         "available_clinical_columns": available,
     }}

@@ -129,15 +129,24 @@ def _load_clinical_for_analysis(path: str, label_col: Optional[str] = None) -> T
             for col in df.columns:
                 if col == id_col:
                     continue
-                unique = set(df[col].dropna().astype(int).unique())
-                if unique.issubset({0, 1}) and len(unique) == 2:
+                vals = df[col].dropna()
+                try:
+                    unique = set(pd.to_numeric(vals, errors="raise").unique())
+                except (ValueError, TypeError):
+                    continue
+                if unique == {0, 1}:
                     label_col = col
                     break
     if label_col is None:
         raise ValueError("无法识别临床表格中的标签列（需为 0/1 二分类），可用 --label-col 指定")
 
     # Validate label values
-    if not set(df[label_col].dropna().astype(int).unique()).issubset({0, 1}):
+    label_vals = df[label_col].dropna()
+    try:
+        unique = set(pd.to_numeric(label_vals, errors="raise").unique())
+    except (ValueError, TypeError):
+        unique = None
+    if unique is None or not unique.issubset({0, 1}):
         raise ValueError(f"标签列 '{label_col}' 必须仅包含 0/1")
 
     # Rename ID column to patient_id for downstream consistency

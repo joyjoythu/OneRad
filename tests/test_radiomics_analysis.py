@@ -131,3 +131,67 @@ def test_inspect_prefers_label_named_column(tmp_path):
         str(tmp_path), feature_csv=str(feat), clinical=str(clin))
     assert result["status"] == "ready"
     assert result["resolved"]["label_col"] == "Label"
+
+
+
+def test_inspect_continuous_column_not_treated_as_binary(tmp_path):
+    """[0,2) 区间的连续列不得被识别为 0/1 标签候选。"""
+    feat = tmp_path / "features.csv"
+    label = _write_feature_csv(feat, IDS)
+    clin = tmp_path / "clinical.csv"
+    rng = np.random.RandomState(3)
+    df = pd.DataFrame({"patient_id": IDS, "Label": label,
+                       "score": rng.uniform(0, 2, len(IDS))})
+    df.to_csv(clin, index=False)
+    result = inspect_analysis_inputs(
+        str(tmp_path), feature_csv=str(feat), clinical=str(clin))
+    # score 不应成为候选；Label 仍是唯一 0/1 列 → ready
+    assert result["status"] == "ready"
+    assert result["resolved"]["label_col"] == "Label"
+
+
+def test_inspect_explicit_id_col_zero_match_returns_error(tmp_path):
+    feat = tmp_path / "features.csv"
+    clin = tmp_path / "clinical.csv"
+    label = _write_feature_csv(feat, IDS)
+    _write_clinical_csv(clin, IDS, label)
+    result = inspect_analysis_inputs(
+        str(tmp_path), feature_csv=str(feat), clinical=str(clin),
+        id_col="age")
+    assert result["status"] == "error"
+    assert "无任何匹配" in result["message"]
+
+
+def test_inspect_tie_id_columns_asks(tmp_path):
+    """两列与特征 ID 匹配数相同时列出并列候选。"""
+    feat = tmp_path / "features.csv"
+    label = _write_feature_csv(feat, IDS)
+    clin = tmp_path / "clinical.csv"
+    df = pd.DataFrame({"patient_id": IDS, "pid_copy": IDS, "Label": label})
+    df.to_csv(clin, index=False)
+    result = inspect_analysis_inputs(
+        str(tmp_path), feature_csv=str(feat), clinical=str(clin))
+    assert result["status"] == "need_clarification"
+    q = [q for q in result["questions"] if q["field"] == "id_col"]
+    assert q and set(q[0]["candidates"]) == {"patient_id", "pid_copy"}
+
+
+def test_inspect_float_ids_normalized(tmp_path):
+    """临床 ID 列被读成浮点（1.0）时仍能匹配特征的整型 ID（1）。"""
+    rng = np.random.RandomState(42)
+    ids = [str(i) for i in range(60)]
+    label = np.array([i % 2 for i in range(60)])
+    feat_df = pd.DataFrame({"patient_id": ids})
+    for j in range(4):
+        feat_df[f"original_sig_{j}"] = rng.randn(60) + label * 1.5
+    feat = tmp_path / "features.csv"
+    feat_df.to_csv(feat, index=False)
+    clin = tmp_path / "clinical.csv"
+    # 直接把 ID 写成 1.0/2.0 形式的浮点
+    clin_df = pd.DataFrame({"patient_id": [float(i) for i in range(60)],
+                            "Label": label})
+    clin_df.to_csv(clin, index=False)
+    result = inspect_analysis_inputs(
+        str(tmp_path), feature_csv=str(feat), clinical=str(clin))
+    assert result["status"] == "ready"
+    assert result["resolved"]["n_matched"] == 60
