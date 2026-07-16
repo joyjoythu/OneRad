@@ -150,6 +150,10 @@ def inspect_analysis_inputs(
       - {"status": "ready", "resolved": {...}}  all inputs resolved
       - {"status": "need_clarification", "questions": [...], "detected": {...}}
       - {"status": "error", "message": str, "detected": {...}}
+
+    Note: This function may load and scan CSV/XLSX files in the project
+    directory. It is designed to be called from a worker thread (the
+    LangGraph sync node executor already runs sync nodes in a thread pool).
     """
     # 1. 特征文件
     if not feature_csv:
@@ -248,6 +252,10 @@ def inspect_analysis_inputs(
         if values is None:
             return {"status": "error",
                     "message": f"标签列 '{label_col}' 必须为 0/1 二分类",
+                    "detected": detected}
+        if len(values) < 2:
+            return {"status": "error",
+                    "message": f"标签列 '{label_col}' 必须同时包含 0 和 1（当前仅含 {sorted(values)}）",
                     "detected": detected}
     else:
         binary_cols = _binary_columns(clinical_df, exclude=id_col or None)
