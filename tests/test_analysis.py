@@ -173,3 +173,15 @@ def test_output_dir_override_does_not_mutate_agent():
         assert len(result_b["plot_paths"]) == agent.n_splits
         for plot_path in result_b["plot_paths"]:
             assert os.path.dirname(plot_path) == tmpdir_b
+
+
+def test_oof_probabilities_returned():
+    """run 返回按 merged_df 行序排列的每例 out-of-fold 预测概率。"""
+    df = _make_df(n=50, n_signal=5, n_noise=5, seed=42)
+    agent = AnalysisAgent(covariates=[])
+    result = agent.run(df, label_col="Label")
+    assert result["success"] is True
+    probs = result["oof_probabilities"]
+    assert len(probs) == len(df)
+    assert all(isinstance(p, float) for p in probs)
+    assert all(0.0 <= p <= 1.0 for p in probs)

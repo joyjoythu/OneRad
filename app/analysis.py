@@ -159,6 +159,8 @@ class AnalysisAgent:
             A dictionary with ``success``/``message`` and, on success, the
             selected features, model coefficients, odds ratios, and metrics.
             The confusion matrix is returned as ``[[tn, fp], [fn, tp]]``.
+            ``oof_probabilities`` holds the out-of-fold predicted probability
+            for every row of ``merged_df`` (in row order).
         """
         if merged_df is None or merged_df.empty:
             return {"success": False, "message": "merged_df 为空"}
@@ -334,5 +336,6 @@ class AnalysisAgent:
                                       [int(metrics_result.fn), int(metrics_result.tp)]],
             },
             "n_samples": len(y),
+            "oof_probabilities": [float(p) for p in val_probs],
             "plot_paths": plot_paths,
         }
