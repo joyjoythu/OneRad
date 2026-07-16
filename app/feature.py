@@ -116,6 +116,8 @@ class FeatureAgent:
         n_jobs: int = -1,
         resampled_pixel_spacing: Optional[Tuple[float, float, float]] = None,
         output_dir: Optional[str] = None,
+        progress_callback=None,
+        cancel_event=None,
     ) -> Dict[str, Any]:
         if not pairs:
             return {"success": False, "message": "pairs 为空"}
@@ -140,6 +142,15 @@ class FeatureAgent:
 
         t0 = time.time()
 
+        def report(payload: Dict[str, Any]) -> None:
+            """向调用方上报进度；回调异常不应中断提取。"""
+            if progress_callback is None:
+                return
+            try:
+                progress_callback(payload)
+            except Exception:
+                logger.debug("progress_callback 调用失败", exc_info=True)
+
         image_paths = [p["image_path"] for p in pairs]
         try:
             common_parent = os.path.commonpath(image_paths)
@@ -148,10 +159,25 @@ class FeatureAgent:
         except ValueError:
             common_parent = ""
 
-        results = [
-            self._extract_single((p["patient_id"], p["image_path"], p["mask_path"], effective_yaml))
-            for p in pairs
-        ]
+        total = len(pairs)
+        report({"stage": "start", "current": 0, "total": total})
+        results = []
+        cancelled = False
+        for idx, p in enumerate(pairs):
+            if cancel_event is not None and cancel_event.is_set():
+                cancelled = True
+                break
+            report({
+                "stage": "extracting",
+                "current": idx + 1,
+                "total": total,
+                "patient_id": p["patient_id"],
+            })
+            results.append(
+                self._extract_single(
+                    (p["patient_id"], p["image_path"], p["mask_path"], effective_yaml)
+                )
+            )
 
         rows = []
         failed_records = []
@@ -181,6 +207,8 @@ class FeatureAgent:
                 pass
 
         if not rows:
+            if cancelled:
+                return {"success": False, "cancelled": True, "message": "特征提取已取消，尚无完成样本"}
             return {"success": False, "message": "所有样本特征提取均失败"}
 
         failed_ids = [r["patient_id"] for r in failed_records]
@@ -217,6 +245,7 @@ class FeatureAgent:
         failed_path = None
         h5_dir = None
         if save_dir:
+            report({"stage": "finalizing", "current": len(rows), "total": total})
             os.makedirs(save_dir, exist_ok=True)
             feature_path = os.path.join(save_dir, "radiomics_features.csv")
             df.to_csv(feature_path, index=False)
@@ -249,9 +278,18 @@ class FeatureAgent:
             seq = pair.get("sequence")
             failed_examples.append(f"{r['patient_id']}_{seq}" if seq else r["patient_id"])
 
+        if cancelled:
+            message = (
+                f"特征提取已取消: 已完成 {len(df)}/{len(pairs)} 成功"
+                f", {len(failed_records)} 失败, 部分结果已保存"
+            )
+        else:
+            message = f"特征提取完成: {len(df)}/{len(pairs)} 成功, {len(failed_records)} 失败"
+
         return {
             "success": True,
-            "message": f"特征提取完成: {len(df)}/{len(pairs)} 成功, {len(failed_records)} 失败",
+            "cancelled": cancelled,
+            "message": message,
             "feature_df": df,
             "feature_names": feature_cols,
             "failed_ids": failed_ids,

@@ -8,6 +8,9 @@ import type {
   PendingPlan,
   PendingCommand,
   PendingScript,
+  PendingRadiomicsPlan,
+  PendingRadiomicsExecution,
+  RadiomicsProgress,
   ThreadSummary,
 } from '@/api/agent'
 
@@ -19,11 +22,15 @@ export const useAgentStore = defineStore('agent', () => {
   const pendingPlan = ref<PendingPlan | null>(null)
   const pendingCommand = ref<PendingCommand | null>(null)
   const pendingScript = ref<PendingScript | null>(null)
+  const pendingRadiomicsPlan = ref<PendingRadiomicsPlan | null>(null)
+  const pendingRadiomicsExecution = ref<PendingRadiomicsExecution | null>(null)
 
   const threads = ref<ThreadSummary[]>([])
   const currentThread = ref<ThreadSummary | null>(null)
   // 智能体是否正在处理中（流式运行期间为 true），用于禁用输入并展示状态。
   const busy = ref(false)
+  // 影像组学特征提取的实时进度（由后端节点线程推送，null 表示无提取在进行）。
+  const radiomicsProgress = ref<RadiomicsProgress | null>(null)
 
   let es: EventSource | null = null
 
@@ -57,6 +64,15 @@ export const useAgentStore = defineStore('agent', () => {
     if (state.pending_script !== undefined) {
       pendingScript.value = state.pending_script
     }
+    if (state.pending_radiomics_plan !== undefined) {
+      pendingRadiomicsPlan.value = state.pending_radiomics_plan
+    }
+    if (state.pending_radiomics_execution !== undefined) {
+      pendingRadiomicsExecution.value = state.pending_radiomics_execution
+    }
+    if (state.radiomics_progress !== undefined) {
+      radiomicsProgress.value = state.radiomics_progress
+    }
   }
 
   function resetInternalState(): void {
@@ -68,8 +84,11 @@ export const useAgentStore = defineStore('agent', () => {
     pendingPlan.value = null
     pendingCommand.value = null
     pendingScript.value = null
+    pendingRadiomicsPlan.value = null
+    pendingRadiomicsExecution.value = null
     currentThread.value = null
     busy.value = false
+    radiomicsProgress.value = null
   }
 
   async function ensureThread(
@@ -204,6 +223,7 @@ export const useAgentStore = defineStore('agent', () => {
       onEnd: () => {
         // 本轮流式运行结束（正常完成或在中断处暂停）。
         busy.value = false
+        radiomicsProgress.value = null
       },
       onError: () => {
         disconnect()
@@ -274,6 +294,7 @@ export const useAgentStore = defineStore('agent', () => {
       // 无论成功与否都复位忙碌；失败原因由 axios 拦截器 toast，
       // 若后端仍在运行，后续发送会被 409 兜底，状态自愈。
       busy.value = false
+      radiomicsProgress.value = null
     }
   }
 
@@ -302,6 +323,9 @@ export const useAgentStore = defineStore('agent', () => {
     pendingPlan,
     pendingCommand,
     pendingScript,
+    pendingRadiomicsPlan,
+    pendingRadiomicsExecution,
+    radiomicsProgress,
     threads,
     currentThread,
     busy,

@@ -38,6 +38,9 @@
         <ScriptPanel
           v-else-if="!agentStore.busy && agentStore.interrupt === 'python_script' && agentStore.pendingScript"
         />
+        <RadiomicsPanel
+          v-else-if="!agentStore.busy && (agentStore.interrupt === 'radiomics_plan' || agentStore.interrupt === 'radiomics_execution') && (agentStore.pendingRadiomicsPlan || agentStore.pendingRadiomicsExecution)"
+        />
 
         <el-collapse v-if="agentStore.operationLog.length > 0">
           <el-collapse-item title="操作日志">
@@ -66,6 +69,7 @@ import ThreadList from '@/components/ThreadList.vue'
 import PlanPanel from '@/components/PlanPanel.vue'
 import CommandPanel from '@/components/CommandPanel.vue'
 import ScriptPanel from '@/components/ScriptPanel.vue'
+import RadiomicsPanel from '@/components/RadiomicsPanel.vue'
 import { DEFAULT_AGENT_MODEL } from '@/api/agent'
 
 const agentStore = useAgentStore()
@@ -108,6 +112,10 @@ const interruptTag = computed(() => {
       return { label: '待确认系统命令', type: 'warning' as const }
     case 'python_script':
       return { label: '待确认 Python 脚本', type: 'danger' as const }
+    case 'radiomics_plan':
+      return { label: '待确认配对计划', type: 'warning' as const }
+    case 'radiomics_execution':
+      return { label: '待确认特征提取', type: 'warning' as const }
     default:
       return null
   }

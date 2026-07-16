@@ -283,6 +283,86 @@ describe('useAgentStore', () => {
     expect(MockEventSource.instances).toHaveLength(1)
   })
 
+  it('tracks radiomics progress from SSE and clears it on stream end', async () => {
+    const store = useAgentStore()
+    await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')
+    await store.sendMessage('提取特征')
+    const es = MockEventSource.instances[0]
+
+    es.emit('agent', {
+      radiomics_progress: { stage: 'extracting', current: 2, total: 5, patient_id: 'case_002' },
+      running: true,
+    })
+    expect(store.radiomicsProgress).toEqual({
+      stage: 'extracting',
+      current: 2,
+      total: 5,
+      patient_id: 'case_002',
+    })
+    expect(store.busy).toBe(true)
+
+    // 进度事件不带 messages 等字段时，现有消息不受影响
+    expect(store.messages).toEqual([{ role: 'user', content: '提取特征' }])
+
+    es.emit('agent', { radiomics_progress: null, running: true })
+    expect(store.radiomicsProgress).toBeNull()
+
+    es.emit('agent', {
+      radiomics_progress: { stage: 'extracting', current: 3, total: 5 },
+      running: true,
+    })
+    es.emit('agent_end', {})
+    expect(store.radiomicsProgress).toBeNull()
+    expect(store.busy).toBe(false)
+  })
+
+  it('stop clears radiomics progress', async () => {
+    const store = useAgentStore()
+    await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')
+    await store.sendMessage('提取特征')
+    const es = MockEventSource.instances[0]
+    es.emit('agent', {
+      radiomics_progress: { stage: 'extracting', current: 1, total: 5 },
+      running: true,
+    })
+    expect(store.radiomicsProgress).not.toBeNull()
+
+    await store.stop()
+
+    expect(store.radiomicsProgress).toBeNull()
+    expect(store.busy).toBe(false)
+  })
+
+  it('tracks pending radiomics plan/execution from SSE state', async () => {
+    const store = useAgentStore()
+    await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')
+    const es = MockEventSource.instances[0]
+
+    const execution = {
+      tool_call_id: 'tc1',
+      pairs: [{ patient_id: 'p1', image_path: 'images/p1.nii.gz', mask_path: 'masks/p1.nii.gz' }],
+      n_cases: 1,
+      yaml_path: 'Params_labels.yaml',
+      output_dir: 'radiomics_features',
+    }
+    es.emit('agent', mockState({
+      interrupt_type: 'radiomics_execution',
+      pending_radiomics_execution: execution,
+    }))
+    expect(store.pendingRadiomicsExecution).toEqual(execution)
+    expect(store.interrupt).toBe('radiomics_execution')
+
+    // 确认/取消后后端返回清空后的状态
+    es.emit('agent', mockState({
+      interrupt_type: null,
+      pending_radiomics_execution: null,
+      pending_radiomics_plan: null,
+    }))
+    expect(store.pendingRadiomicsExecution).toBeNull()
+    expect(store.pendingRadiomicsPlan).toBeNull()
+    expect(store.interrupt).toBeNull()
+  })
+
   it('deleteThread removes the current thread and resets internal state', async () => {
     const store = useAgentStore()
     vi.spyOn(agentApi, 'createThread').mockResolvedValueOnce({ thread_id: 'thread-del' })

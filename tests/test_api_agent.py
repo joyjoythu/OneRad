@@ -344,6 +344,52 @@ def test_stop_conflict_when_not_running(client, app):
     assert response.status_code == 409, response.text
 
 
+def test_stop_requests_cooperative_cancel(client, app, monkeypatch):
+    """stop 应先置位运行时上下文的取消事件，让耗时任务协作式退出。"""
+    from app.agent import runtime
+
+    project = _create_project(client)
+    thread_id = _create_thread(client, project['id'])["thread_id"]
+
+    snapshots = [
+        SimpleNamespace(values={"interrupt_type": None}),  # send_message 前检查
+        SimpleNamespace(values={"interrupt_type": None}),  # stop 存在性检查
+        SimpleNamespace(values={"messages": []}),          # 取消后读取
+    ]
+
+    async def blocking_astream(input_value=None, config=None, stream_mode=None):
+        yield {"messages": [], "interrupt_type": None, "operation_log": []}
+        await asyncio.sleep(3600)
+
+    mock_graph = AsyncMock()
+    mock_graph.aget_state = AsyncMock(side_effect=snapshots)
+    mock_graph.astream = blocking_astream
+    app.dependency_overrides[get_agent_graph] = lambda: mock_graph
+
+    cancelled_threads = []
+    original = runtime.request_cancel
+    monkeypatch.setattr(
+        runtime,
+        "request_cancel",
+        lambda tid: cancelled_threads.append(tid) or original(tid),
+    )
+
+    response = client.post(
+        f"/api/agent/threads/{thread_id}/messages",
+        json={"role": "user", "content": "hi"},
+    )
+    assert response.status_code == 202, response.text
+
+    deadline = time.time() + 2
+    while time.time() < deadline and thread_id not in app.state.agent_stream_tasks:
+        time.sleep(0.05)
+    assert thread_id in app.state.agent_stream_tasks
+
+    response = client.post(f"/api/agent/threads/{thread_id}/stop")
+    assert response.status_code == 202, response.text
+    assert cancelled_threads == [thread_id]
+
+
 def test_stop_cancels_stream_and_repairs_history(client, app):
     """stop 应取消活动流，并为未应答的 tool_calls 补「已停止」ToolMessage。"""
     project = _create_project(client)
@@ -445,3 +491,28 @@ def test_get_thread_reports_running(client, app):
         assert response.json()["running"] is True
     finally:
         app.state.active_agent_streams.discard(thread_id)
+
+
+def test_sync_payload_includes_radiomics_pending():
+    """_sync_payload 必须返回影像组学待确认字段，否则前端无法渲染确认面板。"""
+    from app.api.agent import _sync_payload
+
+    values = {
+        "messages": [],
+        "interrupt_type": "radiomics_execution",
+        "operation_log": [],
+        "pending_radiomics_plan": None,
+        "pending_radiomics_execution": {
+            "tool_call_id": "tc1",
+            "pairs": [{"patient_id": "p1", "image_path": "images/p1.nii.gz", "mask_path": "masks/p1.nii.gz"}],
+            "n_cases": 1,
+            "yaml_path": "Params_labels.yaml",
+            "output_dir": "radiomics_features",
+        },
+    }
+
+    payload = _sync_payload(values, running=False)
+
+    assert payload["interrupt_type"] == "radiomics_execution"
+    assert payload["pending_radiomics_plan"] is None
+    assert payload["pending_radiomics_execution"]["n_cases"] == 1

@@ -17,6 +17,7 @@ from pydantic import BaseModel
 from starlette.responses import StreamingResponse
 
 from app.agent import build_initial_state, create_agent_graph
+from app.agent import runtime as agent_runtime
 from app.api.deps import get_project_store
 from app.api.runner import get_bridge
 from app.projects import ProjectStore
@@ -142,6 +143,8 @@ def _sync_payload(values: Optional[Dict[str, Any]], running: bool) -> Dict[str, 
         "pending_plan": values.get("pending_plan"),
         "pending_command": values.get("pending_command"),
         "pending_script": values.get("pending_script"),
+        "pending_radiomics_plan": values.get("pending_radiomics_plan"),
+        "pending_radiomics_execution": values.get("pending_radiomics_execution"),
         "running": running,
     }
 
@@ -223,6 +226,7 @@ async def _stream_agent(
         app.state.active_agent_streams.discard(thread_id)
         app.state.pipeline_tasks.discard(task)
         app.state.agent_stream_tasks.pop(thread_id, None)
+        agent_runtime.unregister(thread_id)
 
 
 async def _start_stream(
@@ -244,6 +248,8 @@ async def _start_stream(
             detail="智能体正在处理中，请等待当前任务完成后再试",
         )
     app.state.active_agent_streams.add(thread_id)
+    # 登记运行时上下文：耗时节点（如特征提取）借此推送进度并响应 /stop 的取消。
+    agent_runtime.register(thread_id, loop=asyncio.get_running_loop(), bridge=bridge)
     try:
         config = await _agent_config(thread_id, app)
         task = asyncio.create_task(
@@ -252,6 +258,7 @@ async def _start_stream(
         app.state.agent_stream_tasks[thread_id] = task
     except Exception:
         app.state.active_agent_streams.discard(thread_id)
+        agent_runtime.unregister(thread_id)
         raise
 
 
@@ -557,6 +564,9 @@ async def stop_stream(
             detail="当前没有正在运行的任务",
         )
 
+    # 先通知耗时任务（如特征提取的工作线程）在下一个检查点退出，
+    # 再取消 asyncio 流式任务——线程无法被强杀，必须协作式取消。
+    agent_runtime.request_cancel(thread_id)
     task.cancel()
     # 等待任务收尾（finally 清理集合与映射）。任务若已因其他异常结束，
     # 错误已由 _stream_agent 发布，这里不重复抛出。

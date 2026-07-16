@@ -145,6 +145,15 @@ const inputPlaceholder = computed(() => {
 // 之前的中间快照仍带有旧值，此时实际仍在运行。
 const statusText = computed(() => {
   if (agentStore.busy) {
+    const progress = agentStore.radiomicsProgress
+    if (progress) {
+      if (progress.stage === 'finalizing') return '正在保存特征结果…'
+      if (progress.stage === 'extracting') {
+        const suffix = progress.patient_id ? `：${progress.patient_id}` : ''
+        return `正在提取影像组学特征 (${progress.current}/${progress.total})${suffix}…`
+      }
+      return `正在准备提取影像组学特征（共 ${progress.total} 例）…`
+    }
     const last = agentStore.messages[agentStore.messages.length - 1]
     if (last?.role === 'assistant' && last.tool_calls?.length) {
       const name = last.tool_calls[0]?.name

@@ -41,6 +41,45 @@ export interface PendingScript {
   explanation: string
 }
 
+export interface RadiomicsProgress {
+  stage: 'start' | 'extracting' | 'finalizing' | string
+  current: number
+  total: number
+  patient_id?: string
+}
+
+export interface RadiomicsPair {
+  patient_id: string
+  sequence?: string
+  image_path?: string
+  mask_path?: string
+  candidates?: string[]
+}
+
+export interface PendingRadiomicsPlan {
+  tool_call_id: string
+  _pending_tool?: string
+  success?: boolean
+  images_found?: number
+  masks_found?: number
+  pairs?: {
+    high?: RadiomicsPair[]
+    medium?: RadiomicsPair[]
+    low?: RadiomicsPair[]
+  }
+  unmatched_images?: string[]
+  unmatched_masks?: string[]
+}
+
+export interface PendingRadiomicsExecution {
+  tool_call_id: string
+  pairs: RadiomicsPair[]
+  n_cases: number
+  yaml_path: string
+  output_dir: string
+  expected_outputs?: string[]
+}
+
 export interface AgentState {
   thread_id?: string
   messages: AgentMessage[]
@@ -49,6 +88,9 @@ export interface AgentState {
   pending_plan: PendingPlan | null
   pending_command: PendingCommand | null
   pending_script: PendingScript | null
+  pending_radiomics_plan?: PendingRadiomicsPlan | null
+  pending_radiomics_execution?: PendingRadiomicsExecution | null
+  radiomics_progress?: RadiomicsProgress | null
   running?: boolean
   error?: string
 }

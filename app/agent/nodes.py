@@ -1,4 +1,6 @@
+import asyncio
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Literal, Optional
@@ -11,9 +13,12 @@ from langgraph.types import interrupt
 from app.agent.state import AgentState
 from app.agent.tools import build_tools
 from app.agent.safety import Sandbox
+from app.agent import runtime as agent_runtime
 from app.actions import execute_plan
 from app.code_runner import execute_script_if_safe
 from app.feature import FeatureAgent
+
+logger = logging.getLogger(__name__)
 
 
 def _build_llm(
@@ -238,9 +243,31 @@ def _resolve_tool_call_id(state: AgentState) -> str:
     return ""
 
 
-def execute_confirmed(state: AgentState) -> dict:
+def _publish_agent_progress(thread_id: Optional[str], payload: Optional[dict]) -> None:
+    """从节点线程向 SSE 订阅者推送影像组学提取进度。
+
+    节点运行在工作线程中，需通过 run_coroutine_threadsafe 回到主事件循环发布。
+    上下文缺失（线程未在运行）或事件循环已关闭时静默跳过。
+    """
+    ctx = agent_runtime.get(thread_id)
+    if ctx is None or ctx.loop is None or ctx.bridge is None:
+        return
+    try:
+        asyncio.run_coroutine_threadsafe(
+            ctx.bridge.publish(
+                "agent", thread_id, {"radiomics_progress": payload, "running": True}
+            ),
+            ctx.loop,
+        )
+    except Exception:
+        logger.debug("推送提取进度失败", exc_info=True)
+
+
+def execute_confirmed(state: AgentState, config: Optional[RunnableConfig] = None) -> dict:
     """根据用户确认结果执行待处理操作或取消，并清空中断状态。"""
     itype = state["interrupt_type"]
+
+    thread_id = (config or {}).get("configurable", {}).get("thread_id")
 
     pending_plan = state.get("pending_plan")
     pending_command = state.get("pending_command")
@@ -326,7 +353,22 @@ def execute_confirmed(state: AgentState) -> dict:
         plan = state["pending_radiomics_plan"]
         results = {k: v for k, v in plan.items() if k != "tool_call_id"}
     elif itype == "radiomics_execution":
-        results = _run_radiomics_execution(state["pending_radiomics_execution"], state["project_path"])
+        ctx = agent_runtime.get(thread_id)
+        cancel_event = ctx.cancel_event if ctx is not None else None
+
+        def progress_callback(payload: dict) -> None:
+            _publish_agent_progress(thread_id, payload)
+
+        try:
+            results = _run_radiomics_execution(
+                state["pending_radiomics_execution"],
+                state["project_path"],
+                progress_callback=progress_callback,
+                cancel_event=cancel_event,
+            )
+        finally:
+            # 节点结束后清除前端进度显示（后续 call_llm 阶段不再属于提取）。
+            _publish_agent_progress(thread_id, None)
     else:
         results = {"error": "unknown interrupt type"}
 
@@ -393,7 +435,12 @@ def _resolve_within_project(sandbox: Sandbox, path) -> str:
         raise
 
 
-def _run_radiomics_execution(pending: dict, project_path: str) -> dict:
+def _run_radiomics_execution(
+    pending: dict,
+    project_path: str,
+    progress_callback=None,
+    cancel_event=None,
+) -> dict:
     """执行已确认的影像组学特征提取任务。"""
     sandbox = Sandbox(project_path)
     yaml_path = pending.get("yaml_path") or str(Path(project_path) / "Params_labels.yaml")
@@ -413,7 +460,12 @@ def _run_radiomics_execution(pending: dict, project_path: str) -> dict:
             )
             resolved_pairs.append(resolved)
         agent = FeatureAgent(output_dir=output_dir)
-        return agent.run(resolved_pairs, yaml_path=yaml_path)
+        return agent.run(
+            resolved_pairs,
+            yaml_path=yaml_path,
+            progress_callback=progress_callback,
+            cancel_event=cancel_event,
+        )
     except PathEscapeError:
         return {"success": False, "error": "路径超出项目目录"}
     except Exception as e:

@@ -195,3 +195,75 @@ def test_get_extractor_imports_real_cir_get_features():
     extractor = agent._get_extractor()
     assert extractor is not None
     assert callable(extractor)
+
+
+def test_feature_agent_progress_callback_reports_each_case(tmp_path):
+    yaml_path = tmp_path / "params.yaml"
+    yaml_path.write_text("")
+    pairs = [_make_pair(tmp_path, "p1"), _make_pair(tmp_path, "p2")]
+
+    events = []
+    result = FeatureAgent(extractor=_mock_extractor).run(
+        pairs,
+        yaml_path=str(yaml_path),
+        n_jobs=1,
+        output_dir=str(tmp_path / "features"),
+        progress_callback=events.append,
+    )
+
+    assert result["success"] is True
+    assert events[0] == {"stage": "start", "current": 0, "total": 2}
+    extracting = [e for e in events if e["stage"] == "extracting"]
+    assert [(e["current"], e["patient_id"]) for e in extracting] == [(1, "p1"), (2, "p2")]
+    assert any(e["stage"] == "finalizing" for e in events)
+
+
+def test_feature_agent_cancel_event_aborts_after_current_case(tmp_path):
+    """取消事件置位后，当前病例跑完即停止，已完成的 partial 结果仍保存。"""
+    import threading
+
+    yaml_path = tmp_path / "params.yaml"
+    yaml_path.write_text("")
+    pairs = [_make_pair(tmp_path, "p1"), _make_pair(tmp_path, "p2")]
+    cancel_event = threading.Event()
+    calls = []
+
+    def extractor(image_path, mask_path, yaml_path):
+        calls.append(image_path)
+        cancel_event.set()  # 模拟用户在第一例提取期间点击停止
+        return {"f1": 1.0, "f2": 2.0}
+
+    out_dir = tmp_path / "features"
+    result = FeatureAgent(extractor=extractor).run(
+        pairs,
+        yaml_path=str(yaml_path),
+        n_jobs=1,
+        output_dir=str(out_dir),
+        cancel_event=cancel_event,
+    )
+
+    assert len(calls) == 1  # 第二例未再提取
+    assert result["success"] is True
+    assert result["cancelled"] is True
+    assert "已取消" in result["message"]
+    assert result["n_success"] == 1
+    assert set(result["feature_df"]["patient_id"]) == {"p1"}
+    assert os.path.exists(result["feature_path"])
+
+
+def test_feature_agent_cancel_before_start_returns_no_results(tmp_path):
+    import threading
+
+    yaml_path = tmp_path / "params.yaml"
+    yaml_path.write_text("")
+    pairs = [_make_pair(tmp_path, "p1")]
+    cancel_event = threading.Event()
+    cancel_event.set()
+
+    result = FeatureAgent(extractor=_mock_extractor).run(
+        pairs, yaml_path=str(yaml_path), n_jobs=1, cancel_event=cancel_event
+    )
+
+    assert result["success"] is False
+    assert result["cancelled"] is True
+    assert "已取消" in result["message"]
