@@ -6,9 +6,10 @@ from unittest.mock import AsyncMock
 
 import pytest
 from fastapi.testclient import TestClient
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from app.api import create_app
-from app.api.agent import get_agent_graph
+from app.api.agent import get_agent_graph, _unanswered_tool_call_ids
 
 
 @pytest.fixture
@@ -264,3 +265,36 @@ def test_confirm_conflict_while_streaming(client, app):
         assert response.status_code == 409, response.text
     finally:
         app.state.active_agent_streams.discard(thread_id)
+
+
+def test_unanswered_tool_call_ids_all_answered():
+    messages = [
+        AIMessage(
+            content="",
+            tool_calls=[{"id": "call_1", "name": "list_directory", "args": {}}],
+        ),
+        ToolMessage(content="{}", tool_call_id="call_1"),
+    ]
+    assert _unanswered_tool_call_ids(messages) == []
+
+
+def test_unanswered_tool_call_ids_partial():
+    messages = [
+        AIMessage(
+            content="",
+            tool_calls=[
+                {"id": "call_1", "name": "a", "args": {}},
+                {"id": "call_2", "name": "b", "args": {}},
+            ],
+        ),
+        ToolMessage(content="{}", tool_call_id="call_1"),
+    ]
+    assert _unanswered_tool_call_ids(messages) == ["call_2"]
+
+
+def test_unanswered_tool_call_ids_without_tool_calls():
+    assert _unanswered_tool_call_ids([HumanMessage(content="hi")]) == []
+
+
+def test_unanswered_tool_call_ids_empty_history():
+    assert _unanswered_tool_call_ids([]) == []

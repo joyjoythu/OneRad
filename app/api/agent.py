@@ -152,6 +152,27 @@ def _make_message(role: str, content: str) -> BaseMessage:
     )
 
 
+def _unanswered_tool_call_ids(messages: List[Any]) -> List[str]:
+    """返回消息历史中没有对应 ToolMessage 应答的 tool_call id。
+
+    停止运行后用于修复历史：为这些 id 各补一条 ToolMessage，
+    避免下次调用 LLM 时报 400（tool_calls 缺少响应）。
+    """
+    answered = {
+        getattr(msg, "tool_call_id", None)
+        for msg in messages
+        if isinstance(msg, ToolMessage)
+    }
+    missing: List[str] = []
+    for msg in messages:
+        tool_calls = getattr(msg, "tool_calls", None) or []
+        for tc in tool_calls:
+            tc_id = tc.get("id") if isinstance(tc, dict) else getattr(tc, "id", "")
+            if tc_id and tc_id not in answered and tc_id not in missing:
+                missing.append(tc_id)
+    return missing
+
+
 def get_agent_graph(request: Request):
     """Return the pre-compiled agent graph stored on app.state."""
     return request.app.state.agent_graph
