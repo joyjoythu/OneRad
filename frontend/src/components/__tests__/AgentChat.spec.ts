@@ -325,4 +325,24 @@ describe('AgentChat', () => {
     expect(wrapper.find('.chat-status').exists()).toBe(true)
     expect(wrapper.text()).toContain('等待确认')
   })
+
+  it('shows the running status when busy even if interrupt_type is stale', async () => {
+    // 确认后 execute_confirmed 执行期间 interrupt_type 尚未清除，
+    // 状态文案应以运行状态为准而不是显示「等待确认」。
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.threadId = 'thread-1'
+    agentStore.messages = [{ role: 'user', content: 'hi' }]
+    agentStore.busy = true
+    agentStore.interrupt = 'python_script'
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    expect(wrapper.find('.chat-status').exists()).toBe(true)
+    expect(wrapper.text()).toContain('正在思考')
+    expect(wrapper.text()).not.toContain('等待确认')
+  })
 })

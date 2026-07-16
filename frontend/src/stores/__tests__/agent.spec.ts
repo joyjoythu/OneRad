@@ -115,14 +115,30 @@ describe('useAgentStore', () => {
     expect(store.busy).toBe(false)
   })
 
-  it('clears busy when an interrupt snapshot arrives', async () => {
+  it('keeps busy when a running snapshot carries a stale interrupt_type', async () => {
+    // 点「确认」后 human_review 的中间快照仍带 interrupt_type（尚未被
+    // execute_confirmed 清除），但 running=true 表示运行仍在继续，
+    // busy 必须保持——否则停止按钮会在工具执行期间消失。
     const store = useAgentStore()
     await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')
     await store.sendMessage('Hello')
     expect(store.busy).toBe(true)
 
     const es = MockEventSource.instances[0]
-    es.emit('agent', mockState({ interrupt_type: 'file_plan' }))
+    es.emit('agent', mockState({ interrupt_type: 'python_script', running: true }))
+
+    expect(store.interrupt).toBe('python_script')
+    expect(store.busy).toBe(true)
+  })
+
+  it('clears busy when a snapshot reports running false', async () => {
+    const store = useAgentStore()
+    await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')
+    await store.sendMessage('Hello')
+    expect(store.busy).toBe(true)
+
+    const es = MockEventSource.instances[0]
+    es.emit('agent', mockState({ interrupt_type: 'file_plan', running: false }))
 
     expect(store.interrupt).toBe('file_plan')
     expect(store.busy).toBe(false)

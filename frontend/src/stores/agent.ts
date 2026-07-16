@@ -39,10 +39,11 @@ export const useAgentStore = defineStore('agent', () => {
     }
     if (state.interrupt_type !== undefined) {
       interrupt.value = state.interrupt_type
-      if (state.interrupt_type) {
-        // 图在人工确认处暂停，本轮运行已结束。
-        busy.value = false
-      }
+    }
+    if (state.running !== undefined) {
+      // 运行状态以后端显式上报为准；不能用 interrupt_type 推断——
+      // 确认后 execute_confirmed 清除前的中间快照仍带 interrupt_type。
+      busy.value = state.running
     }
     if (state.operation_log) {
       operationLog.value = state.operation_log

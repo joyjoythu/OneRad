@@ -127,8 +127,13 @@ def _stringify_content(content: Any) -> str:
         return str(content)
 
 
-def _sync_payload(values: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-    """Build a client-safe payload from the current graph state values."""
+def _sync_payload(values: Optional[Dict[str, Any]], running: bool) -> Dict[str, Any]:
+    """Build a client-safe payload from the current graph state values.
+
+    running 表示该线程当前是否有正在运行的流式任务。中间快照里的
+    interrupt_type 可能滞后（如 human_review 完成后、execute_confirmed
+    清除前），前端不能据此推断运行状态，必须以此字段为准。
+    """
     values = values or {}
     return {
         "messages": _render_messages(values),
@@ -137,6 +142,7 @@ def _sync_payload(values: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         "pending_plan": values.get("pending_plan"),
         "pending_command": values.get("pending_command"),
         "pending_script": values.get("pending_script"),
+        "running": running,
     }
 
 
@@ -195,7 +201,7 @@ async def _stream_agent(
     app.state.pipeline_tasks.add(task)
     try:
         async for values in graph.astream(input_value, config, stream_mode="values"):
-            payload = _sync_payload(values)
+            payload = _sync_payload(values, running=True)
             await bridge.publish("agent", thread_id, payload)
     except Exception as exc:
         await bridge.publish(
@@ -208,6 +214,7 @@ async def _stream_agent(
                 "pending_plan": None,
                 "pending_command": None,
                 "pending_script": None,
+                "running": False,
                 "error": str(exc),
             },
         )
@@ -299,7 +306,10 @@ async def get_thread(
             status_code=status.HTTP_404_NOT_FOUND, detail="thread not found"
         )
 
-    payload = _sync_payload(snapshot.values)
+    payload = _sync_payload(
+        snapshot.values,
+        running=thread_id in request.app.state.active_agent_streams,
+    )
     payload["thread_id"] = thread_id
     return payload
 
@@ -371,7 +381,10 @@ async def resume_thread(
     request.app.state.agent_api_keys[thread_id] = payload.api_key
     request.app.state.agent_llm_models[thread_id] = payload.llm_model
     snapshot = await graph.aget_state(await _agent_config(thread_id, request.app))
-    payload_out = _sync_payload(snapshot.values)
+    payload_out = _sync_payload(
+        snapshot.values,
+        running=thread_id in request.app.state.active_agent_streams,
+    )
     payload_out["thread_id"] = thread_id
     return payload_out
 
@@ -447,7 +460,10 @@ async def update_plan(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="thread not found"
         )
-    return _sync_payload(snapshot.values)
+    return _sync_payload(
+        snapshot.values,
+        running=thread_id in request.app.state.active_agent_streams,
+    )
 
 
 @router.post(
@@ -569,7 +585,9 @@ async def stop_stream(
         snapshot = await graph.aget_state(config)
 
     bridge = get_bridge(request)
-    await bridge.publish("agent", thread_id, _sync_payload(snapshot.values))
+    await bridge.publish(
+        "agent", thread_id, _sync_payload(snapshot.values, running=False)
+    )
     return {"thread_id": thread_id, "status": "stopped"}
 
 

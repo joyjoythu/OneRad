@@ -30,13 +30,13 @@
 
       <div class="agent-side-panel">
         <PlanPanel
-          v-if="agentStore.interrupt === 'file_plan' && agentStore.pendingPlan"
+          v-if="!agentStore.busy && agentStore.interrupt === 'file_plan' && agentStore.pendingPlan"
         />
         <CommandPanel
-          v-else-if="agentStore.interrupt === 'system_command' && agentStore.pendingCommand"
+          v-else-if="!agentStore.busy && agentStore.interrupt === 'system_command' && agentStore.pendingCommand"
         />
         <ScriptPanel
-          v-else-if="agentStore.interrupt === 'python_script' && agentStore.pendingScript"
+          v-else-if="!agentStore.busy && agentStore.interrupt === 'python_script' && agentStore.pendingScript"
         />
 
         <el-collapse v-if="agentStore.operationLog.length > 0">

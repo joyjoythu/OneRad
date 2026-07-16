@@ -135,21 +135,25 @@ const inputDisabled = computed(() => {
 })
 
 const inputPlaceholder = computed(() => {
-  if (agentStore.interrupt) return '请先确认或取消当前待处理的操作'
   if (agentStore.busy) return '智能体正在处理中，请稍候…'
+  if (agentStore.interrupt) return '请先确认或取消当前待处理的操作'
   return '请输入消息，Enter 发送，Shift+Enter 换行'
 })
 
 // 根据运行状态推导用户可见的状态文案。
+// busy 优先于 interrupt：确认后 execute_confirmed 清除 interrupt_type
+// 之前的中间快照仍带有旧值，此时实际仍在运行。
 const statusText = computed(() => {
-  if (agentStore.interrupt) return '等待确认操作…'
-  if (!agentStore.busy) return ''
-  const last = agentStore.messages[agentStore.messages.length - 1]
-  if (last?.role === 'assistant' && last.tool_calls?.length) {
-    const name = last.tool_calls[0]?.name
-    return name ? `正在调用工具：${name}…` : '正在调用工具…'
+  if (agentStore.busy) {
+    const last = agentStore.messages[agentStore.messages.length - 1]
+    if (last?.role === 'assistant' && last.tool_calls?.length) {
+      const name = last.tool_calls[0]?.name
+      return name ? `正在调用工具：${name}…` : '正在调用工具…'
+    }
+    return '正在思考…'
   }
-  return '正在思考…'
+  if (agentStore.interrupt) return '等待确认操作…'
+  return ''
 })
 
 function toolCallNames(message: AgentMessage): string {

@@ -202,6 +202,7 @@ def test_send_message_publishes_events(client, app):
     payload = json.loads(events[0]["data"])
     assert payload["interrupt_type"] is None
     assert payload["operation_log"] == ["started"]
+    assert payload["running"] is True
 
 
 @pytest.mark.anyio
@@ -426,3 +427,21 @@ def test_stop_cancels_stream_and_repairs_history(client, app):
     last_payload = json.loads(events[-1]["data"])
     assert last_payload["operation_log"] == ["用户停止了当前任务"]
     assert last_payload["messages"][-1]["role"] == "tool"
+    assert last_payload["running"] is False
+
+
+def test_get_thread_reports_running(client, app):
+    """get_thread 应报告线程是否有正在运行的流式任务。"""
+    project = _create_project(client)
+    thread_id = _create_thread(client, project['id'])["thread_id"]
+
+    response = client.get(f"/api/agent/threads/{thread_id}")
+    assert response.status_code == 200, response.text
+    assert response.json()["running"] is False
+
+    app.state.active_agent_streams.add(thread_id)
+    try:
+        response = client.get(f"/api/agent/threads/{thread_id}")
+        assert response.json()["running"] is True
+    finally:
+        app.state.active_agent_streams.discard(thread_id)

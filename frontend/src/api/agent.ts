@@ -49,6 +49,7 @@ export interface AgentState {
   pending_plan: PendingPlan | null
   pending_command: PendingCommand | null
   pending_script: PendingScript | null
+  running?: boolean
   error?: string
 }
 
