@@ -20,15 +20,17 @@ def plot_roc_curve(y_true, y_prob, auc: float, auc_ci: Sequence[float], out_path
     y_prob = np.asarray(y_prob, dtype=float)
     fpr, tpr, _ = sk_metrics.roc_curve(y_true, y_prob)
     fig, ax = plt.subplots(figsize=(6, 5))
-    ax.plot(fpr, tpr, lw=2,
-            label=f"AUC = {auc:.3f} (95% CI {auc_ci[0]:.3f}\u2013{auc_ci[1]:.3f})")
-    ax.plot([0, 1], [0, 1], "k--", lw=1)
-    ax.set_xlabel("1 - Specificity")
-    ax.set_ylabel("Sensitivity")
-    ax.set_title("ROC Curve (out-of-fold)")
-    ax.legend(loc="lower right")
-    fig.savefig(out_path, dpi=150, bbox_inches="tight")
-    plt.close(fig)
+    try:
+        ax.plot(fpr, tpr, lw=2,
+                label=f"AUC = {auc:.3f} (95% CI {auc_ci[0]:.3f}\u2013{auc_ci[1]:.3f})")
+        ax.plot([0, 1], [0, 1], "k--", lw=1)
+        ax.set_xlabel("1 - Specificity")
+        ax.set_ylabel("Sensitivity")
+        ax.set_title("ROC Curve (out-of-fold)")
+        ax.legend(loc="lower right")
+        fig.savefig(out_path, dpi=150, bbox_inches="tight")
+    finally:
+        plt.close(fig)
     return out_path
 
 
@@ -51,14 +53,16 @@ def plot_calibration_curve(y_true, y_prob, out_path: str, n_bins: int = 10) -> s
     """Plot a calibration curve (binned observed vs predicted) with diagonal."""
     mean_pred, frac_pos = _calibration_points(y_true, y_prob, n_bins=n_bins)
     fig, ax = plt.subplots(figsize=(6, 5))
-    ax.plot([0, 1], [0, 1], "k--", lw=1, label="Perfectly calibrated")
-    ax.plot(mean_pred, frac_pos, "o-", lw=2, label="Model")
-    ax.set_xlabel("Mean predicted probability")
-    ax.set_ylabel("Observed fraction of positives")
-    ax.set_title("Calibration Curve (out-of-fold)")
-    ax.legend(loc="upper left")
-    fig.savefig(out_path, dpi=150, bbox_inches="tight")
-    plt.close(fig)
+    try:
+        ax.plot([0, 1], [0, 1], "k--", lw=1, label="Perfectly calibrated")
+        ax.plot(mean_pred, frac_pos, "o-", lw=2, label="Model")
+        ax.set_xlabel("Mean predicted probability")
+        ax.set_ylabel("Observed fraction of positives")
+        ax.set_title("Calibration Curve (out-of-fold)")
+        ax.legend(loc="upper left")
+        fig.savefig(out_path, dpi=150, bbox_inches="tight")
+    finally:
+        plt.close(fig)
     return out_path
 
 
@@ -88,14 +92,16 @@ def plot_dca(y_true, y_prob, out_path: str) -> str:
     thresholds = np.linspace(0.01, 0.99, 99)
     model_nb, treat_all_nb = _dca_arrays(y_true, y_prob, thresholds)
     fig, ax = plt.subplots(figsize=(6, 5))
-    ax.plot(thresholds, model_nb, lw=2, label="Model")
-    ax.plot(thresholds, treat_all_nb, color="gray", lw=1, label="Treat all")
-    ax.axhline(0.0, color="k", lw=1, label="Treat none")
-    ax.set_ylim(bottom=min(-0.05, min(model_nb) - 0.05))
-    ax.set_xlabel("Threshold probability")
-    ax.set_ylabel("Net benefit")
-    ax.set_title("Decision Curve Analysis (out-of-fold)")
-    ax.legend(loc="upper right")
-    fig.savefig(out_path, dpi=150, bbox_inches="tight")
-    plt.close(fig)
+    try:
+        ax.plot(thresholds, model_nb, lw=2, label="Model")
+        ax.plot(thresholds, treat_all_nb, color="gray", lw=1, label="Treat all")
+        ax.axhline(0.0, color="k", lw=1, label="Treat none")
+        ax.set_ylim(bottom=min(-0.05, min(model_nb) - 0.05))
+        ax.set_xlabel("Threshold probability")
+        ax.set_ylabel("Net benefit")
+        ax.set_title("Decision Curve Analysis (out-of-fold)")
+        ax.legend(loc="upper right")
+        fig.savefig(out_path, dpi=150, bbox_inches="tight")
+    finally:
+        plt.close(fig)
     return out_path

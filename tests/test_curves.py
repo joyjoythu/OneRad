@@ -59,3 +59,9 @@ def test_dca_net_benefit_math():
     prevalence = float(np.mean(y))
     assert abs(treat_all_nb[0] - (prevalence - (1 - prevalence) * 0.01 / 0.99)) < 1e-9
     assert len(model_nb) == 2
+
+    # 手工计算：pred=[0,1,1,1]，TP=2，FP=1，n=4，pt/(1-pt)=1 → 2/4 - 1/4×1 = 0.25
+    y2 = np.array([0.0, 0.0, 1.0, 1.0])
+    p2 = np.array([0.1, 0.6, 0.7, 0.9])
+    model_nb2, _ = _dca_arrays(y2, p2, np.array([0.5]))
+    assert abs(model_nb2[0] - 0.25) < 1e-9
