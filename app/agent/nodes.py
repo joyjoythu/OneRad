@@ -17,6 +17,7 @@ from app.agent import runtime as agent_runtime
 from app.actions import execute_plan
 from app.code_runner import execute_script_if_safe
 from app.feature import FeatureAgent
+from app.radiomics_analysis import run_radiomics_cv_analysis
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +118,7 @@ def process_tool_calls(state: AgentState, config: Optional[RunnableConfig] = Non
             "plan_file_operations",
             "discover_radiomics_pairs",
             "extract_radiomics_features",
+            "run_radiomics_analysis",
         } or (
             name == "execute_python_script"
             and isinstance(parsed, dict)
@@ -183,6 +185,29 @@ def process_tool_calls(state: AgentState, config: Optional[RunnableConfig] = Non
                     continue
                 interrupt_type = "radiomics_execution"
                 updates["pending_radiomics_execution"] = {"tool_call_id": tool_call_id, **parsed["meta"]}
+            elif name == "run_radiomics_analysis":
+                if not isinstance(parsed, dict):
+                    updates["messages"].append(ToolMessage(
+                        content=json.dumps({"error": f"Tool {name} returned invalid payload"}),
+                        tool_call_id=tool_call_id,
+                    ))
+                    continue
+                if "_pending_tool" not in parsed:
+                    # 识别阶段结果（need_clarification / error）直接回给 LLM，
+                    # 由 LLM 在对话中向用户澄清后重新调用。
+                    updates["messages"].append(ToolMessage(
+                        content=tool_result,
+                        tool_call_id=tool_call_id,
+                    ))
+                    continue
+                if not isinstance(parsed.get("meta"), dict):
+                    updates["messages"].append(ToolMessage(
+                        content=json.dumps({"error": f"Tool {name} returned invalid payload"}),
+                        tool_call_id=tool_call_id,
+                    ))
+                    continue
+                interrupt_type = "radiomics_analysis"
+                updates["pending_radiomics_analysis"] = {"tool_call_id": tool_call_id, **parsed["meta"]}
             # 需要确认的工具不在此处生成 ToolMessage，由 execute_confirmed 在用户确认/取消后统一补齐。
         else:
             updates["messages"].append(ToolMessage(content=tool_result, tool_call_id=tool_call_id))
@@ -205,6 +230,7 @@ def human_review(state: AgentState) -> dict:
         "script": state.get("pending_script"),
         "radiomics_plan": state.get("pending_radiomics_plan"),
         "radiomics_execution": state.get("pending_radiomics_execution"),
+        "radiomics_analysis": state.get("pending_radiomics_analysis"),
     })
     if not isinstance(value, dict):
         value = {"action": "cancel"}
@@ -222,6 +248,7 @@ def human_review(state: AgentState) -> dict:
         "pending_plan": pending_plan,
         "pending_radiomics_plan": pending_radiomics_plan,
         "pending_radiomics_execution": state.get("pending_radiomics_execution"),
+        "pending_radiomics_analysis": state.get("pending_radiomics_analysis"),
     }
 
 
@@ -233,6 +260,7 @@ def _resolve_tool_call_id(state: AgentState) -> str:
         state.get("pending_script"),
         state.get("pending_radiomics_plan"),
         state.get("pending_radiomics_execution"),
+        state.get("pending_radiomics_analysis"),
     ):
         if pending:
             return pending.get("tool_call_id", "") or ""
@@ -274,6 +302,7 @@ def execute_confirmed(state: AgentState, config: Optional[RunnableConfig] = None
     pending_script = state.get("pending_script")
     pending_radiomics_plan = state.get("pending_radiomics_plan")
     pending_radiomics_execution = state.get("pending_radiomics_execution")
+    pending_radiomics_analysis = state.get("pending_radiomics_analysis")
 
     if itype == "file_plan":
         tool_call_id = (pending_plan or {}).get("tool_call_id", "") or _resolve_tool_call_id(state)
@@ -330,6 +359,17 @@ def execute_confirmed(state: AgentState, config: Optional[RunnableConfig] = None
                     tool_call_id=tool_call_id,
                 )]
             })
+    elif itype == "radiomics_analysis":
+        tool_call_id = (pending_radiomics_analysis or {}).get("tool_call_id", "") or _resolve_tool_call_id(state)
+        if not pending_radiomics_analysis:
+            if not tool_call_id:
+                raise RuntimeError("Missing pending radiomics analysis and cannot resolve tool_call_id")
+            return _clear_interrupt({
+                "messages": [ToolMessage(
+                    content=json.dumps({"error": "Missing pending radiomics analysis"}),
+                    tool_call_id=tool_call_id,
+                )]
+            })
     else:
         tool_call_id = _resolve_tool_call_id(state)
         if not tool_call_id:
@@ -369,6 +409,14 @@ def execute_confirmed(state: AgentState, config: Optional[RunnableConfig] = None
         finally:
             # 节点结束后清除前端进度显示（后续 call_llm 阶段不再属于提取）。
             _publish_agent_progress(thread_id, None)
+    elif itype == "radiomics_analysis":
+        ctx = agent_runtime.get(thread_id)
+        cancel_event = ctx.cancel_event if ctx is not None else None
+        results = _run_radiomics_analysis(
+            state["pending_radiomics_analysis"],
+            state["project_path"],
+            cancel_event=cancel_event,
+        )
     else:
         results = {"error": "unknown interrupt type"}
 
@@ -495,6 +543,52 @@ _RADIOMICS_SUMMARY_KEYS = (
 _MAX_FEATURE_NAMES_IN_SUMMARY = 50
 
 
+def _run_radiomics_analysis(
+    pending: dict,
+    project_path: str,
+    cancel_event=None,
+) -> dict:
+    """执行已确认的影像组学分析任务。"""
+    sandbox = Sandbox(project_path)
+    try:
+        feature_csv = _resolve_within_project(sandbox, pending.get("feature_csv"))
+        clinical = _resolve_within_project(sandbox, pending.get("clinical"))
+        output_dir = _resolve_within_project(
+            sandbox,
+            pending.get("output_dir") or str(Path(project_path) / "radiomics_analysis"),
+        )
+        should_cancel = (lambda: cancel_event.is_set()) if cancel_event is not None else None
+        result = run_radiomics_cv_analysis(
+            feature_csv=feature_csv,
+            clinical=clinical,
+            output_dir=output_dir,
+            id_col=pending.get("id_col"),
+            label_col=pending.get("label_col"),
+            covariates=pending.get("covariates") or [],
+            should_cancel=should_cancel,
+        )
+        return _json_safe_analysis_result(result)
+    except PathEscapeError:
+        return {"success": False, "error": "路径超出项目目录"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+def _json_safe_analysis_result(result: dict) -> dict:
+    """分析结果转 JSON 安全摘要：指标/特征/产物路径，剔除 oof 大数组。"""
+    analysis = result.get("analysis_result") or {}
+    return {
+        "success": result.get("success", False),
+        "cancelled": result.get("cancelled", False),
+        "message": result.get("message", ""),
+        "n_samples": analysis.get("n_samples"),
+        "n_matched": result.get("n_matched"),
+        "selected_features": analysis.get("selected_features", []),
+        "metrics": analysis.get("metrics", {}),
+        "outputs": result.get("outputs", {}),
+    }
+
+
 def _json_safe_radiomics_result(result: dict) -> dict:
     """提取结果转为 JSON 安全摘要：剔除 DataFrame，特征名列表截断。"""
     summary = {k: result[k] for k in _RADIOMICS_SUMMARY_KEYS if k in result}
@@ -515,6 +609,7 @@ def _clear_interrupt(updates: dict) -> dict:
         "pending_script": None,
         "pending_radiomics_plan": None,
         "pending_radiomics_execution": None,
+        "pending_radiomics_analysis": None,
         "script_risk_level": None,
         "confirmed": None,
     })
