@@ -577,7 +577,7 @@ def _run_radiomics_analysis(
 def _json_safe_analysis_result(result: dict) -> dict:
     """分析结果转 JSON 安全摘要：指标/特征/产物路径，剔除 oof 大数组。"""
     analysis = result.get("analysis_result") or {}
-    return {
+    payload = {
         "success": result.get("success", False),
         "cancelled": result.get("cancelled", False),
         "message": result.get("message", ""),
@@ -587,6 +587,11 @@ def _json_safe_analysis_result(result: dict) -> dict:
         "metrics": analysis.get("metrics", {}),
         "outputs": result.get("outputs", {}),
     }
+    if not payload["success"] and not payload["message"]:
+        payload["message"] = result.get("error", "")
+    if not payload["success"]:
+        payload["error"] = payload["message"]
+    return payload
 
 
 def _json_safe_radiomics_result(result: dict) -> dict:

@@ -161,3 +161,26 @@ def test_execute_confirmed_radiomics_analysis_missing_pending(tmp_path):
     content = json.loads(result["messages"][0].content)
     assert "Missing pending radiomics analysis" in content["error"]
     assert result["interrupt_type"] is None
+
+
+def test_execute_confirmed_radiomics_analysis_cancelled(tmp_path):
+    state = AgentState(
+        messages=[],
+        project_path=str(tmp_path),
+        base_url="https://api.deepseek.com/v1",
+        model="deepseek-v4-pro",
+        api_key="",
+        interrupt_type="radiomics_analysis",
+        confirmed=False,
+        pending_radiomics_analysis={
+            "tool_call_id": "tc-a1",
+            "feature_csv": str(tmp_path / "features.csv"),
+            "clinical": str(tmp_path / "clinical.csv"),
+            "output_dir": str(tmp_path / "radiomics_analysis"),
+        },
+    )
+    result = execute_confirmed(state)
+    content = json.loads(result["messages"][0].content)
+    assert content["cancelled"] is True
+    assert result["interrupt_type"] is None
+    assert result["pending_radiomics_analysis"] is None
