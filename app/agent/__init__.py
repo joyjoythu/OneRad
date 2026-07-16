@@ -19,6 +19,7 @@ def build_initial_state(project: dict, api_key: str = "", llm_model: str = "deep
         "pending_plan": None,
         "pending_command": None,
         "pending_script": None,
+        "pending_radiomics_analysis": None,
         "script_risk_level": None,
         "confirmed": None,
         "tool_outputs": [],

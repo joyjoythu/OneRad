@@ -16,6 +16,7 @@ class AgentState(TypedDict):
     script_risk_level: Optional[str]
     pending_radiomics_plan: Optional[Dict[str, Any]] # {"tool_call_id": str, ...radiomics_plan}
     pending_radiomics_execution: Optional[Dict[str, Any]]  # {"tool_call_id": str, ...radiomics_execution}
+    pending_radiomics_analysis: Optional[Dict[str, Any]]    # {"tool_call_id": str, ...analysis meta}
 
     confirmed: Optional[bool]
     tool_outputs: Annotated[list, lambda x, y: (x or []) + y]
