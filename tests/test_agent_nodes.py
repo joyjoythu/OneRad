@@ -1,8 +1,10 @@
 import os
+from unittest.mock import patch, MagicMock
 
 import pytest
+from langchain_core.messages import AIMessage
 
-from app.agent.nodes import _build_llm, _resolve_api_key
+from app.agent.nodes import _build_llm, _resolve_api_key, call_llm
 from app.agent.state import AgentState
 
 
@@ -92,3 +94,40 @@ def test_build_llm_falls_back_to_state_model():
     state = _make_state()
     llm = _build_llm("key", state)
     assert llm.model_name == "deepseek-v4-pro"
+
+
+def test_call_llm_records_context_usage(tmp_path):
+    """call_llm 应从响应的 usage_metadata 提取 token 用量写入 state 更新。"""
+    state = _make_state()
+    state["project_path"] = str(tmp_path)
+    ai = AIMessage(
+        content="Hi",
+        usage_metadata={"input_tokens": 1234, "output_tokens": 56, "total_tokens": 1290},
+    )
+    with patch("app.agent.nodes.ChatOpenAI") as mock_llm_class:
+        mock_llm = MagicMock()
+        mock_llm.bind_tools.return_value = mock_llm
+        mock_llm.invoke.return_value = ai
+        mock_llm_class.return_value = mock_llm
+        result = call_llm(state)
+
+    assert result["messages"] == [ai]
+    assert result["context_usage"] == {
+        "input_tokens": 1234,
+        "output_tokens": 56,
+        "total_tokens": 1290,
+    }
+
+
+def test_call_llm_omits_context_usage_when_api_returns_none(tmp_path):
+    """API 未返回 usage_metadata 时不更新该字段（保留旧值）。"""
+    state = _make_state()
+    state["project_path"] = str(tmp_path)
+    with patch("app.agent.nodes.ChatOpenAI") as mock_llm_class:
+        mock_llm = MagicMock()
+        mock_llm.bind_tools.return_value = mock_llm
+        mock_llm.invoke.return_value = AIMessage(content="Hi")  # usage_metadata=None
+        mock_llm_class.return_value = mock_llm
+        result = call_llm(state)
+
+    assert "context_usage" not in result

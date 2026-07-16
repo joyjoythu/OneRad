@@ -3,7 +3,7 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Any, Dict, Literal, Optional
 
 from langchain_core.messages import ToolMessage
 from langchain_core.runnables import RunnableConfig
@@ -53,6 +53,18 @@ def _resolve_api_key(state: AgentState, config: Optional[RunnableConfig] = None)
     return os.getenv("OPENAI_API_KEY") or os.getenv("DEEPSEEK_API_KEY") or ""
 
 
+def _extract_context_usage(response: Any) -> Optional[Dict[str, int]]:
+    """从 AIMessage.usage_metadata 提取 token 用量；缺失时返回 None。"""
+    usage = getattr(response, "usage_metadata", None)
+    if not usage:
+        return None
+    return {
+        "input_tokens": usage.get("input_tokens", 0),
+        "output_tokens": usage.get("output_tokens", 0),
+        "total_tokens": usage.get("total_tokens", 0),
+    }
+
+
 def call_llm(state: AgentState, config: Optional[RunnableConfig] = None) -> dict:
     """调用 LLM，绑定工具后生成回复。"""
     api_key = _resolve_api_key(state, config)
@@ -60,7 +72,11 @@ def call_llm(state: AgentState, config: Optional[RunnableConfig] = None) -> dict
     tools = build_tools(state["project_path"], llm)
     model_with_tools = llm.bind_tools(list(tools.values()), parallel_tool_calls=False)
     response = model_with_tools.invoke(state["messages"])
-    return {"messages": [response]}
+    updates: dict = {"messages": [response]}
+    usage = _extract_context_usage(response)
+    if usage is not None:
+        updates["context_usage"] = usage
+    return updates
 
 
 def should_continue(state: AgentState) -> Literal["process_tool_calls", "__end__"]:
