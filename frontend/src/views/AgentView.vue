@@ -41,6 +41,9 @@
         <RadiomicsPanel
           v-else-if="!agentStore.busy && (agentStore.interrupt === 'radiomics_plan' || agentStore.interrupt === 'radiomics_execution') && (agentStore.pendingRadiomicsPlan || agentStore.pendingRadiomicsExecution)"
         />
+        <AnalysisPanel
+          v-else-if="!agentStore.busy && agentStore.interrupt === 'radiomics_analysis' && agentStore.pendingRadiomicsAnalysis"
+        />
 
         <el-collapse v-if="agentStore.operationLog.length > 0">
           <el-collapse-item title="操作日志">
@@ -70,6 +73,7 @@ import PlanPanel from '@/components/PlanPanel.vue'
 import CommandPanel from '@/components/CommandPanel.vue'
 import ScriptPanel from '@/components/ScriptPanel.vue'
 import RadiomicsPanel from '@/components/RadiomicsPanel.vue'
+import AnalysisPanel from '@/components/AnalysisPanel.vue'
 import { DEFAULT_AGENT_MODEL } from '@/api/agent'
 
 const agentStore = useAgentStore()
@@ -116,6 +120,8 @@ const interruptTag = computed(() => {
       return { label: '待确认配对计划', type: 'warning' as const }
     case 'radiomics_execution':
       return { label: '待确认特征提取', type: 'warning' as const }
+    case 'radiomics_analysis':
+      return { label: '待确认影像组学分析', type: 'warning' as const }
     default:
       return null
   }
