@@ -76,7 +76,7 @@ def test_inspect_multiple_binary_columns_asks_label(tmp_path):
     feat = tmp_path / "features.csv"
     clin = tmp_path / "clinical.csv"
     label = _write_feature_csv(feat, IDS)
-    _write_clinical_csv(clin, IDS, label, extra_binary=True)
+    _write_clinical_csv(clin, IDS, label, label_name="group", extra_binary=True)
     result = inspect_analysis_inputs(
         str(tmp_path), feature_csv=str(feat), clinical=str(clin))
     assert result["status"] == "need_clarification"
@@ -119,3 +119,15 @@ def test_inspect_explicit_label_and_covariates(tmp_path):
     assert result["status"] == "ready"
     assert result["resolved"]["label_col"] == "group"
     assert result["resolved"]["covariates"] == ["age"]
+
+
+def test_inspect_prefers_label_named_column(tmp_path):
+    """存在名为 Label 的 0/1 列时优先使用，即使有其他 0/1 列也不询问。"""
+    feat = tmp_path / "features.csv"
+    clin = tmp_path / "clinical.csv"
+    label = _write_feature_csv(feat, IDS)
+    _write_clinical_csv(clin, IDS, label, extra_binary=True)
+    result = inspect_analysis_inputs(
+        str(tmp_path), feature_csv=str(feat), clinical=str(clin))
+    assert result["status"] == "ready"
+    assert result["resolved"]["label_col"] == "Label"
