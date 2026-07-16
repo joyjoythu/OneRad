@@ -345,4 +345,64 @@ describe('AgentChat', () => {
     expect(wrapper.text()).toContain('正在思考')
     expect(wrapper.text()).not.toContain('等待确认')
   })
+
+  it('does not show collapse toggle for short tool output', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.threadId = 'thread-1'
+    agentStore.messages = [
+      { role: 'tool', content: 'short\noutput', tool_call_id: 'call-1' },
+    ]
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    expect(wrapper.find('.tool-toggle').exists()).toBe(false)
+    expect(wrapper.find('.message-content--tool').classes()).not.toContain(
+      'is-collapsed'
+    )
+  })
+
+  it('collapses long tool output and toggles expand/collapse', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.threadId = 'thread-1'
+    agentStore.messages = [
+      {
+        role: 'tool',
+        content: Array.from({ length: 15 }, (_, i) => `line ${i + 1}`).join(
+          '\n'
+        ),
+        tool_call_id: 'call-1',
+      },
+    ]
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    const content = wrapper.find('.message-content--tool')
+    expect(content.classes()).toContain('is-collapsed')
+
+    let toggle = wrapper.find('.tool-toggle button')
+    expect(toggle.exists()).toBe(true)
+    expect(toggle.text()).toBe('展开')
+
+    await toggle.trigger('click')
+    await flushPromises()
+
+    expect(content.classes()).not.toContain('is-collapsed')
+    toggle = wrapper.find('.tool-toggle button')
+    expect(toggle.text()).toBe('收起')
+
+    await toggle.trigger('click')
+    await flushPromises()
+
+    expect(content.classes()).toContain('is-collapsed')
+    toggle = wrapper.find('.tool-toggle button')
+    expect(toggle.text()).toBe('展开')
+  })
 })

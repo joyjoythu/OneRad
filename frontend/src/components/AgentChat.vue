@@ -42,7 +42,38 @@
                 调用工具：{{ toolCallNames(message) }}
               </el-tag>
             </div>
-            <div v-if="message.content" class="message-content">{{ message.content }}</div>
+            <div
+              v-if="message.content"
+              class="message-content"
+              :class="{
+                'message-content--tool': message.role === 'tool',
+                'is-collapsed':
+                  message.role === 'tool' &&
+                  isToolCollapsed(index, message.content),
+              }"
+            >
+              {{ message.content }}
+            </div>
+            <div
+              v-if="
+                message.role === 'tool' &&
+                shouldCollapseTool(message.content)
+              "
+              class="tool-toggle"
+            >
+              <el-button
+                link
+                size="small"
+                :aria-label="
+                  isToolCollapsed(index, message.content)
+                    ? '展开工具输出'
+                    : '收起工具输出'
+                "
+                @click="toggleTool(index, message.content)"
+              >
+                {{ isToolCollapsed(index, message.content) ? '展开' : '收起' }}
+              </el-button>
+            </div>
           </div>
         </div>
       </div>
@@ -120,6 +151,28 @@ const selectedModel = computed({
   get: () => props.model ?? DEFAULT_AGENT_MODEL,
   set: (value) => emit('update:model', value),
 })
+
+/** 工具输出超过该阈值（行数）后自动折叠。 */
+const TOOL_COLLAPSE_LINE_THRESHOLD = 10
+/** 记录用户手动展开/收起的工具输出索引。 */
+const expandedToolIndexes = ref<Record<number, boolean>>({})
+
+function shouldCollapseTool(content?: string): boolean {
+  if (!content) return false
+  return content.split('\n').length > TOOL_COLLAPSE_LINE_THRESHOLD
+}
+
+function isToolCollapsed(index: number, content?: string): boolean {
+  if (!content) return false
+  if (expandedToolIndexes.value[index]) return false
+  return shouldCollapseTool(content)
+}
+
+function toggleTool(index: number, content?: string): void {
+  if (!content) return
+  const currentlyExpanded = !isToolCollapsed(index, content)
+  expandedToolIndexes.value[index] = !currentlyExpanded
+}
 
 const canSend = computed(() => {
   return (
@@ -287,6 +340,22 @@ defineExpose({ clearInput })
   margin-bottom: 0.25rem;
 }
 
+.message-content {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.message-content--tool.is-collapsed {
+  max-height: calc(1.5 * 0.875rem * 10);
+  overflow: hidden;
+}
+
+.tool-toggle {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.25rem;
+}
+
 .chat-status {
   display: flex;
   align-items: center;
@@ -294,11 +363,6 @@ defineExpose({ clearInput })
   padding: 0.25rem 0.5rem;
   color: #909399;
   font-size: 0.875rem;
-}
-
-.message-content {
-  white-space: pre-wrap;
-  word-break: break-word;
 }
 
 .message-input-area {
