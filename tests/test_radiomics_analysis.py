@@ -280,3 +280,56 @@ def test_run_analysis_fails_without_id_col(tmp_path):
         label_col="Label")
     assert result["success"] is False
     assert "id_col" in result["message"]
+
+
+def test_run_analysis_fails_with_empty_id_col(tmp_path):
+    feat, clin = _make_run_inputs(tmp_path)
+    result = run_radiomics_cv_analysis(
+        feature_csv=feat, clinical=clin,
+        output_dir=str(tmp_path / "out"),
+        id_col="", label_col="Label")
+    assert result["success"] is False
+    assert "id_col" in result["message"]
+
+
+def test_run_analysis_fails_on_nan_label(tmp_path):
+    feat, clin = _make_run_inputs(tmp_path)
+    clin_df = pd.read_csv(clin)
+    clin_df.loc[0, "Label"] = float("nan")
+    clin_df.to_csv(clin, index=False)
+    result = run_radiomics_cv_analysis(
+        feature_csv=feat, clinical=clin,
+        output_dir=str(tmp_path / "out"),
+        id_col="patient_id", label_col="Label")
+    assert result["success"] is False
+    assert "缺失" in result["message"]
+
+
+def test_run_analysis_fails_on_single_class_label(tmp_path):
+    feat, clin = _make_run_inputs(tmp_path)
+    clin_df = pd.read_csv(clin)
+    clin_df["Label"] = 1
+    clin_df.to_csv(clin, index=False)
+    result = run_radiomics_cv_analysis(
+        feature_csv=feat, clinical=clin,
+        output_dir=str(tmp_path / "out"),
+        id_col="patient_id", label_col="Label")
+    assert result["success"] is False
+    assert "同时包含 0 和 1" in result["message"]
+
+
+def test_run_analysis_curve_failure_does_not_abort(tmp_path, monkeypatch):
+    feat, clin = _make_run_inputs(tmp_path)
+
+    def _raise(*args, **kwargs):
+        raise RuntimeError("plot intentionally failed")
+
+    monkeypatch.setattr("app.radiomics_analysis.plot_roc_curve", _raise)
+    result = run_radiomics_cv_analysis(
+        feature_csv=feat, clinical=clin,
+        output_dir=str(tmp_path / "out"),
+        id_col="patient_id", label_col="Label")
+    assert result["success"] is True
+    assert result["outputs"]["roc_curve"] is None
+    assert result["outputs"]["calibration_curve"]
+    assert result["outputs"]["report_docx"]

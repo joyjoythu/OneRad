@@ -18,7 +18,6 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-# NOTE: Callable/Tuple/np/_merge_feature_clinical 为 Task 4 编排函数预留，本任务暂不使用
 from app.curves import plot_calibration_curve, plot_dca, plot_roc_curve
 from app.utils import (
     _load_feature_csv,
@@ -346,7 +345,7 @@ def _render_markdown_report(analysis_result: Dict[str, Any],
         "|---|---|---|---|---|",
     ]
     mr = analysis_result["model_results"]
-    for feat in analysis_result["selected_features"]:
+    for feat in sorted(analysis_result["selected_features"]):
         ci_lo = mr["ci_lower"].get(feat)
         ci_hi = mr["ci_upper"].get(feat)
         ci = f"{ci_lo:.3f}\u2013{ci_hi:.3f}" if ci_lo is not None and ci_hi is not None else "-"
@@ -362,7 +361,7 @@ def _render_markdown_report(analysis_result: Dict[str, Any],
         if path:
             lines.append(f"![{caption}]({os.path.basename(path)})")
             lines.append("")
-    lines.append("注：预测概率为五折交叉验证的 out-of-fold 概率，"
+    lines.append(f"注：预测概率为 {n_splits} 折交叉验证的 out-of-fold 概率，"
                  "用于无偏评估模型性能。")
     report_path = os.path.join(output_dir, "report.md")
     with open(report_path, "w", encoding="utf-8") as f:
@@ -405,6 +404,9 @@ def run_radiomics_cv_analysis(
     if id_col is None:
         return {"success": False,
                 "message": "id_col 未指定（请先经 inspect_analysis_inputs 识别）"}
+    if not id_col:
+        return {"success": False,
+                "message": "id_col 未指定（请先经 inspect_analysis_inputs 识别）"}
     if id_col:
         if id_col not in clinical_df.columns:
             return {"success": False, "message": f"ID 列 '{id_col}' 不存在"}
@@ -424,6 +426,11 @@ def run_radiomics_cv_analysis(
         merged_df = _merge_feature_clinical(feature_df, clinical_df, id_col="patient_id")
     except ValueError as e:
         return {"success": False, "message": str(e)}
+
+    if merged_df[label_col].isna().any():
+        return {"success": False, "message": f"标签列 '{label_col}' 存在缺失值"}
+    if merged_df[label_col].nunique() < 2:
+        return {"success": False, "message": f"标签列 '{label_col}' 必须同时包含 0 和 1"}
 
     y = merged_df[label_col].astype(int)
     min_class = int(y.value_counts().min()) if y.nunique() > 1 else 0
