@@ -460,16 +460,50 @@ def _run_radiomics_execution(
             )
             resolved_pairs.append(resolved)
         agent = FeatureAgent(output_dir=output_dir)
-        return agent.run(
+        result = agent.run(
             resolved_pairs,
             yaml_path=yaml_path,
             progress_callback=progress_callback,
             cancel_event=cancel_event,
         )
+        return _json_safe_radiomics_result(result)
     except PathEscapeError:
         return {"success": False, "error": "路径超出项目目录"}
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+# ToolMessage 内容必须可 JSON 序列化。FeatureAgent.run 的返回中含有
+# feature_df（pandas DataFrame），直接 json.dumps 会让 execute_confirmed 节点
+# 在提取完成后崩溃，interrupt_type 无法清除，线程卡死在待确认状态。
+_RADIOMICS_SUMMARY_KEYS = (
+    "success",
+    "cancelled",
+    "message",
+    "feature_path",
+    "failed_path",
+    "h5_dir",
+    "n_samples",
+    "n_success",
+    "n_failed",
+    "failed_ids",
+    "failed_examples",
+    "zero_variance_features",
+    "settings_used",
+    "extraction_time_seconds",
+)
+_MAX_FEATURE_NAMES_IN_SUMMARY = 50
+
+
+def _json_safe_radiomics_result(result: dict) -> dict:
+    """提取结果转为 JSON 安全摘要：剔除 DataFrame，特征名列表截断。"""
+    summary = {k: result[k] for k in _RADIOMICS_SUMMARY_KEYS if k in result}
+    feature_names = result.get("feature_names") or []
+    summary["n_features"] = len(feature_names)
+    summary["feature_names"] = feature_names[:_MAX_FEATURE_NAMES_IN_SUMMARY]
+    if len(feature_names) > _MAX_FEATURE_NAMES_IN_SUMMARY:
+        summary["feature_names_truncated"] = True
+    return summary
 
 
 def _clear_interrupt(updates: dict) -> dict:

@@ -39,8 +39,25 @@
   - 配对计划：图像/掩膜发现数、高/中/低置信配对数、未匹配数、配对列表，按钮「确认 / 取消」。
 - `AgentView.vue` 渲染该面板并补充两种中断的状态标签。
 
+## 问题 3：提取完成后 Agent 无回复，线程卡死在「待确认」状态
+
+**现象:** 提取完成后 Agent 没有返回任何信息，用户也无法发送新消息——发送即被 409 拒绝：「当前存在待确认的操作，请先确认或取消后再发送新消息」。
+
+**根因:**
+
+`FeatureAgent.run` 的返回结果中含有 `feature_df`（pandas DataFrame），而 `execute_confirmed` 节点末尾要 `json.dumps(results)` 生成 ToolMessage——DataFrame 不可 JSON 序列化，节点在**提取完成后**抛 `TypeError` 崩溃。崩溃点位于清空中断状态之前、`call_llm` 总结之前，因此 LLM 从未生成回复，`interrupt_type` 永远停在 `radiomics_execution`，后续消息全被 `send_message` 的 409 检查拦截。提取本身成功（文件已写入），挂在收尾环节。
+
+回归测试 `test_execute_confirmed_radiomics_execution_result_is_json_serializable` 复现了 `TypeError: Object of type DataFrame is not JSON serializable`，与生产现象一致。
+
+**修复:**
+
+- `app/agent/nodes.py` 新增 `_json_safe_radiomics_result`：`_run_radiomics_execution` 返回前先转成 JSON 安全摘要——剔除 DataFrame，保留 success/message/输出路径/成功失败数/失败样例/耗时等字段，特征名截断为前 50 个并附 `n_features` 总数。
+- 其余确认分支（`execute_plan`、`_run_system_command`、`execute_script_if_safe`）已核查，返回均为 JSON 安全，无同类问题。
+
+**卡死会话恢复:** pending 状态在 checkpoint 中——重启后端、刷新加载线程，确认面板仍会出现；因特征已提取完，点「取消」后告知 Agent 结果文件位置即可继续。
+
 ## 验证
 
-- 后端：`pytest tests/` 380 passed, 1 skipped（新增 `test_agent_runtime.py`，FeatureAgent 进度/取消 3 例，节点上下文透传，stop 协作式取消，`_sync_payload` radiomics 字段）。
+- 后端：`pytest tests/` 381 passed, 1 skipped（新增 `test_agent_runtime.py`，FeatureAgent 进度/取消 3 例，节点上下文透传，stop 协作式取消，`_sync_payload` radiomics 字段，提取结果 JSON 序列化回归）。
 - 前端：`vue-tsc` 通过；`vitest run` 74 passed（新增 RadiomicsPanel 组件测试 2 例、store 进度/pending 跟踪 3 例）。
 - 已知既有问题：`tests/test_api_agent.py::test_stop_cancels_stream_and_repairs_history` 在全量套件下偶发 2 秒轮询超时（时序敏感，与本次改动无关）。

@@ -247,6 +247,60 @@ def test_execute_confirmed_radiomics_execution(tmp_path):
     mock_agent.run.assert_called_once()
 
 
+def test_execute_confirmed_radiomics_execution_result_is_json_serializable(tmp_path):
+    """FeatureAgent 返回的 feature_df 是 DataFrame，直接 json.dumps 会让节点崩溃，
+    interrupt_type 永远清不掉，线程卡死在「待确认」状态。节点必须返回 JSON 安全摘要。"""
+    import pandas as pd
+
+    yaml_path = tmp_path / "Params_labels.yaml"
+    yaml_path.write_text("setting:\n  label: 1\n")
+
+    img = tmp_path / "images" / "case_001_T1.nii.gz"
+    mask = tmp_path / "masks" / "case_001_T1.nii.gz"
+    img.parent.mkdir(parents=True)
+    mask.parent.mkdir(parents=True)
+    img.write_text("img")
+    mask.write_text("mask")
+
+    state = AgentState(
+        messages=[],
+        project_path=str(tmp_path),
+        base_url="https://api.deepseek.com/v1",
+        model="deepseek-v4-pro",
+        api_key="",
+        interrupt_type="radiomics_execution",
+        confirmed=True,
+        pending_radiomics_execution={
+            "tool_call_id": "tc2",
+            "pairs": [{"patient_id": "case_001", "image_path": str(img), "mask_path": str(mask)}],
+            "yaml_path": str(yaml_path),
+            "output_dir": str(tmp_path / "radiomics_features"),
+        },
+    )
+
+    with patch("app.agent.nodes.FeatureAgent") as mock_agent_cls:
+        mock_agent = MagicMock()
+        mock_agent.run.return_value = {
+            "success": True,
+            "message": "特征提取完成: 1/1 成功, 0 失败",
+            "feature_df": pd.DataFrame({"patient_id": ["case_001"], "f1": [1.0]}),
+            "feature_names": ["f1"],
+            "n_samples": 1,
+            "n_success": 1,
+            "n_failed": 0,
+            "feature_path": "radiomics_features/radiomics_features.csv",
+        }
+        mock_agent_cls.return_value = mock_agent
+        result = execute_confirmed(state)
+
+    assert result["interrupt_type"] is None
+    content = json.loads(result["messages"][0].content)  # 不应抛 TypeError
+    assert content["success"] is True
+    assert "feature_df" not in content
+    assert content["n_features"] == 1
+    assert content["feature_names"] == ["f1"]
+
+
 def test_execute_confirmed_radiomics_execution_uses_runtime_context(tmp_path):
     """确认提取后，节点应把运行时上下文的取消事件与进度回调传入 FeatureAgent。"""
     from app.agent import runtime
