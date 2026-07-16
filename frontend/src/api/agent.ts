@@ -3,10 +3,16 @@ import { API_BASE } from './client'
 
 export const DEFAULT_AGENT_MODEL = 'deepseek-v4-flash'
 
+export interface ToolCall {
+  id?: string
+  name?: string
+  args?: Record<string, unknown>
+}
+
 export interface AgentMessage {
   role: string
   content: string
-  tool_calls?: unknown[]
+  tool_calls?: ToolCall[]
   tool_call_id?: string
 }
 
@@ -43,6 +49,7 @@ export interface AgentState {
   pending_plan: PendingPlan | null
   pending_command: PendingCommand | null
   pending_script: PendingScript | null
+  error?: string
 }
 
 export interface CreateThreadRequest {

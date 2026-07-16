@@ -1,6 +1,7 @@
 import json
 import time
 import uuid
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -179,6 +180,9 @@ def test_send_message_publishes_events(client, app):
         }
 
     mock_graph = AsyncMock()
+    mock_graph.aget_state = AsyncMock(
+        return_value=SimpleNamespace(values={"interrupt_type": None})
+    )
     mock_graph.astream = fake_astream
     app.dependency_overrides[get_agent_graph] = lambda: mock_graph
 
@@ -212,3 +216,51 @@ async def test_sse_bridge_receives_agent_events(app, client):
 
     item = await asyncio.wait_for(queue.get(), timeout=2.0)
     assert item["data"] == {"hello": "world"}
+
+
+def test_send_message_conflict_while_streaming(client, app):
+    """流式运行进行中发送新消息应返回 409，避免并发运行破坏消息历史。"""
+    project = _create_project(client)
+    thread_id = _create_thread(client, project['id'])["thread_id"]
+
+    app.state.active_agent_streams.add(thread_id)
+    try:
+        response = client.post(
+            f"/api/agent/threads/{thread_id}/messages",
+            json={"role": "user", "content": "second message"},
+        )
+        assert response.status_code == 409, response.text
+    finally:
+        app.state.active_agent_streams.discard(thread_id)
+
+
+def test_send_message_conflict_when_interrupt_pending(client, app):
+    """线程停在待确认中断时发送新消息应返回 409，提示先确认或取消。"""
+    project = _create_project(client)
+    thread_id = _create_thread(client, project['id'])["thread_id"]
+
+    mock_graph = AsyncMock()
+    mock_graph.aget_state = AsyncMock(
+        return_value=SimpleNamespace(values={"interrupt_type": "file_plan"})
+    )
+    app.dependency_overrides[get_agent_graph] = lambda: mock_graph
+
+    response = client.post(
+        f"/api/agent/threads/{thread_id}/messages",
+        json={"role": "user", "content": "hello during interrupt"},
+    )
+    assert response.status_code == 409, response.text
+    mock_graph.astream.assert_not_called()
+
+
+def test_confirm_conflict_while_streaming(client, app):
+    """流式运行进行中发起确认应返回 409，防止同一线程上的并发运行。"""
+    project = _create_project(client)
+    thread_id = _create_thread(client, project['id'])["thread_id"]
+
+    app.state.active_agent_streams.add(thread_id)
+    try:
+        response = client.post(f"/api/agent/threads/{thread_id}/confirm")
+        assert response.status_code == 409, response.text
+    finally:
+        app.state.active_agent_streams.discard(thread_id)

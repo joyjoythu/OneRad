@@ -193,4 +193,96 @@ describe('AgentChat', () => {
     expect(wrapper.emitted('update:model')).toHaveLength(1)
     expect(wrapper.emitted('update:model')![0]).toEqual(['deepseek-v4-pro'])
   })
+
+  it('disables input and send button while the agent is busy', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.threadId = 'thread-1'
+    agentStore.busy = true
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    expect(wrapper.find('textarea').attributes('disabled')).toBeDefined()
+    const sendButton = wrapper
+      .findAll('button')
+      .find((b) => b.text().includes('发送'))
+    expect(sendButton!.attributes('disabled')).toBeDefined()
+  })
+
+  it('shows a thinking indicator while the agent is busy', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.threadId = 'thread-1'
+    agentStore.messages = [{ role: 'user', content: 'hi' }]
+    agentStore.busy = true
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    expect(wrapper.find('.chat-status').exists()).toBe(true)
+    expect(wrapper.text()).toContain('正在思考')
+  })
+
+  it('shows the tool name while the agent is calling a tool', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.threadId = 'thread-1'
+    agentStore.messages = [
+      { role: 'user', content: 'hi' },
+      {
+        role: 'assistant',
+        content: '',
+        tool_calls: [{ id: 'call-1', name: 'list_directory', args: {} }],
+      },
+    ]
+    agentStore.busy = true
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('正在调用工具：list_directory')
+  })
+
+  it('renders assistant tool calls as a tag instead of an empty bubble', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.threadId = 'thread-1'
+    agentStore.messages = [
+      {
+        role: 'assistant',
+        content: '',
+        tool_calls: [{ id: 'call-1', name: 'list_directory', args: {} }],
+      },
+    ]
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('调用工具：list_directory')
+  })
+
+  it('disables input and shows a hint while an interrupt is pending', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.threadId = 'thread-1'
+    agentStore.interrupt = 'file_plan'
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    expect(wrapper.find('textarea').attributes('disabled')).toBeDefined()
+    expect(wrapper.find('.chat-status').exists()).toBe(true)
+    expect(wrapper.text()).toContain('等待确认')
+  })
 })

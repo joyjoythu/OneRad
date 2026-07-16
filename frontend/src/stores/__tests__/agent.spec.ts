@@ -78,6 +78,56 @@ describe('useAgentStore', () => {
     )
   })
 
+  it('sendMessage marks the store busy until the stream ends', async () => {
+    const store = useAgentStore()
+    await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')
+    await store.sendMessage('Hello')
+
+    expect(store.busy).toBe(true)
+
+    const es = MockEventSource.instances[0]
+    es.emit('agent_end', {})
+    expect(store.busy).toBe(false)
+  })
+
+  it('sendMessage rolls back the optimistic message and clears busy on API failure', async () => {
+    const store = useAgentStore()
+    await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')
+    vi.mocked(client.post).mockRejectedValueOnce({
+      response: { data: { detail: '智能体正在处理中' } },
+    })
+
+    await expect(store.sendMessage('Second')).rejects.toBeTruthy()
+    expect(store.messages).not.toContainEqual({ role: 'user', content: 'Second' })
+    expect(store.busy).toBe(false)
+  })
+
+  it('keeps existing messages when an error payload arrives over SSE', async () => {
+    const store = useAgentStore()
+    await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')
+    const es = MockEventSource.instances[0]
+    es.emit('agent', mockState({ messages: [{ role: 'user', content: 'Hello' }] }))
+    expect(store.messages).toHaveLength(1)
+
+    es.emit('agent', { ...mockState(), messages: [], error: 'stream error: boom' })
+
+    expect(store.messages).toEqual([{ role: 'user', content: 'Hello' }])
+    expect(store.busy).toBe(false)
+  })
+
+  it('clears busy when an interrupt snapshot arrives', async () => {
+    const store = useAgentStore()
+    await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')
+    await store.sendMessage('Hello')
+    expect(store.busy).toBe(true)
+
+    const es = MockEventSource.instances[0]
+    es.emit('agent', mockState({ interrupt_type: 'file_plan' }))
+
+    expect(store.interrupt).toBe('file_plan')
+    expect(store.busy).toBe(false)
+  })
+
   it('applies state from SSE events', async () => {
     const store = useAgentStore()
     await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')

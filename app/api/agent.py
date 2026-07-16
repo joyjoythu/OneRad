@@ -165,8 +165,10 @@ async def _stream_agent(
     app,
     input_value: Any = None,
 ) -> None:
-    """Run the graph with the supplied input and publish each value chunk."""
-    app.state.active_agent_streams.add(thread_id)
+    """Run the graph with the supplied input and publish each value chunk.
+
+    调用方（_start_stream）负责在启动前标记线程忙碌，此处只在结束时清理。
+    """
     task = asyncio.current_task()
     app.state.pipeline_tasks.add(task)
     try:
@@ -200,11 +202,26 @@ async def _start_stream(
     app,
     input_value: Any = None,
 ) -> None:
-    """Launch a background task that streams graph values for a thread."""
-    config = await _agent_config(thread_id, app)
-    asyncio.create_task(
-        _stream_agent(thread_id, graph, config, bridge, app, input_value)
-    )
+    """Launch a background task that streams graph values for a thread.
+
+    原子地检查并标记线程忙碌（检查与标记之间无 await）。同一线程上已有
+    运行中的流时抛出 409，避免并发运行交错写入检查点，导致 assistant 的
+    tool_calls 后缺少对应 ToolMessage 而触发 LLM 400 错误。
+    """
+    if thread_id in app.state.active_agent_streams:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="智能体正在处理中，请等待当前任务完成后再试",
+        )
+    app.state.active_agent_streams.add(thread_id)
+    try:
+        config = await _agent_config(thread_id, app)
+        asyncio.create_task(
+            _stream_agent(thread_id, graph, config, bridge, app, input_value)
+        )
+    except Exception:
+        app.state.active_agent_streams.discard(thread_id)
+        raise
 
 
 @router.get("", status_code=status.HTTP_501_NOT_IMPLEMENTED)
@@ -350,10 +367,25 @@ async def send_message(
     """Append a user message to a thread and start streaming the agent response."""
     config = await _agent_config(thread_id, request.app)
     try:
-        await graph.aget_state(config)
+        snapshot = await graph.aget_state(config)
     except KeyError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="thread not found"
+        )
+
+    # 快速失败：避免在明显不可发送时仍更新会话标题/时间戳。
+    # 并发的兜底校验在 _start_stream 中（检查与标记之间无 await）。
+    if thread_id in request.app.state.active_agent_streams:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="智能体正在处理上一条消息，请等待其完成后再发送",
+        )
+    if snapshot.values.get("interrupt_type"):
+        # 中断等待确认时，消息历史末尾是尚无 ToolMessage 的 tool_calls，
+        # 直接追加新消息会让 LLM 返回 400。
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="当前存在待确认的操作，请先确认或取消后再发送新消息",
         )
 
     message = _make_message(payload.role, payload.content)

@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
+import { ElMessage } from 'element-plus'
 import * as api from '@/api/agent'
 import type {
   AgentState,
@@ -21,15 +22,27 @@ export const useAgentStore = defineStore('agent', () => {
 
   const threads = ref<ThreadSummary[]>([])
   const currentThread = ref<ThreadSummary | null>(null)
+  // 智能体是否正在处理中（流式运行期间为 true），用于禁用输入并展示状态。
+  const busy = ref(false)
 
   let es: EventSource | null = null
 
   function applyState(state: Partial<AgentState>): void {
-    if (state.messages) {
+    if (state.error) {
+      // 流式运行出错：保留现有消息，仅提示错误并解除忙碌。
+      busy.value = false
+      ElMessage.error(state.error)
+    }
+    // 错误载荷中的 messages 为空数组，不能直接覆盖现有消息。
+    if (state.messages && (state.messages.length > 0 || !state.error)) {
       messages.value = state.messages
     }
     if (state.interrupt_type !== undefined) {
       interrupt.value = state.interrupt_type
+      if (state.interrupt_type) {
+        // 图在人工确认处暂停，本轮运行已结束。
+        busy.value = false
+      }
     }
     if (state.operation_log) {
       operationLog.value = state.operation_log
@@ -55,6 +68,7 @@ export const useAgentStore = defineStore('agent', () => {
     pendingCommand.value = null
     pendingScript.value = null
     currentThread.value = null
+    busy.value = false
   }
 
   async function ensureThread(
@@ -187,7 +201,8 @@ export const useAgentStore = defineStore('agent', () => {
     es = api.connectAgentEvents(threadId.value, {
       onState: (state) => applyState(state),
       onEnd: () => {
-        // Stream ended naturally.
+        // 本轮流式运行结束（正常完成或在中断处暂停）。
+        busy.value = false
       },
       onError: () => {
         disconnect()
@@ -199,8 +214,16 @@ export const useAgentStore = defineStore('agent', () => {
     if (!threadId.value) {
       throw new Error('No active agent thread')
     }
+    busy.value = true
     messages.value.push({ role, content })
-    await api.sendMessage(threadId.value, role, content)
+    try {
+      await api.sendMessage(threadId.value, role, content)
+    } catch (err) {
+      // 后端拒绝（如 409 忙碌/待确认）：回滚乐观追加的消息。
+      messages.value.pop()
+      busy.value = false
+      throw err
+    }
     connect()
   }
 
@@ -216,7 +239,13 @@ export const useAgentStore = defineStore('agent', () => {
     if (!threadId.value) {
       throw new Error('No active agent thread')
     }
-    await api.confirm(threadId.value)
+    busy.value = true
+    try {
+      await api.confirm(threadId.value)
+    } catch (err) {
+      busy.value = false
+      throw err
+    }
     connect()
   }
 
@@ -224,7 +253,13 @@ export const useAgentStore = defineStore('agent', () => {
     if (!threadId.value) {
       throw new Error('No active agent thread')
     }
-    await api.cancel(threadId.value)
+    busy.value = true
+    try {
+      await api.cancel(threadId.value)
+    } catch (err) {
+      busy.value = false
+      throw err
+    }
     connect()
   }
 
@@ -255,6 +290,7 @@ export const useAgentStore = defineStore('agent', () => {
     pendingScript,
     threads,
     currentThread,
+    busy,
     ensureThread,
     reconnect,
     sendMessage,

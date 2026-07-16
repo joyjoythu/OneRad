@@ -34,9 +34,22 @@
                 工具调用
               </el-tag>
             </div>
-            <div class="message-content">{{ message.content }}</div>
+            <div
+              v-else-if="toolCallNames(message)"
+              class="message-tool-call"
+            >
+              <el-tag size="small" type="warning" effect="plain">
+                调用工具：{{ toolCallNames(message) }}
+              </el-tag>
+            </div>
+            <div v-if="message.content" class="message-content">{{ message.content }}</div>
           </div>
         </div>
+      </div>
+
+      <div v-if="statusText" class="chat-status" role="status">
+        <el-icon class="is-loading"><Loading /></el-icon>
+        <span>{{ statusText }}</span>
       </div>
 
       <div class="message-input-area">
@@ -45,9 +58,9 @@
           type="textarea"
           :rows="3"
           resize="none"
-          placeholder="请输入消息，Enter 发送，Shift+Enter 换行"
+          :placeholder="inputPlaceholder"
           aria-label="消息输入"
-          :disabled="!projectStore.currentProject"
+          :disabled="inputDisabled"
           @keydown="handleKeydown"
         />
         <el-select
@@ -73,10 +86,11 @@
 
 <script setup lang="ts">
 import { ref, computed, watchEffect, nextTick } from 'vue'
-import { Promotion } from '@element-plus/icons-vue'
+import { Loading, Promotion } from '@element-plus/icons-vue'
 import { useAgentStore } from '@/stores/agent'
 import { useProjectStore } from '@/stores/project'
 import { DEFAULT_AGENT_MODEL } from '@/api/agent'
+import type { AgentMessage } from '@/api/agent'
 
 const agentStore = useAgentStore()
 const projectStore = useProjectStore()
@@ -98,8 +112,43 @@ const selectedModel = computed({
 })
 
 const canSend = computed(() => {
-  return projectStore.currentProject !== null && input.value.trim().length > 0
+  return (
+    projectStore.currentProject !== null &&
+    !agentStore.busy &&
+    !agentStore.interrupt &&
+    input.value.trim().length > 0
+  )
 })
+
+const inputDisabled = computed(() => {
+  return !projectStore.currentProject || agentStore.busy || !!agentStore.interrupt
+})
+
+const inputPlaceholder = computed(() => {
+  if (agentStore.interrupt) return '请先确认或取消当前待处理的操作'
+  if (agentStore.busy) return '智能体正在处理中，请稍候…'
+  return '请输入消息，Enter 发送，Shift+Enter 换行'
+})
+
+// 根据运行状态推导用户可见的状态文案。
+const statusText = computed(() => {
+  if (agentStore.interrupt) return '等待确认操作…'
+  if (!agentStore.busy) return ''
+  const last = agentStore.messages[agentStore.messages.length - 1]
+  if (last?.role === 'assistant' && last.tool_calls?.length) {
+    const name = last.tool_calls[0]?.name
+    return name ? `正在调用工具：${name}…` : '正在调用工具…'
+  }
+  return '正在思考…'
+})
+
+function toolCallNames(message: AgentMessage): string {
+  if (!message.tool_calls?.length) return ''
+  return message.tool_calls
+    .map((tc) => tc.name)
+    .filter(Boolean)
+    .join(', ')
+}
 
 watchEffect(async () => {
   if (agentStore.messages.length) {
@@ -123,6 +172,7 @@ function handleKeydown(event: KeyboardEvent): void {
 }
 
 async function handleSend(): Promise<void> {
+  if (!canSend.value) return
   const content = input.value.trim()
   if (!content) return
 
@@ -208,6 +258,15 @@ defineExpose({ clearInput })
 
 .message-tool-call {
   margin-bottom: 0.25rem;
+}
+
+.chat-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  color: #909399;
+  font-size: 0.875rem;
 }
 
 .message-content {
