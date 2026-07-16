@@ -1,4 +1,6 @@
 import json
+import numpy as np
+import pandas as pd
 import pytest
 from unittest.mock import MagicMock
 from langchain_core.messages import AIMessage
@@ -179,3 +181,61 @@ def test_extract_radiomics_features_returns_error_for_missing_pair_keys(tmp_path
     data = json.loads(result)
     assert data["success"] is False
     assert expected_key in data["error"]
+
+
+def _make_analysis_project(tmp_path, n=60):
+    """在项目目录内生成特征 CSV 与临床 CSV。"""
+    ids = [f"P{i:03d}" for i in range(n)]
+    rng = np.random.RandomState(42)
+    label = np.array([i % 2 for i in range(n)])
+    feat = pd.DataFrame({"patient_id": ids})
+    for j in range(6):
+        feat[f"original_sig_{j}"] = rng.randn(n) + label * 1.5
+    feat.to_csv(tmp_path / "features.csv", index=False)
+    pd.DataFrame({"patient_id": ids, "Label": label}).to_csv(
+        tmp_path / "clinical.csv", index=False)
+
+
+def test_run_radiomics_analysis_tool_registered(tmp_path):
+    tools = build_tools(str(tmp_path), MagicMock())
+    assert "run_radiomics_analysis" in tools
+
+
+def test_run_radiomics_analysis_returns_pending_when_ready(tmp_path):
+    _make_analysis_project(tmp_path)
+    tools = build_tools(str(tmp_path), MagicMock())
+    result = tools["run_radiomics_analysis"].invoke(
+        {"feature_csv": "features.csv", "clinical": "clinical.csv"})
+    data = json.loads(result)
+    assert data["_pending_tool"] == "run_radiomics_analysis"
+    meta = data["meta"]
+    assert meta["id_col"] == "patient_id"
+    assert meta["label_col"] == "Label"
+    assert meta["n_matched"] == 60
+    assert meta["output_dir"] == str(tmp_path / "radiomics_analysis")
+
+
+def test_run_radiomics_analysis_returns_clarification_without_pending(tmp_path):
+    _make_analysis_project(tmp_path)
+    # 增加一个二值列使标签列产生歧义
+    clin = pd.read_csv(tmp_path / "clinical.csv")
+    rng = np.random.RandomState(7)
+    clin["group2"] = rng.randint(0, 2, len(clin))
+    clin.to_csv(tmp_path / "clinical.csv", index=False)
+    tools = build_tools(str(tmp_path), MagicMock())
+    result = tools["run_radiomics_analysis"].invoke(
+        {"feature_csv": "features.csv", "clinical": "clinical.csv"})
+    data = json.loads(result)
+    assert "_pending_tool" not in data
+    assert data["status"] == "need_clarification"
+    fields = [q["field"] for q in data["questions"]]
+    assert "label_col" in fields
+
+
+def test_run_radiomics_analysis_path_escape_returns_error(tmp_path):
+    tools = build_tools(str(tmp_path), MagicMock())
+    result = tools["run_radiomics_analysis"].invoke(
+        {"feature_csv": "../outside.csv"})
+    data = json.loads(result)
+    assert data["status"] == "error"
+    assert "路径超出项目目录" in data["message"]

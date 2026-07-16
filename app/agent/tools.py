@@ -113,6 +113,45 @@ def build_tools(project_path: str, llm):
             },
         })
 
+    @tool
+    def run_radiomics_analysis(feature_csv: str = "", clinical: str = "",
+                               id_col: str = "", label_col: str = "",
+                               covariates: str = "", output_dir: str = "") -> str:
+        """对已提取的影像组学特征和临床表做 LASSO + 逻辑回归五折交叉验证分析，
+        生成 ROC/校准/DCA 曲线、预测概率表和 Word/Markdown 报告。
+        执行前需要用户确认；若输入文件或列名识别有歧义，
+        会先返回需要向用户澄清的问题（status=need_clarification），
+        此时请向用户提问并用用户回答重新调用本工具。
+        参数均可留空：feature_csv 缺省用 radiomics_features/radiomics_features.csv，
+        clinical 缺省时自动在项目内搜索，id_col/label_col 缺省时自动识别，
+        covariates 为逗号分隔的临床协变量列名。"""
+        from app.radiomics_analysis import inspect_analysis_inputs
+        try:
+            if feature_csv:
+                feature_csv = str(sandbox.resolve(feature_csv, must_exist=False))
+            if clinical:
+                clinical = str(sandbox.resolve(clinical, must_exist=False))
+            if output_dir:
+                output_dir = str(sandbox.resolve(output_dir, must_exist=False))
+        except ValueError as e:
+            return json.dumps({"status": "error", "message": f"路径超出项目目录: {e}"})
+        cov_list = [c.strip() for c in covariates.split(",") if c.strip()]
+        report = inspect_analysis_inputs(
+            project_path,
+            feature_csv=feature_csv,
+            clinical=clinical,
+            id_col=id_col,
+            label_col=label_col,
+            covariates=cov_list,
+            output_dir=output_dir,
+        )
+        if report.get("status") != "ready":
+            return json.dumps(report, ensure_ascii=False)
+        return json.dumps(
+            {"_pending_tool": "run_radiomics_analysis", "meta": report["resolved"]},
+            ensure_ascii=False,
+        )
+
     tools["list_directory"] = list_directory
     tools["find_files"] = find_files
     tools["get_file_info"] = get_file_info
@@ -120,6 +159,7 @@ def build_tools(project_path: str, llm):
     tools["execute_python_script"] = execute_python_script
     tools["discover_radiomics_pairs"] = discover_radiomics_pairs
     tools["extract_radiomics_features"] = extract_radiomics_features
+    tools["run_radiomics_analysis"] = run_radiomics_analysis
     return tools
 
 

@@ -259,10 +259,7 @@ def inspect_analysis_inputs(
                     "detected": detected}
     else:
         binary_cols = _binary_columns(clinical_df, exclude=id_col or None)
-        named = [c for c in binary_cols if c.lower() == "label"]
-        if named:
-            label_col = named[0]
-        elif len(binary_cols) == 1:
+        if len(binary_cols) == 1:
             label_col = binary_cols[0]
         elif len(binary_cols) > 1:
             questions.append({
