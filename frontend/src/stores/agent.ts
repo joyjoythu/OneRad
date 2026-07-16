@@ -263,6 +263,19 @@ export const useAgentStore = defineStore('agent', () => {
     connect()
   }
 
+  async function stop(): Promise<void> {
+    if (!threadId.value) {
+      throw new Error('No active agent thread')
+    }
+    try {
+      await api.stopAgent(threadId.value)
+    } finally {
+      // 无论成功与否都复位忙碌；失败原因由 axios 拦截器 toast，
+      // 若后端仍在运行，后续发送会被 409 兜底，状态自愈。
+      busy.value = false
+    }
+  }
+
   function disconnect(): void {
     if (es) {
       es.close()
@@ -297,6 +310,7 @@ export const useAgentStore = defineStore('agent', () => {
     updatePlan,
     confirm,
     cancel,
+    stop,
     disconnect,
     resetThread,
     listThreads,

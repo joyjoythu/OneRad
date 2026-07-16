@@ -128,6 +128,29 @@ describe('useAgentStore', () => {
     expect(store.busy).toBe(false)
   })
 
+  it('stop calls the stop API and clears busy', async () => {
+    const store = useAgentStore()
+    await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')
+    await store.sendMessage('Hello')
+    expect(store.busy).toBe(true)
+
+    await store.stop()
+
+    expect(client.post).toHaveBeenCalledWith('/agent/threads/thread-1/stop')
+    expect(store.busy).toBe(false)
+  })
+
+  it('stop clears busy even when the API fails', async () => {
+    const store = useAgentStore()
+    await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')
+    await store.sendMessage('Hello')
+    expect(store.busy).toBe(true)
+    vi.mocked(client.post).mockRejectedValueOnce(new Error('network error'))
+
+    await expect(store.stop()).rejects.toThrow('network error')
+    expect(store.busy).toBe(false)
+  })
+
   it('applies state from SSE events', async () => {
     const store = useAgentStore()
     await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')

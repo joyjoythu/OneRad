@@ -142,6 +142,15 @@ export const cancel = async (threadId: string): Promise<{ thread_id: string }> =
   return res.data
 }
 
+export const stopAgent = async (
+  threadId: string
+): Promise<{ thread_id: string; status: string }> => {
+  const res = await client.post(
+    `/agent/threads/${encodeURIComponent(threadId)}/stop`
+  )
+  return res.data
+}
+
 export const listThreads = async (
   projectId: string
 ): Promise<{ threads: ThreadSummary[] }> => {
