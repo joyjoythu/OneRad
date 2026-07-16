@@ -214,6 +214,7 @@ async def _stream_agent(
     finally:
         app.state.active_agent_streams.discard(thread_id)
         app.state.pipeline_tasks.discard(task)
+        app.state.agent_stream_tasks.pop(thread_id, None)
 
 
 async def _start_stream(
@@ -237,9 +238,10 @@ async def _start_stream(
     app.state.active_agent_streams.add(thread_id)
     try:
         config = await _agent_config(thread_id, app)
-        asyncio.create_task(
+        task = asyncio.create_task(
             _stream_agent(thread_id, graph, config, bridge, app, input_value)
         )
+        app.state.agent_stream_tasks[thread_id] = task
     except Exception:
         app.state.active_agent_streams.discard(thread_id)
         raise

@@ -29,6 +29,7 @@ async def lifespan(app: FastAPI):
     app.state.pipeline_tasks = set()
     app.state.pipeline_task_map = {}
     app.state.active_agent_streams = set()
+    app.state.agent_stream_tasks = {}
     app.state.agent_api_keys = {}
     app.state.agent_llm_models = {}
     async with AsyncSqliteSaver.from_conn_string(

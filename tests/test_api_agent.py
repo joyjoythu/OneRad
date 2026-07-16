@@ -298,3 +298,36 @@ def test_unanswered_tool_call_ids_without_tool_calls():
 
 def test_unanswered_tool_call_ids_empty_history():
     assert _unanswered_tool_call_ids([]) == []
+
+
+def test_stream_task_registered_and_cleaned_up(client, app):
+    """流式运行期间任务应登记在 agent_stream_tasks，结束后清理。"""
+    project = _create_project(client)
+    thread_id = _create_thread(client, project['id'])["thread_id"]
+
+    async def fake_astream(input_value=None, config=None, stream_mode=None):
+        yield {
+            "messages": [],
+            "interrupt_type": None,
+            "operation_log": ["started"],
+        }
+
+    mock_graph = AsyncMock()
+    mock_graph.aget_state = AsyncMock(
+        return_value=SimpleNamespace(values={"interrupt_type": None})
+    )
+    mock_graph.astream = fake_astream
+    app.dependency_overrides[get_agent_graph] = lambda: mock_graph
+
+    response = client.post(
+        f"/api/agent/threads/{thread_id}/messages",
+        json={"role": "user", "content": "hello"},
+    )
+    assert response.status_code == 202, response.text
+
+    # 等待后台流式任务完成
+    deadline = time.time() + 2
+    while time.time() < deadline and thread_id in app.state.active_agent_streams:
+        time.sleep(0.05)
+    assert thread_id not in app.state.active_agent_streams
+    assert thread_id not in app.state.agent_stream_tasks
