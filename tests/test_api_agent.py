@@ -516,3 +516,29 @@ def test_sync_payload_includes_radiomics_pending():
     assert payload["interrupt_type"] == "radiomics_execution"
     assert payload["pending_radiomics_plan"] is None
     assert payload["pending_radiomics_execution"]["n_cases"] == 1
+
+
+def test_sync_payload_includes_pending_radiomics_analysis():
+    """_sync_payload 必须返回影像组学分析待确认字段。"""
+    from app.api.agent import _sync_payload
+
+    values = {
+        "messages": [],
+        "interrupt_type": "radiomics_analysis",
+        "operation_log": [],
+        "pending_radiomics_analysis": {
+            "tool_call_id": "tc_analysis_1",
+            "feature_csv": "features.csv",
+            "clinical_csv": "clinical.csv",
+            "target_column": "label",
+        },
+    }
+
+    payload = _sync_payload(values, running=False)
+
+    assert payload["interrupt_type"] == "radiomics_analysis"
+    assert payload["pending_radiomics_analysis"]["tool_call_id"] == "tc_analysis_1"
+    assert payload["pending_radiomics_analysis"]["target_column"] == "label"
+
+    payload_missing = _sync_payload({}, running=False)
+    assert payload_missing["pending_radiomics_analysis"] is None

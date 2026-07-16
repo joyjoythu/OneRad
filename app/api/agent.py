@@ -145,6 +145,7 @@ def _sync_payload(values: Optional[Dict[str, Any]], running: bool) -> Dict[str, 
         "pending_script": values.get("pending_script"),
         "pending_radiomics_plan": values.get("pending_radiomics_plan"),
         "pending_radiomics_execution": values.get("pending_radiomics_execution"),
+        "pending_radiomics_analysis": values.get("pending_radiomics_analysis"),
         "running": running,
     }
 
