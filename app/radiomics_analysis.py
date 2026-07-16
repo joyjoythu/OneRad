@@ -309,7 +309,8 @@ def _render_markdown_report(analysis_result: Dict[str, Any],
                             outputs: Dict[str, Any],
                             n_matched: int,
                             covariates: List[str],
-                            output_dir: str) -> str:
+                            output_dir: str,
+                            n_splits: int = 5) -> str:
     """Render a Markdown report next to the Word one; returns its path."""
     m = analysis_result["metrics"]
     lines = [
@@ -319,7 +320,7 @@ def _render_markdown_report(analysis_result: Dict[str, Any],
         "",
         f"共纳入 {analysis_result['n_samples']} 例患者"
         f"（特征与临床表匹配 {n_matched} 例）。"
-        "采用分层五折交叉验证：每折内对特征标准化后用 LassoCV 选择影像组学特征，"
+        f"采用分层 {n_splits} 折交叉验证：每折内对特征标准化后用 LassoCV 选择影像组学特征，"
         "再以逻辑回归训练并预测留出折，汇总得到每例的 out-of-fold 预测概率；"
         "各折选中特征取交集作为稳定特征集，并在全量数据上拟合最终模型。",
     ]
@@ -401,6 +402,9 @@ def run_radiomics_cv_analysis(
     except (FileNotFoundError, ValueError) as e:
         return {"success": False, "message": str(e)}
 
+    if id_col is None:
+        return {"success": False,
+                "message": "id_col 未指定（请先经 inspect_analysis_inputs 识别）"}
     if id_col:
         if id_col not in clinical_df.columns:
             return {"success": False, "message": f"ID 列 '{id_col}' 不存在"}
@@ -522,7 +526,8 @@ def run_radiomics_cv_analysis(
     outputs["report_docx"] = report_result["report_path"]
 
     outputs["report_md"] = _render_markdown_report(
-        analysis_result, outputs, int(len(merged_df)), covariates, output_dir)
+        analysis_result, outputs, int(len(merged_df)), covariates, output_dir,
+        n_splits=n_splits)
 
     return {
         "success": True,

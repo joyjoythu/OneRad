@@ -270,3 +270,13 @@ def test_run_analysis_fails_without_label_col(tmp_path):
         id_col="patient_id")
     assert result["success"] is False
     assert "label_col" in result["message"]
+
+
+def test_run_analysis_fails_without_id_col(tmp_path):
+    feat, clin = _make_run_inputs(tmp_path)
+    result = run_radiomics_cv_analysis(
+        feature_csv=feat, clinical=clin,
+        output_dir=str(tmp_path / "out"),
+        label_col="Label")
+    assert result["success"] is False
+    assert "id_col" in result["message"]
