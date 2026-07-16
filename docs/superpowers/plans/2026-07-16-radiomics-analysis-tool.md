@@ -372,12 +372,25 @@ def test_inspect_multiple_binary_columns_asks_label(tmp_path):
     feat = tmp_path / "features.csv"
     clin = tmp_path / "clinical.csv"
     label = _write_feature_csv(feat, IDS)
-    _write_clinical_csv(clin, IDS, label, extra_binary=True)
+    # 两个 0/1 列均不叫 Label（"group"、"group2"），无法用列名决定 → 询问
+    _write_clinical_csv(clin, IDS, label, label_name="group", extra_binary=True)
     result = inspect_analysis_inputs(
         str(tmp_path), feature_csv=str(feat), clinical=str(clin))
     assert result["status"] == "need_clarification"
     fields = [q["field"] for q in result["questions"]]
     assert "label_col" in fields
+
+
+def test_inspect_prefers_label_named_column(tmp_path):
+    """存在名为 Label 的 0/1 列时优先使用，即使有其他 0/1 列也不询问。"""
+    feat = tmp_path / "features.csv"
+    clin = tmp_path / "clinical.csv"
+    label = _write_feature_csv(feat, IDS)
+    _write_clinical_csv(clin, IDS, label, extra_binary=True)
+    result = inspect_analysis_inputs(
+        str(tmp_path), feature_csv=str(feat), clinical=str(clin))
+    assert result["status"] == "ready"
+    assert result["resolved"]["label_col"] == "Label"
 
 
 def test_inspect_no_id_match_asks_id(tmp_path):
@@ -1974,4 +1987,5 @@ git commit -m "chore: 分析工具收尾"
 
 - **Spec 覆盖**：设计文档 §3 识别澄清 → Task 3/5；§4.1 oof 字段 → Task 1；§4.2 曲线 → Task 2；§4.3 编排+报告 → Task 4；§4.4 工具接入 → Task 5/6/7/8；§5 产物 → Task 4（产物名以代码实际为准：Word 报告为 `AutoRadiomics_Report.docx`，Markdown 为 `report.md`）；§6 前端 → Task 9/10；§7 错误处理 → Task 3/4/7（折数检查、路径沙箱、取消、单图失败降级）；§8 测试 → 各 Task 内。
 - **与 spec 的两处有意微调**：① spec 中"无任何 ID 列匹配 → 报错"实现为 `need_clarification`（列出全部列供用户指定），与"有疑惑就问用户"的目标一致；② pending meta 增加了 `available_clinical_columns` 便于前端/LLM 展示可用协变量。
+- **执行期修正记录**：Task 3 原计划中 `test_inspect_multiple_binary_columns_asks_label` 与实现清单的"Label 列名优先"规则自相矛盾（该测试的临床表同时含 `Label` 与另一 0/1 列却期望询问）。已按 spec §3 修正：测试改用 `label_name="group"`，并新增 `test_inspect_prefers_label_named_column` 钉住优先规则（commit 11ef719f）。
 - **类型一致性**：`inspect_analysis_inputs` 返回的 `resolved` 键名与 `PendingRadiomicsAnalysis`（前端接口）、`_run_radiomics_analysis` 读取的 `pending.get(...)` 键名一致（feature_csv/clinical/id_col/label_col/covariates/output_dir）；`oof_probabilities` 在 Task 1 定义、Task 4 消费、Task 7 摘要从最终 JSON 剔除。
