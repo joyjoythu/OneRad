@@ -19,6 +19,7 @@ import numpy as np
 import pandas as pd
 
 # NOTE: Callable/Tuple/np/_merge_feature_clinical 为 Task 4 编排函数预留，本任务暂不使用
+from app.curves import plot_calibration_curve, plot_dca, plot_roc_curve
 from app.utils import (
     _load_feature_csv,
     _merge_feature_clinical,
@@ -302,3 +303,231 @@ def inspect_analysis_inputs(
         "n_matched": counts.get(id_col, 0),
         "available_clinical_columns": available,
     }}
+
+
+def _render_markdown_report(analysis_result: Dict[str, Any],
+                            outputs: Dict[str, Any],
+                            n_matched: int,
+                            covariates: List[str],
+                            output_dir: str) -> str:
+    """Render a Markdown report next to the Word one; returns its path."""
+    m = analysis_result["metrics"]
+    lines = [
+        "# 影像组学分析报告",
+        "",
+        "## 1. 方法",
+        "",
+        f"共纳入 {analysis_result['n_samples']} 例患者"
+        f"（特征与临床表匹配 {n_matched} 例）。"
+        "采用分层五折交叉验证：每折内对特征标准化后用 LassoCV 选择影像组学特征，"
+        "再以逻辑回归训练并预测留出折，汇总得到每例的 out-of-fold 预测概率；"
+        "各折选中特征取交集作为稳定特征集，并在全量数据上拟合最终模型。",
+    ]
+    if covariates:
+        lines.append(f"临床协变量：{', '.join(covariates)}。")
+    lines += [
+        "",
+        "## 2. 模型性能",
+        "",
+        "| 指标 | 值 |",
+        "|---|---|",
+        f"| AUC | {m['auc']:.3f} (95% CI {m['auc_ci'][0]:.3f}\u2013{m['auc_ci'][1]:.3f}) |",
+        f"| 准确率 | {m['accuracy']:.3f} |",
+        f"| 敏感度 | {m['sensitivity']:.3f} |",
+        f"| 特异度 | {m['specificity']:.3f} |",
+        f"| 最佳阈值 | {m['threshold']:.3f} |",
+        "",
+        f"混淆矩阵（[[TN, FP], [FN, TP]]）：`{m['confusion_matrix']}`",
+        "",
+        "## 3. 稳定特征与回归系数",
+        "",
+        "| 特征 | 系数 | OR | 95%CI | p |",
+        "|---|---|---|---|---|",
+    ]
+    mr = analysis_result["model_results"]
+    for feat in analysis_result["selected_features"]:
+        ci_lo = mr["ci_lower"].get(feat)
+        ci_hi = mr["ci_upper"].get(feat)
+        ci = f"{ci_lo:.3f}\u2013{ci_hi:.3f}" if ci_lo is not None and ci_hi is not None else "-"
+        lines.append(
+            f"| {feat} | {mr['coefficients'].get(feat, 0):.4f} "
+            f"| {mr['odds_ratios'].get(feat, 0):.3f} | {ci} "
+            f"| {mr['p_values'].get(feat, 1):.4f} |")
+    lines += ["", "## 4. 图表", ""]
+    for key, caption in (("roc_curve", "ROC 曲线"),
+                         ("calibration_curve", "校准曲线"),
+                         ("dca_curve", "决策曲线")):
+        path = outputs.get(key)
+        if path:
+            lines.append(f"![{caption}]({os.path.basename(path)})")
+            lines.append("")
+    lines.append("注：预测概率为五折交叉验证的 out-of-fold 概率，"
+                 "用于无偏评估模型性能。")
+    report_path = os.path.join(output_dir, "report.md")
+    with open(report_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+    return report_path
+
+
+def run_radiomics_cv_analysis(
+    feature_csv: str,
+    clinical: str,
+    output_dir: str,
+    id_col: Optional[str] = None,
+    label_col: Optional[str] = None,
+    covariates: Optional[List[str]] = None,
+    max_lasso_features: int = 100,
+    n_splits: int = 5,
+    random_state: int = 42,
+    llm_client=None,
+    should_cancel: Optional[Callable[[], bool]] = None,
+) -> Dict[str, Any]:
+    """Run LASSO + logistic regression CV analysis and export all artifacts.
+
+    The caller is expected to have resolved ``id_col``/``label_col`` first
+    (see ``inspect_analysis_inputs``). Returns a dict with ``success``,
+    ``message``, and on success ``analysis_result`` (the raw AnalysisAgent
+    result), ``n_matched`` and ``outputs`` (artifact paths).
+    """
+    from app.analysis import AnalysisAgent
+    from app.report import ReportAgent
+
+    def _cancelled() -> bool:
+        return should_cancel is not None and should_cancel()
+
+    try:
+        feature_df = _load_feature_csv(feature_csv)
+        clinical_df = _load_table(clinical)
+    except (FileNotFoundError, ValueError) as e:
+        return {"success": False, "message": str(e)}
+
+    if id_col:
+        if id_col not in clinical_df.columns:
+            return {"success": False, "message": f"ID 列 '{id_col}' 不存在"}
+        if id_col != "patient_id":
+            clinical_df = clinical_df.rename(columns={id_col: "patient_id"})
+    if label_col is None:
+        return {"success": False,
+                "message": "label_col 未指定（请先经 inspect_analysis_inputs 识别）"}
+    if label_col not in clinical_df.columns:
+        return {"success": False, "message": f"标签列 '{label_col}' 不存在"}
+
+    label_values = _binary_values(clinical_df[label_col])
+    if label_values is None:
+        return {"success": False, "message": f"标签列 '{label_col}' 必须仅包含 0/1"}
+
+    try:
+        merged_df = _merge_feature_clinical(feature_df, clinical_df, id_col="patient_id")
+    except ValueError as e:
+        return {"success": False, "message": str(e)}
+
+    y = merged_df[label_col].astype(int)
+    min_class = int(y.value_counts().min()) if y.nunique() > 1 else 0
+    if min_class < n_splits:
+        return {"success": False,
+                "message": f"某类样本数（{min_class}）小于折数 {n_splits}，"
+                           "请减少折数或检查标签"}
+
+    covariates = _infer_covariates(clinical_df, "patient_id", label_col,
+                                   covariates or [])
+    n_features = len([c for c in feature_df.columns
+                      if any(c.startswith(p) for p in _RADIOMIC_PREFIXES)])
+
+    if _cancelled():
+        return {"success": False, "cancelled": True, "message": "用户取消了分析"}
+
+    os.makedirs(output_dir, exist_ok=True)
+    agent = AnalysisAgent(
+        covariates=covariates,
+        max_lasso_features=max_lasso_features,
+        n_splits=n_splits,
+        random_state=random_state,
+        output_dir=output_dir,
+    )
+    analysis_result = agent.run(merged_df, label_col=label_col)
+    if not analysis_result.get("success"):
+        return {"success": False,
+                "message": f"分析失败: {analysis_result.get('message', '未知错误')}"}
+
+    if _cancelled():
+        return {"success": False, "cancelled": True, "message": "用户取消了分析"}
+
+    outputs: Dict[str, Any] = {"lasso_paths": analysis_result.get("plot_paths", [])}
+
+    # 每病例预测概率
+    oof = analysis_result.get("oof_probabilities", [])
+    threshold = analysis_result["metrics"]["threshold"]
+    case_df = pd.DataFrame({
+        "patient_id": merged_df["patient_id"].values,
+        "y_true": y.values,
+        "oof_prob": oof,
+        "y_pred": [int(p >= threshold) for p in oof],
+    })
+    case_path = os.path.join(output_dir, "case_predictions.csv")
+    case_df.to_csv(case_path, index=False)
+    outputs["case_predictions"] = case_path
+
+    # 稳定特征系数表
+    mr = analysis_result["model_results"]
+    selected = analysis_result["selected_features"]
+    feat_df = pd.DataFrame({
+        "feature": selected,
+        "coefficient": [mr["coefficients"].get(f) for f in selected],
+        "odds_ratio": [mr["odds_ratios"].get(f) for f in selected],
+        "ci_lower": [mr["ci_lower"].get(f) for f in selected],
+        "ci_upper": [mr["ci_upper"].get(f) for f in selected],
+        "p_value": [mr["p_values"].get(f) for f in selected],
+    })
+    feat_path = os.path.join(output_dir, "selected_features.csv")
+    feat_df.to_csv(feat_path, index=False)
+    outputs["selected_features"] = feat_path
+
+    # 曲线（单张失败只记 warning，不中断）
+    new_plots: List[str] = []
+    y_arr = y.values.astype(float)
+    oof_arr = np.asarray(oof, dtype=float)
+    curve_specs: Tuple[Tuple[str, Callable, Dict[str, Any]], ...] = (
+        ("roc_curve", plot_roc_curve,
+         {"auc": analysis_result["metrics"]["auc"],
+          "auc_ci": analysis_result["metrics"]["auc_ci"]}),
+        ("calibration_curve", plot_calibration_curve, {}),
+        ("dca_curve", plot_dca, {}),
+    )
+    for key, func, kwargs in curve_specs:
+        try:
+            out_path = os.path.join(output_dir, f"{key}.png")
+            path = func(y_arr, oof_arr, out_path=out_path, **kwargs)
+            outputs[key] = path
+            new_plots.append(path)
+        except Exception:
+            logger.warning("绘制 %s 失败", key, exc_info=True)
+            outputs[key] = None
+
+    if _cancelled():
+        return {"success": False, "cancelled": True, "message": "用户取消了分析"}
+
+    # Word 报告（现有 ReportAgent，新图随 plot_paths 一并嵌入）
+    report_result = ReportAgent().run(
+        analysis_result=analysis_result,
+        output_dir=output_dir,
+        modality="auto",
+        n_features=n_features,
+        covariates=covariates,
+        plot_paths=analysis_result.get("plot_paths", []) + new_plots,
+        llm_client=llm_client,
+    )
+    if not report_result.get("success"):
+        return {"success": False,
+                "message": f"报告生成失败: {report_result.get('message', '未知错误')}"}
+    outputs["report_docx"] = report_result["report_path"]
+
+    outputs["report_md"] = _render_markdown_report(
+        analysis_result, outputs, int(len(merged_df)), covariates, output_dir)
+
+    return {
+        "success": True,
+        "message": "分析完成",
+        "analysis_result": analysis_result,
+        "n_matched": int(len(merged_df)),
+        "outputs": outputs,
+    }
