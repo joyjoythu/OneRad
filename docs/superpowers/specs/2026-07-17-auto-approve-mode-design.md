@@ -55,14 +55,14 @@
 
 ### `frontend/src/stores/agent.ts`
 
-- 新增 `autoApprove = ref(false)`。
-- `setAutoApprove(enabled: boolean)`：乐观更新；有 threadId 时调 API，失败回滚并 `ElMessage` 报错。
+- 新增 `autoApprove = ref(false)` 与 `autoApproveSyncing = ref(false)`。
+- `setAutoApprove(enabled: boolean)`：乐观更新；有 threadId 时调 API，失败回滚，错误提示由 axios 拦截器统一 toast（与 `sendMessage`/`confirm` 一致）；API 调用期间置 `autoApproveSyncing`，`finally` 复位。
 - `createThread` / `loadThread` 请求带上 `auto_approve: autoApprove.value`（与 `llm_model` 一致：页面刷新后恢复默认关闭，不持久化 UI 偏好）。
 
 ### `frontend/src/components/AgentChat.vue`
 
 - 在 `.chat-status`（81-90 行）与 `.message-input-area`（92 行）之间新增一行 `.auto-approve-row`，右对齐放 `el-switch` + "自动审批" 标签，直接绑定 store。右对齐使其正好位于模型选择器（103-110 行）正上方，不挤压现有输入栏横排布局。
-- 开关在任何状态下可点（包括 busy 与中断挂起中）。
+- 开关在 busy 与中断挂起中仍可点击；仅在同步请求进行中（`autoApproveSyncing`）短暂禁用，防止快速连点的两次 PUT 乱序完成导致前后端状态不一致。
 
 ## 错误处理与边界情况
 
@@ -71,6 +71,7 @@
 - 中断挂起中打开开关：当前挂起项面板保留，需手动确认/取消；之后的决策点自动通过。
 - 运行途中打开开关：本次运行接下来的决策点仍按旧值处理（config 在运行开始时注入），下一次运行/恢复生效；这是可接受的已知边界。
 - 无 `auto_approve` 的旧会话/旧 checkpoint：默认 `False`，行为不变。
+- 已知残余边界（接受）：同步请求进行中切换线程，若该请求失败回滚，新线程后端字典可能短暂保留乐观值；下一次成功切换或建/载线程会以前端值重新覆盖，自愈。
 
 ## 测试
 
