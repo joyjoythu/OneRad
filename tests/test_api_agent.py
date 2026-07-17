@@ -2,6 +2,7 @@ import asyncio
 import json
 import time
 import uuid
+from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -10,7 +11,13 @@ from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from app.api import create_app
-from app.api.agent import get_agent_graph, _unanswered_tool_call_ids, _agent_config
+from app.api.agent import (
+    get_agent_graph,
+    _unanswered_tool_call_ids,
+    _agent_config,
+    _make_message,
+    _render_messages,
+)
 
 
 @pytest.fixture
@@ -714,3 +721,23 @@ def test_agent_config_carries_auto_approve(client, app):
     config = asyncio.run(_agent_config(thread_id, app))
 
     assert config["configurable"]["auto_approve"] is True
+
+
+def test_make_message_stamps_timestamp():
+    msg = _make_message("user", "hello")
+    ts = msg.additional_kwargs.get("timestamp")
+    assert ts
+    # 合法 ISO 8601，解析不抛异常
+    datetime.fromisoformat(ts)
+
+
+def test_render_messages_includes_timestamp():
+    ts = "2026-07-17T04:00:00+00:00"
+    msg = HumanMessage(content="hi", additional_kwargs={"timestamp": ts})
+    rendered = _render_messages({"messages": [msg]})
+    assert rendered[0]["timestamp"] == ts
+
+
+def test_render_messages_omits_missing_timestamp():
+    rendered = _render_messages({"messages": [HumanMessage(content="hi")]})
+    assert "timestamp" not in rendered[0]

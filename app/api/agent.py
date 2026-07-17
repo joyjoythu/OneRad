@@ -2,6 +2,7 @@ import asyncio
 import json
 import uuid
 from contextlib import suppress
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -101,6 +102,11 @@ async def _agent_config(thread_id: str, app) -> Dict[str, Any]:
     }
 
 
+def _utc_now_iso() -> str:
+    """当前 UTC 时间的 ISO 8601 字符串，用于消息时间戳。"""
+    return datetime.now(timezone.utc).isoformat()
+
+
 def _render_messages(values: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Convert LangChain message objects stored in state into plain dicts."""
     rendered: List[Dict[str, Any]] = []
@@ -126,6 +132,9 @@ def _render_messages(values: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
             entry = {"role": "system", "content": _stringify_content(msg.content)}
         else:
             entry = {"role": "unknown", "content": _stringify_content(msg.content)}
+        ts = msg.additional_kwargs.get("timestamp")
+        if ts:
+            entry["timestamp"] = ts
         rendered.append(entry)
     return rendered
 
@@ -176,12 +185,13 @@ def _sync_payload(values: Optional[Dict[str, Any]], running: bool) -> Dict[str, 
 
 
 def _make_message(role: str, content: str) -> BaseMessage:
+    kwargs = {"timestamp": _utc_now_iso()}
     if role == "user":
-        return HumanMessage(content=content)
+        return HumanMessage(content=content, additional_kwargs=kwargs)
     if role == "assistant":
-        return AIMessage(content=content)
+        return AIMessage(content=content, additional_kwargs=kwargs)
     if role == "system":
-        return SystemMessage(content=content)
+        return SystemMessage(content=content, additional_kwargs=kwargs)
     raise HTTPException(
         status_code=status.HTTP_400_BAD_REQUEST,
         detail=f"Unsupported message role: {role}",
