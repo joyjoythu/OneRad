@@ -198,6 +198,35 @@ def _make_message(role: str, content: str) -> BaseMessage:
     )
 
 
+async def _ensure_message_timestamps(graph, config: Dict[str, Any]) -> None:
+    """为 state 中缺少 timestamp 的消息补打当前 UTC 时间并写回 checkpoint。
+
+    AI/工具消息由图内部节点在运行期间产生，无法在创建点逐个打标；
+    在运行收尾等收敛点统一补打，保证刷新/重启后历史消息时间仍准确。
+    已有 timestamp 的消息不改写。
+    """
+    try:
+        snapshot = await graph.aget_state(config)
+    except KeyError:
+        return
+    messages = snapshot.values.get("messages") or []
+    changed = False
+    for msg in messages:
+        if isinstance(msg, dict):
+            continue
+        kwargs = getattr(msg, "additional_kwargs", None)
+        if kwargs is not None and not kwargs.get("timestamp"):
+            kwargs["timestamp"] = _utc_now_iso()
+            changed = True
+    if changed:
+        # 显式指定 as_node：对未经节点执行写出的 state（如无 checkpoint 的
+        # 新线程），langgraph 无法推断更新来源，会报 "Ambiguous update"。
+        # call_llm 是图内固定存在的消息产出节点，用作写回归属。
+        await graph.aupdate_state(
+            config, {"messages": list(messages)}, as_node="call_llm"
+        )
+
+
 def _unanswered_tool_call_ids(messages: List[Any]) -> List[str]:
     """返回消息历史中没有对应 ToolMessage 应答的 tool_call id。
 
@@ -259,6 +288,10 @@ async def _stream_agent(
         )
         raise
     finally:
+        # 运行收尾（正常/异常/取消）统一补打本轮新消息的时间戳；
+        # 补打失败不影响清理。
+        with suppress(Exception):
+            await _ensure_message_timestamps(graph, config)
         app.state.active_agent_streams.discard(thread_id)
         app.state.pipeline_tasks.discard(task)
         app.state.agent_stream_tasks.pop(thread_id, None)
@@ -647,6 +680,7 @@ async def stop_stream(
                 "operation_log": ["用户停止了当前任务"],
             },
         )
+        await _ensure_message_timestamps(graph, config)
         snapshot = await graph.aget_state(config)
 
     bridge = get_bridge(request)

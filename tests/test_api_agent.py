@@ -11,12 +11,14 @@ from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from app.api import create_app
+from app.agent import create_agent_graph
 from app.api.agent import (
     get_agent_graph,
     _unanswered_tool_call_ids,
     _agent_config,
     _make_message,
     _render_messages,
+    _ensure_message_timestamps,
 )
 
 
@@ -440,6 +442,7 @@ def test_stop_requests_cooperative_cancel(client, app, monkeypatch):
     snapshots = [
         SimpleNamespace(values={"interrupt_type": None}),  # send_message 前检查
         SimpleNamespace(values={"interrupt_type": None}),  # stop 存在性检查
+        SimpleNamespace(values={"messages": []}),          # 流式 finally 补打时间戳读取
         SimpleNamespace(values={"messages": []}),          # 取消后读取
     ]
 
@@ -471,6 +474,16 @@ def test_stop_requests_cooperative_cancel(client, app, monkeypatch):
         time.sleep(0.05)
     assert thread_id in app.state.agent_stream_tasks
 
+    # 等首个流式事件落库后再 stop：取消瞬间 publish 的线程池写入可能被弃置，
+    # 晚于 stop 的最终事件完成会造成事件乱序（既有竞态）
+    deadline = time.time() + 2
+    while (
+        time.time() < deadline
+        and not app.state.event_bridge.store.list_sse_events("agent", thread_id)
+    ):
+        time.sleep(0.05)
+    assert app.state.event_bridge.store.list_sse_events("agent", thread_id)
+
     response = client.post(f"/api/agent/threads/{thread_id}/stop")
     assert response.status_code == 202, response.text
     assert cancelled_threads == [thread_id]
@@ -501,9 +514,13 @@ def test_stop_cancels_stream_and_repairs_history(client, app):
         SimpleNamespace(values={"interrupt_type": None}),
         # ② stop 存在性检查
         SimpleNamespace(values={"interrupt_type": None}),
-        # ③ 取消后读取：末条为未应答 tool_calls
+        # ③ 流式 finally 补打时间戳读取
         SimpleNamespace(values={"messages": dangling_messages}),
-        # ④ 修复后读取：用于发布最终状态
+        # ④ 取消后读取：末条为未应答 tool_calls
+        SimpleNamespace(values={"messages": dangling_messages}),
+        # ⑤ 修复后补打时间戳读取
+        SimpleNamespace(values={"messages": repaired_messages}),
+        # ⑥ 修复后读取：用于发布最终状态
         SimpleNamespace(
             values={
                 "messages": repaired_messages,
@@ -536,13 +553,29 @@ def test_stop_cancels_stream_and_repairs_history(client, app):
         time.sleep(0.05)
     assert thread_id in app.state.agent_stream_tasks
 
+    # 等首个流式事件落库后再 stop：取消瞬间 publish 的线程池写入可能被弃置，
+    # 晚于 stop 的最终事件完成会造成事件乱序（既有竞态）
+    deadline = time.time() + 2
+    while (
+        time.time() < deadline
+        and not app.state.event_bridge.store.list_sse_events("agent", thread_id)
+    ):
+        time.sleep(0.05)
+    assert app.state.event_bridge.store.list_sse_events("agent", thread_id)
+
     response = client.post(f"/api/agent/threads/{thread_id}/stop")
     assert response.status_code == 202, response.text
     assert response.json()["status"] == "stopped"
 
     # 历史修复：补了一条 cancelled ToolMessage，并记录操作日志
-    mock_graph.aupdate_state.assert_awaited_once()
-    updates = mock_graph.aupdate_state.await_args.args[1]
+    # 收尾补打时间戳也会调用 aupdate_state，按 operation_log 定位修复调用
+    repair_calls = [
+        call
+        for call in mock_graph.aupdate_state.await_args_list
+        if "operation_log" in call.args[1]
+    ]
+    assert len(repair_calls) == 1
+    updates = repair_calls[0].args[1]
     assert len(updates["messages"]) == 1
     tool_msg = updates["messages"][0]
     assert isinstance(tool_msg, ToolMessage)
@@ -729,11 +762,20 @@ def test_make_message_stamps_timestamp():
     assert ts
     # 合法 ISO 8601，解析不抛异常
     datetime.fromisoformat(ts)
+    assert datetime.fromisoformat(ts).tzinfo is not None
 
 
-def test_render_messages_includes_timestamp():
+@pytest.mark.parametrize(
+    "msg",
+    [
+        HumanMessage(content="hi"),
+        AIMessage(content="hi"),
+        ToolMessage(content="res", tool_call_id="c1"),
+    ],
+)
+def test_render_messages_includes_timestamp(msg):
     ts = "2026-07-17T04:00:00+00:00"
-    msg = HumanMessage(content="hi", additional_kwargs={"timestamp": ts})
+    msg.additional_kwargs["timestamp"] = ts
     rendered = _render_messages({"messages": [msg]})
     assert rendered[0]["timestamp"] == ts
 
@@ -741,3 +783,21 @@ def test_render_messages_includes_timestamp():
 def test_render_messages_omits_missing_timestamp():
     rendered = _render_messages({"messages": [HumanMessage(content="hi")]})
     assert "timestamp" not in rendered[0]
+
+
+@pytest.mark.anyio
+async def test_ensure_message_timestamps_stamps_missing_and_preserves_existing():
+    graph = create_agent_graph()
+    config = {"configurable": {"thread_id": f"ts-test-{uuid.uuid4().hex[:8]}"}}
+    old_ts = "2026-01-01T00:00:00+00:00"
+    stamped = AIMessage(content="old", additional_kwargs={"timestamp": old_ts})
+    unstamped = ToolMessage(content="res", tool_call_id="call-1")
+    await graph.aupdate_state(config, {"messages": [stamped, unstamped]})
+
+    await _ensure_message_timestamps(graph, config)
+
+    messages = (await graph.aget_state(config)).values["messages"]
+    assert messages[0].additional_kwargs["timestamp"] == old_ts
+    ts = messages[1].additional_kwargs.get("timestamp")
+    assert ts
+    datetime.fromisoformat(ts)
