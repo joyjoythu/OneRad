@@ -102,6 +102,12 @@
           <el-option label="DeepSeek-V4 Flash" value="deepseek-v4-flash" />
           <el-option label="DeepSeek-V4 Pro" value="deepseek-v4-pro" />
         </el-select>
+        <el-tooltip :content="contextTooltip" placement="top">
+          <span class="context-usage" :class="contextUsageLevel">
+            <el-icon><Odometer /></el-icon>
+            <span>{{ contextUsageText }}</span>
+          </span>
+        </el-tooltip>
         <el-button
           v-if="agentStore.busy"
           type="danger"
@@ -126,7 +132,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watchEffect, nextTick } from 'vue'
-import { Loading, CircleClose, Promotion } from '@element-plus/icons-vue'
+import { Loading, CircleClose, Promotion, Odometer } from '@element-plus/icons-vue'
 import { useAgentStore } from '@/stores/agent'
 import { useProjectStore } from '@/stores/project'
 import { DEFAULT_AGENT_MODEL } from '@/api/agent'
@@ -216,6 +222,48 @@ const statusText = computed(() => {
   }
   if (agentStore.interrupt) return '等待确认操作…'
   return ''
+})
+
+/** 格式化 token 数：>=1000 用 k，>=1M 用 M。 */
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) {
+    return `${parseFloat((n / 1_000_000).toFixed(2))}M`
+  }
+  if (n >= 1_000) {
+    return `${parseFloat((n / 1_000).toFixed(1))}k`
+  }
+  return String(n)
+}
+
+/** badge 文案：当前上下文用量/窗口 · 百分比；无数据显示 --。 */
+const contextUsageText = computed(() => {
+  const usage = agentStore.contextUsage
+  const window = agentStore.contextWindow
+  if (!usage || !window) return '--'
+  const pct = ((usage.input_tokens / window) * 100).toFixed(1)
+  return `${formatTokens(usage.input_tokens)}/${formatTokens(window)} · ${pct}%`
+})
+
+/** 用量阈值样式：>=80% 橙色，>=95% 红色。 */
+const contextUsageLevel = computed(() => {
+  const usage = agentStore.contextUsage
+  const window = agentStore.contextWindow
+  if (!usage || !window) return ''
+  const ratio = usage.input_tokens / window
+  if (ratio >= 0.95) return 'context-usage--danger'
+  if (ratio >= 0.8) return 'context-usage--warning'
+  return ''
+})
+
+/** 悬停 tooltip：精确 token 明细。 */
+const contextTooltip = computed(() => {
+  const usage = agentStore.contextUsage
+  if (!usage) return '发送首条消息后显示上下文用量'
+  return (
+    `输入 ${usage.input_tokens.toLocaleString()} / ` +
+    `输出 ${usage.output_tokens.toLocaleString()} / ` +
+    `合计 ${usage.total_tokens.toLocaleString()} tokens`
+  )
 })
 
 function toolCallNames(message: AgentMessage): string {
@@ -381,6 +429,25 @@ defineExpose({ clearInput })
 
 .model-selector {
   width: 150px;
+}
+
+.context-usage {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  color: #909399;
+  white-space: nowrap;
+  margin-bottom: 1px;
+  cursor: default;
+}
+
+.context-usage--warning {
+  color: #e6a23c;
+}
+
+.context-usage--danger {
+  color: #f56c6c;
 }
 
 .model-selector :deep(.el-select__wrapper) {

@@ -5,6 +5,7 @@ import * as api from '@/api/agent'
 import type {
   AgentState,
   AgentMessage,
+  ContextUsage,
   PendingPlan,
   PendingCommand,
   PendingScript,
@@ -33,6 +34,9 @@ export const useAgentStore = defineStore('agent', () => {
   const busy = ref(false)
   // 影像组学特征提取的实时进度（由后端节点线程推送，null 表示无提取在进行）。
   const radiomicsProgress = ref<RadiomicsProgress | null>(null)
+  // 最近一次 LLM 调用的 token 用量与模型上下文窗口（null 表示尚无数据）。
+  const contextUsage = ref<ContextUsage | null>(null)
+  const contextWindow = ref<number | null>(null)
 
   let es: EventSource | null = null
 
@@ -78,6 +82,12 @@ export const useAgentStore = defineStore('agent', () => {
     if (state.radiomics_progress !== undefined) {
       radiomicsProgress.value = state.radiomics_progress
     }
+    if (state.context_usage !== undefined) {
+      contextUsage.value = state.context_usage
+    }
+    if (state.context_window !== undefined) {
+      contextWindow.value = state.context_window
+    }
   }
 
   function resetInternalState(): void {
@@ -95,6 +105,8 @@ export const useAgentStore = defineStore('agent', () => {
     currentThread.value = null
     busy.value = false
     radiomicsProgress.value = null
+    contextUsage.value = null
+    contextWindow.value = null
   }
 
   async function ensureThread(
@@ -333,6 +345,8 @@ export const useAgentStore = defineStore('agent', () => {
     pendingRadiomicsExecution,
     pendingRadiomicsAnalysis,
     radiomicsProgress,
+    contextUsage,
+    contextWindow,
     threads,
     currentThread,
     busy,

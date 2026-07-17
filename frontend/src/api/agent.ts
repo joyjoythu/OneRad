@@ -16,6 +16,12 @@ export interface AgentMessage {
   tool_call_id?: string
 }
 
+export interface ContextUsage {
+  input_tokens: number
+  output_tokens: number
+  total_tokens: number
+}
+
 export interface PlanItem {
   action: string
   source?: string
@@ -106,6 +112,8 @@ export interface AgentState {
   pending_radiomics_execution?: PendingRadiomicsExecution | null
   pending_radiomics_analysis?: PendingRadiomicsAnalysis | null
   radiomics_progress?: RadiomicsProgress | null
+  context_usage?: ContextUsage | null
+  context_window?: number
   running?: boolean
   error?: string
 }

@@ -405,4 +405,52 @@ describe('AgentChat', () => {
     toggle = wrapper.find('.tool-toggle button')
     expect(toggle.text()).toBe('展开')
   })
+
+  it('shows context usage badge with formatted tokens and percentage', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.threadId = 'thread-1'
+    agentStore.contextUsage = { input_tokens: 12345, output_tokens: 100, total_tokens: 12445 }
+    agentStore.contextWindow = 1_000_000
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    const badge = wrapper.find('.context-usage')
+    expect(badge.exists()).toBe(true)
+    expect(badge.text()).toContain('12.3k/1M · 1.2%')
+  })
+
+  it('shows -- when no context usage data yet', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.threadId = 'thread-1'
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    expect(wrapper.find('.context-usage').text()).toContain('--')
+  })
+
+  it('highlights the badge at 80% and 95% thresholds', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.threadId = 'thread-1'
+    agentStore.contextWindow = 1_000_000
+    agentStore.contextUsage = { input_tokens: 800_000, output_tokens: 0, total_tokens: 800_000 }
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+    expect(wrapper.find('.context-usage').classes()).toContain('context-usage--warning')
+
+    agentStore.contextUsage = { input_tokens: 950_000, output_tokens: 0, total_tokens: 950_000 }
+    await flushPromises()
+    expect(wrapper.find('.context-usage').classes()).toContain('context-usage--danger')
+  })
 })
