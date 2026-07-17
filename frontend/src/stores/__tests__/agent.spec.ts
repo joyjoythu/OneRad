@@ -657,5 +657,57 @@ describe('useAgentStore', () => {
         { params: { project_id: 'project-1' } }
       )
     })
+
+    it('exposes syncing state during the API call', async () => {
+      const store = useAgentStore()
+      await store.ensureThread('project-1', '', 'deepseek-v4-flash')
+      let resolvePut: (value: { data: { auto_approve: boolean } }) => void = () => {}
+      vi.mocked(client.put).mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            resolvePut = resolve
+          })
+      )
+
+      const pending = store.setAutoApprove(true)
+      expect(store.autoApproveSyncing).toBe(true)
+      resolvePut({ data: { auto_approve: true } })
+      await pending
+
+      expect(store.autoApproveSyncing).toBe(false)
+      expect(store.autoApprove).toBe(true)
+    })
+
+    it('includes auto_approve when loading a thread', async () => {
+      const store = useAgentStore()
+      await store.setAutoApprove(true)
+      vi.spyOn(agentApi, 'resumeThread').mockResolvedValueOnce({
+        thread_id: 'thread-load',
+        ...mockState(),
+      })
+
+      await store.loadThread('thread-load', 'sk-test', 'deepseek-v4-flash')
+
+      expect(agentApi.resumeThread).toHaveBeenCalledWith('thread-load', {
+        api_key: 'sk-test',
+        llm_model: 'deepseek-v4-flash',
+        auto_approve: true,
+      })
+    })
+
+    it('keeps autoApprove across thread switches', async () => {
+      const store = useAgentStore()
+      await store.ensureThread('project-1', '', 'deepseek-v4-flash')
+      vi.mocked(client.put).mockResolvedValue({ data: { auto_approve: true } })
+      await store.setAutoApprove(true)
+
+      vi.spyOn(agentApi, 'resumeThread').mockResolvedValueOnce({
+        thread_id: 'thread-load',
+        ...mockState(),
+      })
+      await store.loadThread('thread-load', 'sk-test', 'deepseek-v4-flash')
+
+      expect(store.autoApprove).toBe(true)
+    })
   })
 })

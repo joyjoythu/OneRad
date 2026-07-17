@@ -89,6 +89,16 @@
         </template>
       </div>
 
+      <div class="auto-approve-row">
+        <span class="auto-approve-label">自动审批</span>
+        <el-switch
+          :model-value="agentStore.autoApprove"
+          :disabled="agentStore.autoApproveSyncing"
+          aria-label="自动审批"
+          @change="handleAutoApproveChange"
+        />
+      </div>
+
       <div class="message-input-area">
         <el-input
           v-model="input"
@@ -208,6 +218,10 @@ const inputPlaceholder = computed(() => {
   if (agentStore.interrupt) return '请先确认或取消当前待处理的操作'
   return '请输入消息，Enter 发送，Shift+Enter 换行'
 })
+
+function handleAutoApproveChange(value: string | number | boolean): void {
+  void agentStore.setAutoApprove(Boolean(value))
+}
 
 // 根据运行状态推导用户可见的状态文案。
 // busy 优先于 interrupt：确认后 execute_confirmed 清除 interrupt_type
@@ -430,6 +444,16 @@ defineExpose({ clearInput })
 
 .chat-status--idle {
   visibility: hidden;
+}
+
+.auto-approve-row {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 0.25rem 0.25rem;
+  color: #909399;
+  font-size: 0.75rem;
 }
 
 .message-input-area {

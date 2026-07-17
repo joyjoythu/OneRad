@@ -497,4 +497,36 @@ describe('AgentChat', () => {
     await flushPromises()
     expect(wrapper.find('.context-usage').classes()).toContain('context-usage--danger')
   })
+
+  it('renders auto-approve switch above the model selector and toggles the store', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+    const agentStore = useAgentStore()
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    const row = wrapper.find('.auto-approve-row')
+    expect(row.exists()).toBe(true)
+    expect(row.text()).toContain('自动审批')
+
+    // DOM 顺序：开关行必须在输入区（含模型选择器）之前。
+    const html = wrapper.html()
+    expect(html.indexOf('auto-approve-row')).toBeLessThan(html.indexOf('model-selector'))
+
+    await wrapper.find('.el-switch').trigger('click')
+    expect(agentStore.autoApprove).toBe(true)
+  })
+
+  it('disables the auto-approve switch while syncing', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+    const agentStore = useAgentStore()
+    agentStore.autoApproveSyncing = true
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    expect(wrapper.find('.el-switch').classes()).toContain('is-disabled')
+  })
 })

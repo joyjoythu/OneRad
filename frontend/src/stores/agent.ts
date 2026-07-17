@@ -34,6 +34,8 @@ export const useAgentStore = defineStore('agent', () => {
   const busy = ref(false)
   // 自动审批：开启后后端跳过全部人工确认中断，直接执行挂起操作。
   const autoApprove = ref(false)
+  // 自动审批同步请求进行中：用于禁用开关，防止快速连点导致前后端状态乱序。
+  const autoApproveSyncing = ref(false)
   // 影像组学特征提取的实时进度（由后端节点线程推送，null 表示无提取在进行）。
   const radiomicsProgress = ref<RadiomicsProgress | null>(null)
   // 最近一次 LLM 调用的 token 用量与模型上下文窗口（null 表示尚无数据）。
@@ -315,12 +317,15 @@ export const useAgentStore = defineStore('agent', () => {
     const previous = autoApprove.value
     autoApprove.value = enabled
     if (!threadId.value) return
+    autoApproveSyncing.value = true
     try {
       await api.setAutoApprove(threadId.value, enabled)
     } catch (err) {
       // 回滚乐观更新；错误提示由 axios 拦截器统一 toast。
       autoApprove.value = previous
       throw err
+    } finally {
+      autoApproveSyncing.value = false
     }
   }
 
@@ -373,6 +378,7 @@ export const useAgentStore = defineStore('agent', () => {
     currentThread,
     busy,
     autoApprove,
+    autoApproveSyncing,
     ensureThread,
     reconnect,
     sendMessage,
