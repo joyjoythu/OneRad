@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from app.api import create_app
-from app.api.agent import get_agent_graph, _unanswered_tool_call_ids
+from app.api.agent import get_agent_graph, _unanswered_tool_call_ids, _agent_config
 
 
 @pytest.fixture
@@ -650,3 +650,67 @@ def test_sync_payload_context_usage_defaults():
     payload_unknown = _sync_payload({"model": "some-other-model"}, running=False)
     assert payload_unknown["context_usage"] is None
     assert payload_unknown["context_window"] == 1_000_000
+
+
+def test_create_thread_with_auto_approve(client, app):
+    project = _create_project(client)
+    response = client.post(
+        f"/api/agent/threads?project_id={project['id']}",
+        json={"api_key": "", "llm_model": "deepseek-v4-pro", "auto_approve": True},
+    )
+    assert response.status_code == 201, response.text
+    thread_id = response.json()["thread_id"]
+    assert app.state.agent_auto_approve[thread_id] is True
+
+
+def test_thread_auto_approve_defaults_false(client, app):
+    project = _create_project(client)
+    thread_id = _create_thread(client, project["id"])["thread_id"]
+    assert app.state.agent_auto_approve[thread_id] is False
+
+
+def test_resume_thread_updates_auto_approve(client, app):
+    project = _create_project(client)
+    thread_id = _create_thread(client, project["id"])["thread_id"]
+
+    response = client.post(
+        f"/api/agent/threads/{thread_id}/resume",
+        json={"api_key": "", "llm_model": "deepseek-v4-pro", "auto_approve": True},
+    )
+    assert response.status_code == 200, response.text
+    assert app.state.agent_auto_approve[thread_id] is True
+
+
+def test_set_auto_approve(client, app):
+    project = _create_project(client)
+    thread_id = _create_thread(client, project["id"])["thread_id"]
+
+    response = client.put(
+        f"/api/agent/threads/{thread_id}/auto-approve", json={"enabled": True}
+    )
+    assert response.status_code == 200, response.text
+    assert response.json() == {"auto_approve": True}
+    assert app.state.agent_auto_approve[thread_id] is True
+
+    response = client.put(
+        f"/api/agent/threads/{thread_id}/auto-approve", json={"enabled": False}
+    )
+    assert response.status_code == 200, response.text
+    assert app.state.agent_auto_approve[thread_id] is False
+
+
+def test_set_auto_approve_thread_not_found(client):
+    response = client.put(
+        "/api/agent/threads/nonexistent/auto-approve", json={"enabled": True}
+    )
+    assert response.status_code == 404, response.text
+
+
+def test_agent_config_carries_auto_approve(client, app):
+    project = _create_project(client)
+    thread_id = _create_thread(client, project["id"])["thread_id"]
+    client.put(f"/api/agent/threads/{thread_id}/auto-approve", json={"enabled": True})
+
+    config = asyncio.run(_agent_config(thread_id, app))
+
+    assert config["configurable"]["auto_approve"] is True

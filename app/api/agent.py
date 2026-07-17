@@ -37,12 +37,19 @@ class CreateThreadRequest(BaseModel):
 
     api_key: str = ""
     llm_model: Literal["deepseek-v4-pro", "deepseek-v4-flash"] = "deepseek-v4-pro"
+    auto_approve: bool = False
 
 
 class UpdatePlanRequest(BaseModel):
     """Request body for replacing the pending plan on a thread."""
 
     plan: Dict[str, Any]
+
+
+class AutoApproveRequest(BaseModel):
+    """Request body for toggling auto-approve on a thread."""
+
+    enabled: bool
 
 
 class ThreadPatchRequest(BaseModel):
@@ -56,6 +63,7 @@ class LoadThreadRequest(BaseModel):
 
     api_key: str = ""
     llm_model: Literal["deepseek-v4-pro", "deepseek-v4-flash"] = "deepseek-v4-pro"
+    auto_approve: bool = False
 
 
 async def _run_store_sync(fn, *args):
@@ -86,6 +94,9 @@ async def _agent_config(thread_id: str, app) -> Dict[str, Any]:
             "thread_id": thread_id,
             "api_key": api_key,
             "llm_model": llm_model,
+            "auto_approve": getattr(app.state, "agent_auto_approve", {}).get(
+                thread_id, False
+            ),
         }
     }
 
@@ -303,6 +314,7 @@ async def create_thread(
     llm_model = payload.llm_model
     request.app.state.agent_api_keys[thread_id] = api_key
     request.app.state.agent_llm_models[thread_id] = llm_model
+    request.app.state.agent_auto_approve[thread_id] = payload.auto_approve
     initial_state = build_initial_state(project, api_key=api_key, llm_model=llm_model)
     await graph.aupdate_state(await _agent_config(thread_id, request.app), initial_state)
     await _run_store_sync(store.record_thread, project_id, thread_id, "", llm_model)
@@ -364,6 +376,7 @@ async def delete_thread(
         await _run_store_sync(store.delete_thread, thread_id)
         request.app.state.agent_api_keys.pop(thread_id, None)
         request.app.state.agent_llm_models.pop(thread_id, None)
+        request.app.state.agent_auto_approve.pop(thread_id, None)
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -402,6 +415,7 @@ async def resume_thread(
         )
     request.app.state.agent_api_keys[thread_id] = payload.api_key
     request.app.state.agent_llm_models[thread_id] = payload.llm_model
+    request.app.state.agent_auto_approve[thread_id] = payload.auto_approve
     snapshot = await graph.aget_state(await _agent_config(thread_id, request.app))
     payload_out = _sync_payload(
         snapshot.values,
@@ -409,6 +423,22 @@ async def resume_thread(
     )
     payload_out["thread_id"] = thread_id
     return payload_out
+
+
+@router.put("/threads/{thread_id}/auto-approve", response_model=Dict[str, Any])
+async def set_auto_approve(
+    thread_id: str,
+    payload: AutoApproveRequest,
+    request: Request,
+    store: ProjectStore = Depends(get_project_store),
+) -> Dict[str, Any]:
+    """Toggle auto-approve for a thread; applies from the next graph run."""
+    if await _run_store_sync(store.get_thread_meta, thread_id) is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="thread not found"
+        )
+    request.app.state.agent_auto_approve[thread_id] = payload.enabled
+    return {"auto_approve": payload.enabled}
 
 
 @router.post(
