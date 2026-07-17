@@ -32,6 +32,8 @@ export const useAgentStore = defineStore('agent', () => {
   const currentThread = ref<ThreadSummary | null>(null)
   // 智能体是否正在处理中（流式运行期间为 true），用于禁用输入并展示状态。
   const busy = ref(false)
+  // 自动审批：开启后后端跳过全部人工确认中断，直接执行挂起操作。
+  const autoApprove = ref(false)
   // 影像组学特征提取的实时进度（由后端节点线程推送，null 表示无提取在进行）。
   const radiomicsProgress = ref<RadiomicsProgress | null>(null)
   // 最近一次 LLM 调用的 token 用量与模型上下文窗口（null 表示尚无数据）。
@@ -131,6 +133,7 @@ export const useAgentStore = defineStore('agent', () => {
     const { thread_id } = await api.createThread(projectId, {
       api_key: apiKey,
       llm_model: llmModel,
+      auto_approve: autoApprove.value,
     })
     threadId.value = thread_id
     currentThread.value = {
@@ -169,6 +172,7 @@ export const useAgentStore = defineStore('agent', () => {
     const state = await api.resumeThread(threadIdToLoad, {
       api_key: apiKey,
       llm_model: llmModel,
+      auto_approve: autoApprove.value,
     })
     threadId.value = state.thread_id
     currentThread.value =
@@ -193,6 +197,7 @@ export const useAgentStore = defineStore('agent', () => {
     const { thread_id } = await api.createThread(projectId, {
       api_key: apiKey,
       llm_model: llmModel,
+      auto_approve: autoApprove.value,
     })
     threadId.value = thread_id
     currentThread.value = {
@@ -306,6 +311,19 @@ export const useAgentStore = defineStore('agent', () => {
     }
   }
 
+  async function setAutoApprove(enabled: boolean): Promise<void> {
+    const previous = autoApprove.value
+    autoApprove.value = enabled
+    if (!threadId.value) return
+    try {
+      await api.setAutoApprove(threadId.value, enabled)
+    } catch (err) {
+      // 回滚乐观更新；错误提示由 axios 拦截器统一 toast。
+      autoApprove.value = previous
+      throw err
+    }
+  }
+
   async function stop(): Promise<void> {
     if (!threadId.value) {
       throw new Error('No active agent thread')
@@ -354,12 +372,14 @@ export const useAgentStore = defineStore('agent', () => {
     threads,
     currentThread,
     busy,
+    autoApprove,
     ensureThread,
     reconnect,
     sendMessage,
     updatePlan,
     confirm,
     cancel,
+    setAutoApprove,
     stop,
     disconnect,
     resetThread,

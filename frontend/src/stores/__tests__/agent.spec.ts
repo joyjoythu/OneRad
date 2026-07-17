@@ -257,6 +257,7 @@ describe('useAgentStore', () => {
     expect(agentApi.createThread).toHaveBeenCalledWith('project-1', {
       api_key: 'sk-test',
       llm_model: 'deepseek-v4-flash',
+      auto_approve: false,
     })
     expect(store.threadId).toBe('thread-new')
     expect(store.currentThread).toEqual({
@@ -296,6 +297,7 @@ describe('useAgentStore', () => {
     expect(agentApi.resumeThread).toHaveBeenCalledWith('thread-load', {
       api_key: 'sk-test',
       llm_model: 'deepseek-v4-flash',
+      auto_approve: false,
     })
     expect(store.threadId).toBe('thread-load')
     expect(store.currentThread).toEqual({
@@ -608,5 +610,52 @@ describe('useAgentStore', () => {
 
     expect(store.currentThread?.id).toBe('thread-current')
     expect(store.currentThread?.title).toBe('Current')
+  })
+
+  describe('setAutoApprove', () => {
+    it('updates locally without an active thread', async () => {
+      const store = useAgentStore()
+
+      await store.setAutoApprove(true)
+
+      expect(store.autoApprove).toBe(true)
+      expect(vi.mocked(client.put)).not.toHaveBeenCalled()
+    })
+
+    it('sends the flag to the backend when a thread is active', async () => {
+      const store = useAgentStore()
+      await store.ensureThread('project-1', '', 'deepseek-v4-flash')
+      vi.mocked(client.put).mockResolvedValue({ data: { auto_approve: true } })
+
+      await store.setAutoApprove(true)
+
+      expect(client.put).toHaveBeenCalledWith('/agent/threads/thread-1/auto-approve', {
+        enabled: true,
+      })
+      expect(store.autoApprove).toBe(true)
+    })
+
+    it('rolls back on API failure', async () => {
+      const store = useAgentStore()
+      await store.ensureThread('project-1', '', 'deepseek-v4-flash')
+      vi.mocked(client.put).mockRejectedValue(new Error('boom'))
+
+      await expect(store.setAutoApprove(true)).rejects.toThrow('boom')
+
+      expect(store.autoApprove).toBe(false)
+    })
+
+    it('includes auto_approve when creating a thread', async () => {
+      const store = useAgentStore()
+      await store.setAutoApprove(true)
+
+      await store.createThread('project-1', 'sk-test', 'deepseek-v4-flash')
+
+      expect(client.post).toHaveBeenCalledWith(
+        '/agent/threads',
+        { api_key: 'sk-test', llm_model: 'deepseek-v4-flash', auto_approve: true },
+        { params: { project_id: 'project-1' } }
+      )
+    })
   })
 })

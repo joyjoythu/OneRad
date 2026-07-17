@@ -121,6 +121,7 @@ export interface AgentState {
 export interface CreateThreadRequest {
   api_key: string
   llm_model: string
+  auto_approve: boolean
 }
 
 export interface CreateThreadResponse {
@@ -148,6 +149,7 @@ export interface ThreadSummary {
 export interface LoadThreadRequest {
   api_key: string
   llm_model: string
+  auto_approve: boolean
 }
 
 export interface AgentEventCallbacks {
@@ -205,6 +207,17 @@ export const confirm = async (threadId: string): Promise<{ thread_id: string }> 
 
 export const cancel = async (threadId: string): Promise<{ thread_id: string }> => {
   const res = await client.post(`/agent/threads/${encodeURIComponent(threadId)}/cancel`)
+  return res.data
+}
+
+export const setAutoApprove = async (
+  threadId: string,
+  enabled: boolean
+): Promise<{ auto_approve: boolean }> => {
+  const res = await client.put(
+    `/agent/threads/${encodeURIComponent(threadId)}/auto-approve`,
+    { enabled }
+  )
   return res.data
 }
 
