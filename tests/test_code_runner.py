@@ -21,7 +21,7 @@ def test_classify_high_risk_network():
 
 def test_prepare_and_run_low_risk_script(tmp_path, monkeypatch):
     # 模拟项目目录和 venv
-    script_dir = tmp_path / ".agent_scripts"
+    script_dir = tmp_path / "agent_scripts"
     venv_bin = tmp_path / ".venv" / ("Scripts" if sys.platform == "win32" else "bin")
     venv_bin.mkdir(parents=True)
     python_exe = venv_bin / ("python.exe" if sys.platform == "win32" else "python")
@@ -38,6 +38,41 @@ def test_prepare_and_run_low_risk_script(tmp_path, monkeypatch):
     result = run_script(meta["script_path"], str(tmp_path))
     assert result["returncode"] == 0
     assert "ok" in result["stdout"]
+
+
+def test_prepare_script_uses_visible_dir_and_descriptive_name(tmp_path):
+    """脚本写入 Windows 可见的 agent_scripts/，文件名由描述+时间戳组成。"""
+    meta = prepare_script("print('ok')", "提取影像特征", str(tmp_path))
+    path = Path(meta["script_path"])
+    assert path.parent == tmp_path / "agent_scripts"
+    assert path.name.startswith("提取影像特征_")
+    assert path.suffix == ".py"
+
+
+def test_prepare_script_sanitizes_illegal_filename_chars(tmp_path):
+    """Windows 文件名非法字符与空白替换为下划线，不以点/空格结尾。"""
+    meta = prepare_script("print('ok')", 'a/b\\c:d*e?f"g<h>i|j k. ', str(tmp_path))
+    name = Path(meta["script_path"]).name
+    stem = Path(meta["script_path"]).stem
+    for ch in '\\/:*?"<>|':
+        assert ch not in name
+    assert " " not in stem
+    assert not stem.endswith(".")
+    assert "a_b_c_d_e_f_g_h_i_j_k" in stem
+
+
+def test_prepare_script_falls_back_when_description_blank(tmp_path):
+    meta = prepare_script("print('ok')", "  ", str(tmp_path))
+    assert Path(meta["script_path"]).name.startswith("script_")
+
+
+def test_prepare_script_collision_gets_unique_suffix(tmp_path):
+    """同秒同描述时追加短 id，避免覆盖同名脚本。"""
+    m1 = prepare_script("print(1)", "same", str(tmp_path))
+    m2 = prepare_script("print(2)", "same", str(tmp_path))
+    assert m1["script_path"] != m2["script_path"]
+    assert Path(m1["script_path"]).exists()
+    assert Path(m2["script_path"]).exists()
 
 
 def test_classify_high_risk_from_import():

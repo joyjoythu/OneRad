@@ -188,14 +188,25 @@ def find_venv_python(project_path: str) -> Path:
     return Path(sys.executable)
 
 
+def _slugify_description(description: str, max_length: int = 40) -> str:
+    """把脚本用途描述转成合法文件名片段：保留中文，非法字符与空白转为下划线。"""
+    slug = re.sub(r'[\\/:*?"<>|\x00-\x1f]+', "_", description)
+    slug = re.sub(r"\s+", "_", slug).strip("_. ")
+    return slug[:max_length].rstrip("_.") or "script"
+
+
 def prepare_script(code: str, description: str, project_path: str) -> Dict[str, Any]:
     sandbox_root = Path(project_path)
-    scripts_dir = sandbox_root / ".agent_scripts"
+    # agent_scripts 不带点号前缀：Windows 资源管理器默认可见，方便用户直接查看。
+    scripts_dir = sandbox_root / "agent_scripts"
     scripts_dir.mkdir(parents=True, exist_ok=True)
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    short_id = _short_id()
-    script_path = scripts_dir / f"{ts}_{short_id}.py"
+    slug = _slugify_description(description)
+    script_path = scripts_dir / f"{slug}_{ts}.py"
+    if script_path.exists():
+        # 同秒同描述：追加短 id 防覆盖。
+        script_path = scripts_dir / f"{slug}_{ts}_{_short_id()}.py"
     script_path.write_text(code, encoding="utf-8")
 
     risk_level = classify_risk(code)
