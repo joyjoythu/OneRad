@@ -1,5 +1,8 @@
 import asyncio
+import json
+import threading
 import time
+from contextlib import suppress
 
 import pytest
 
@@ -138,3 +141,52 @@ async def test_subscribe_receives_events_in_order_during_replay(bridge):
 
     results = await asyncio.gather(subscriber(), publisher())
     assert results[0] == list(range(1, 21))
+
+
+@pytest.mark.anyio
+async def test_publish_cancelled_mid_write_keeps_ids_unique_and_events(bridge):
+    """回归：发布者被取消时，其写入仍落库且事件 id 不复用。
+
+    旧实现从 store max 分配 id：被取消的写入尚未落库时，下一次发布会分到
+    相同 id，INSERT OR IGNORE 静默丢弃其中一个事件。
+    """
+    write1_started = threading.Event()
+    release_write1 = threading.Event()
+    write1_finished = threading.Event()
+    original_record = bridge.store.record_sse_event
+    first_call = {"done": False}
+
+    def blocking_record(scope, scope_id, event_id, data):
+        # Runs in a worker thread, hence threading.Event rather than asyncio.
+        if not first_call["done"]:
+            first_call["done"] = True
+            write1_started.set()
+            assert release_write1.wait(timeout=5)
+            try:
+                return original_record(scope, scope_id, event_id, data)
+            finally:
+                write1_finished.set()
+        return original_record(scope, scope_id, event_id, data)
+
+    bridge.store.record_sse_event = blocking_record
+
+    task_a = asyncio.create_task(bridge.publish("s", "id1", {"n": 1}))
+    assert await asyncio.to_thread(write1_started.wait, 2)
+
+    task_a.cancel()
+    with suppress(asyncio.CancelledError):
+        await task_a
+
+    # The abandoned write has not landed yet; this publish must still get a
+    # fresh id and its own write must complete.
+    id_b = await bridge.publish("s", "id1", {"n": 2})
+
+    release_write1.set()
+    assert await asyncio.to_thread(write1_finished.wait, 2)
+
+    events = bridge.store.list_sse_events("s", "id1", limit=10)
+    assert id_b == 2
+    assert [e["event_id"] for e in events] == [1, 2]
+    assert [json.loads(e["data"])["n"] for e in events] == [1, 2]
+    # In the fixed bridge this also awaits the abandoned pending write.
+    assert await bridge.next_event_id("s", "id1") == 3
