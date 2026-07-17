@@ -1,6 +1,6 @@
 # 聊天时间戳与 Agent 头像实现计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** 聊天气泡和历史会话列表显示时间（消息时间持久化在后端），assistant 消息显示机器人头像。
 
@@ -18,7 +18,7 @@
 - Modify: `app/api/agent.py`（imports 第 1-5 行；`_render_messages` 第 104-130 行；`_make_message` 第 178-188 行）
 - Test: `tests/test_api_agent.py`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `tests/test_api_agent.py` 第 13 行的导入改为：
 
@@ -61,12 +61,12 @@ def test_render_messages_omits_missing_timestamp():
     assert "timestamp" not in rendered[0]
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `pytest tests/test_api_agent.py::test_make_message_stamps_timestamp tests/test_api_agent.py::test_render_messages_includes_timestamp -v`
 Expected: FAIL（`_make_message` 未打标；`_render_messages` 输出无 timestamp 键）
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 `app/api/agent.py` imports 区域，在 `import uuid`（第 3 行）后加：
 
@@ -115,12 +115,12 @@ def _make_message(role: str, content: str) -> BaseMessage:
     )
 ```
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 Run: `pytest tests/test_api_agent.py::test_make_message_stamps_timestamp tests/test_api_agent.py::test_render_messages_includes_timestamp tests/test_api_agent.py::test_render_messages_omits_missing_timestamp -v`
 Expected: 3 PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/api/agent.py tests/test_api_agent.py
@@ -135,7 +135,7 @@ git commit -m "feat: 消息创建时打时间戳并在渲染时输出"
 - Modify: `app/api/agent.py`（新增函数；`_stream_agent` finally 第 251-255 行；`/stop` 端点第 621-640 行）
 - Test: `tests/test_api_agent.py`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `tests/test_api_agent.py` 第 13 行的导入再改为（追加 `_ensure_message_timestamps`）：
 
@@ -177,12 +177,12 @@ async def test_ensure_message_timestamps_stamps_missing_and_preserves_existing()
     datetime.fromisoformat(ts)
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `pytest tests/test_api_agent.py::test_ensure_message_timestamps_stamps_missing_and_preserves_existing -v`
 Expected: FAIL（ImportError: `_ensure_message_timestamps` 不存在）
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 在 `app/api/agent.py` 的 `_make_message` 之后新增：
 
@@ -249,7 +249,7 @@ async def _ensure_message_timestamps(graph, config: Dict[str, Any]) -> None:
         snapshot = await graph.aget_state(config)
 ```
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 Run: `pytest tests/test_api_agent.py::test_ensure_message_timestamps_stamps_missing_and_preserves_existing -v`
 Expected: PASS
@@ -259,7 +259,7 @@ Expected: PASS
 Run: `pytest tests/test_api_agent.py -v`
 Expected: 全部 PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/api/agent.py tests/test_api_agent.py
@@ -275,7 +275,7 @@ git commit -m "feat: 运行收尾为 AI/工具消息补打持久时间戳"
 - Create: `frontend/src/utils/__tests__/time.spec.ts`
 - Modify: `frontend/src/api/agent.ts:12`（`AgentMessage` 接口）
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 创建 `frontend/src/utils/__tests__/time.spec.ts`：
 
@@ -312,12 +312,12 @@ describe('formatMessageTime', () => {
 })
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run（在 `frontend/` 目录下）: `npx vitest run src/utils/__tests__/time.spec.ts`
 Expected: FAIL（`../time` 模块不存在）
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 创建 `frontend/src/utils/time.ts`：
 
@@ -348,12 +348,12 @@ export function formatMessageTime(iso: string): string {
   timestamp?: string
 ```
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 Run: `npx vitest run src/utils/__tests__/time.spec.ts`
 Expected: 3 PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add frontend/src/utils/time.ts frontend/src/utils/__tests__/time.spec.ts frontend/src/api/agent.ts
@@ -368,7 +368,7 @@ git commit -m "feat(frontend): 消息时间格式化工具与 AgentMessage.times
 - Create: `frontend/src/components/AgentAvatar.vue`
 - Create: `frontend/src/components/__tests__/AgentAvatar.spec.ts`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 创建 `frontend/src/components/__tests__/AgentAvatar.spec.ts`：
 
@@ -388,12 +388,12 @@ describe('AgentAvatar', () => {
 })
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `npx vitest run src/components/__tests__/AgentAvatar.spec.ts`
 Expected: FAIL（组件不存在）
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 创建 `frontend/src/components/AgentAvatar.vue`：
 
@@ -440,12 +440,12 @@ Expected: FAIL（组件不存在）
 
 （Element Plus 图标库没有机器人图标，故用内联 SVG 自绘：蓝底圆 + 白色机器人。）
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 Run: `npx vitest run src/components/__tests__/AgentAvatar.spec.ts`
 Expected: 1 PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add frontend/src/components/AgentAvatar.vue frontend/src/components/__tests__/AgentAvatar.spec.ts
@@ -460,7 +460,7 @@ git commit -m "feat(frontend): Agent 机器人头像组件"
 - Modify: `frontend/src/components/AgentChat.vue`（template 第 18-78 行；script imports 第 150-155 行；style 第 387-413 行）
 - Test: `frontend/src/components/__tests__/AgentChat.spec.ts`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 在 `frontend/src/components/__tests__/AgentChat.spec.ts` 的 `describe('AgentChat')` 内追加：
 
@@ -511,12 +511,12 @@ git commit -m "feat(frontend): Agent 机器人头像组件"
   })
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `npx vitest run src/components/__tests__/AgentChat.spec.ts`
 Expected: 新增 2 个用例 FAIL（`.message-time` / `.agent-avatar` 不存在），其余 PASS
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 template 中消息循环（第 18-78 行）整体替换为：
 
@@ -639,12 +639,12 @@ style 调整：
 }
 ```
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 Run: `npx vitest run src/components/__tests__/AgentChat.spec.ts`
 Expected: 全部 PASS（含原有用例）
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add frontend/src/components/AgentChat.vue frontend/src/components/__tests__/AgentChat.spec.ts
@@ -659,7 +659,7 @@ git commit -m "feat(frontend): 聊天气泡显示时间与 Agent 头像"
 - Modify: `frontend/src/components/ThreadList.vue`（template 第 40-43 行；script 第 65-81 行；style 第 209-227 行）
 - Test: `frontend/src/components/__tests__/ThreadList.spec.ts`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 在 `frontend/src/components/__tests__/ThreadList.spec.ts` 的 `describe('ThreadList')` 内追加：
 
@@ -676,12 +676,12 @@ git commit -m "feat(frontend): 聊天气泡显示时间与 Agent 头像"
 
 （mock 数据 `updated_at` 为 `'2026-01-02'` / `'2026-01-03'`，具体时分秒取决于运行时区，故用正则覆盖两种格式分支；精确格式由 time.spec.ts 保证。）
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `npx vitest run src/components/__tests__/ThreadList.spec.ts`
 Expected: 新用例 FAIL（`.thread-item-time` 不存在）
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 template 第 40-43 行 `.thread-item-content` 改为：
 
@@ -723,12 +723,12 @@ style 中，在 `.thread-item-title` 规则之后新增：
 }
 ```
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 Run: `npx vitest run src/components/__tests__/ThreadList.spec.ts`
 Expected: 全部 PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add frontend/src/components/ThreadList.vue frontend/src/components/__tests__/ThreadList.spec.ts
@@ -741,12 +741,12 @@ git commit -m "feat(frontend): 历史会话列表显示更新时间"
 
 **Files:** 无（仅运行验证）
 
-- [ ] **Step 1: 后端测试**
+- [x] **Step 1: 后端测试**
 
 Run: `pytest tests/test_api_agent.py tests/test_agent_graph.py -v`
 Expected: 全部 PASS
 
-- [ ] **Step 2: 前端全量测试 + 静态检查**
+- [x] **Step 2: 前端全量测试 + 静态检查**
 
 Run（在 `frontend/` 目录下）:
 
@@ -758,7 +758,7 @@ npm run type-check
 
 Expected: 全部测试 PASS；lint 无错误；type-check 无错误
 
-- [ ] **Step 3: 人工验收清单（启动应用目视确认）**
+- [x] **Step 3: 人工验收清单（启动应用目视确认）**
 
 - 发送一条消息：用户气泡与 AI 回复气泡下方各显示当天时间 `HH:MM`；AI 回复左侧有蓝底机器人头像。
 - 停止一次运行：补打的「已取消」工具消息也带时间。
