@@ -4,14 +4,15 @@ import time
 import uuid
 from datetime import datetime
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langgraph.types import Command
 
 from app.api import create_app
-from app.agent import create_agent_graph
+from app.agent import build_initial_state, create_agent_graph
 from app.api.agent import (
     get_agent_graph,
     _unanswered_tool_call_ids,
@@ -19,6 +20,7 @@ from app.api.agent import (
     _make_message,
     _render_messages,
     _ensure_message_timestamps,
+    _stream_agent,
 )
 
 
@@ -801,3 +803,92 @@ async def test_ensure_message_timestamps_stamps_missing_and_preserves_existing()
     ts = messages[1].additional_kwargs.get("timestamp")
     assert ts
     datetime.fromisoformat(ts)
+
+
+async def _run_interrupt_then_resume(tmp_path, action):
+    """真实图经 _stream_agent 跑到 human_review 中断（收尾补打在途），再按 action 恢复。
+
+    返回 (graph, config, 中断时的 snapshot)。mock 模式同 test_agent_graph.py。
+    """
+    project = {"path": str(tmp_path), "analysis": {"api_key": "fake", "model": "deepseek-v4-pro"}}
+    state = build_initial_state(project)
+    state["messages"] = [HumanMessage(content="list files")]
+
+    graph = create_agent_graph()
+    thread_id = f"ts-resume-{uuid.uuid4().hex[:8]}"
+    config = {"configurable": {"thread_id": thread_id}}
+    bridge = SimpleNamespace(publish=AsyncMock())
+    app = SimpleNamespace(
+        state=SimpleNamespace(
+            pipeline_tasks=set(),
+            active_agent_streams=set(),
+            agent_stream_tasks={},
+        )
+    )
+
+    with patch("app.agent.nodes.ChatOpenAI") as mock_llm_class:
+        mock_llm = MagicMock()
+        mock_llm.bind_tools.return_value = mock_llm
+        mock_llm.invoke.side_effect = [
+            AIMessage(
+                content="",
+                tool_calls=[{"name": "list_directory", "args": {"path": "."}, "id": "call_list"}],
+            ),
+            AIMessage(content="Done"),
+        ]
+        mock_llm_class.return_value = mock_llm
+
+        await _stream_agent(thread_id, graph, config, bridge, app, state)
+        interrupted = await graph.aget_state(config)
+        # 模拟生产 confirm/cancel 端点：Command(resume=...) 恢复同一线程
+        await _stream_agent(
+            thread_id, graph, config, bridge, app, Command(resume={"action": action})
+        )
+
+    return graph, config, interrupted
+
+
+@pytest.mark.anyio
+async def test_stream_backfill_preserves_interrupt_resume(tmp_path):
+    """收尾补打时间戳不得破坏中断后的 confirm 恢复语义（真实 checkpoint）。"""
+    graph, config, interrupted = await _run_interrupt_then_resume(tmp_path, "confirm")
+
+    # 中断于 human_review，且收尾补打已为运行产生的消息盖上时间戳
+    assert interrupted.values.get("interrupt_type") == "system_command"
+    assert interrupted.values["messages"]
+    for msg in interrupted.values["messages"]:
+        assert msg.additional_kwargs.get("timestamp")
+
+    # confirm 后运行真正恢复并完成：中断清除、工具结果补齐
+    final = await graph.aget_state(config)
+    assert final.values.get("interrupt_type") is None
+    tool_msgs = [
+        m
+        for m in final.values["messages"]
+        if isinstance(m, ToolMessage) and m.tool_call_id == "call_list"
+    ]
+    assert tool_msgs, "confirm 后应补齐 list_directory 的执行结果"
+    parsed = json.loads(tool_msgs[-1].content)
+    assert parsed.get("tool") == "list_directory"
+    assert "result" in parsed
+    for msg in final.values["messages"]:
+        assert msg.additional_kwargs.get("timestamp")
+
+
+@pytest.mark.anyio
+async def test_stream_backfill_preserves_interrupt_resume_cancel(tmp_path):
+    """收尾补打时间戳不得破坏中断后的 cancel 恢复语义（真实 checkpoint）。"""
+    graph, config, interrupted = await _run_interrupt_then_resume(tmp_path, "cancel")
+
+    assert interrupted.values.get("interrupt_type") == "system_command"
+
+    final = await graph.aget_state(config)
+    assert final.values.get("interrupt_type") is None
+    tool_msgs = [
+        m
+        for m in final.values["messages"]
+        if isinstance(m, ToolMessage) and m.tool_call_id == "call_list"
+    ]
+    assert tool_msgs, "cancel 后应补齐已取消的 ToolMessage"
+    parsed = json.loads(tool_msgs[-1].content)
+    assert parsed.get("cancelled") is True

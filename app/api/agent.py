@@ -13,6 +13,7 @@ from langchain_core.messages import (
     SystemMessage,
     ToolMessage,
 )
+from langgraph.errors import InvalidUpdateError
 from langgraph.types import Command
 from pydantic import BaseModel
 from starlette.responses import StreamingResponse
@@ -219,12 +220,17 @@ async def _ensure_message_timestamps(graph, config: Dict[str, Any]) -> None:
             kwargs["timestamp"] = _utc_now_iso()
             changed = True
     if changed:
-        # 显式指定 as_node：对未经节点执行写出的 state（如无 checkpoint 的
-        # 新线程），langgraph 无法推断更新来源，会报 "Ambiguous update"。
-        # call_llm 是图内固定存在的消息产出节点，用作写回归属。
-        await graph.aupdate_state(
-            config, {"messages": list(messages)}, as_node="call_llm"
-        )
+        # 优先裸更新：让 langgraph 依据 checkpoint 的 versions_seen 推断写回
+        # 归属。显式 as_node 会把更新伪装成该节点的写入，使 interrupt 处挂起
+        # 的任务被跳过，confirm/cancel 恢复静默失效（线程卡死在待确认状态）。
+        # 仅对未经任何节点执行的 input-only checkpoint（不可能有挂起中断），
+        # 裸更新因无法推断来源报 InvalidUpdateError，此时回退显式 as_node。
+        try:
+            await graph.aupdate_state(config, {"messages": list(messages)})
+        except InvalidUpdateError:
+            await graph.aupdate_state(
+                config, {"messages": list(messages)}, as_node="call_llm"
+            )
 
 
 def _unanswered_tool_call_ids(messages: List[Any]) -> List[str]:
