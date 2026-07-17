@@ -166,12 +166,16 @@ const selectedModel = computed({
 
 /** 工具输出超过该阈值（行数）后自动折叠。 */
 const TOOL_COLLAPSE_LINE_THRESHOLD = 10
+/** 工具输出超过该阈值（字符数）后同样折叠：后端把工具结果 json.dumps 成
+ * 单行字符串（换行转义为 \n），只数真实换行永远是一行，需按长度兜底。 */
+const TOOL_COLLAPSE_CHAR_THRESHOLD = 600
 /** 记录用户手动展开/收起的工具输出索引。 */
 const expandedToolIndexes = ref<Record<number, boolean>>({})
 
 function shouldCollapseTool(content?: string): boolean {
   if (!content) return false
-  return content.split('\n').length > TOOL_COLLAPSE_LINE_THRESHOLD
+  if (content.split('\n').length > TOOL_COLLAPSE_LINE_THRESHOLD) return true
+  return content.length > TOOL_COLLAPSE_CHAR_THRESHOLD
 }
 
 function isToolCollapsed(index: number, content?: string): boolean {

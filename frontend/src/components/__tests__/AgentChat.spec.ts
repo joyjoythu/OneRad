@@ -366,6 +366,30 @@ describe('AgentChat', () => {
     expect(wrapper.text()).not.toContain('等待确认')
   })
 
+  it('collapses long single-line tool output (e.g. JSON-encoded script result)', async () => {
+    // 后端把工具结果 json.dumps 成单行字符串（换行转义为 \n），
+    // 只按真实换行统计永远是一行，必须按字符数兜底折叠。
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.threadId = 'thread-1'
+    agentStore.messages = [
+      {
+        role: 'tool',
+        content: JSON.stringify({ stdout: 'x'.repeat(2000), returncode: 0 }),
+        tool_call_id: 'call-1',
+      },
+    ]
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    const content = wrapper.find('.message-content--tool')
+    expect(content.classes()).toContain('is-collapsed')
+    expect(wrapper.find('.tool-toggle button').exists()).toBe(true)
+  })
+
   it('does not show collapse toggle for short tool output', async () => {
     const projectStore = useProjectStore()
     projectStore.currentProject = mockProject()
