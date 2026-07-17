@@ -529,4 +529,49 @@ describe('AgentChat', () => {
 
     expect(wrapper.find('.el-switch').classes()).toContain('is-disabled')
   })
+
+  it('shows timestamp only under messages that have one', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    const now = new Date()
+    const iso = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      8,
+      30,
+    ).toISOString()
+    agentStore.messages = [
+      { role: 'user', content: 'hi', timestamp: iso },
+      { role: 'assistant', content: 'hello' },
+    ]
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    const times = wrapper.findAll('.message-time')
+    expect(times).toHaveLength(1)
+    expect(times[0].text()).toBe('08:30')
+  })
+
+  it('renders avatar for assistant messages only', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.messages = [
+      { role: 'user', content: 'hi' },
+      { role: 'assistant', content: 'hello' },
+    ]
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    expect(wrapper.findAll('.agent-avatar')).toHaveLength(1)
+    const rows = wrapper.findAll('.message-row')
+    expect(rows[0].find('.agent-avatar').exists()).toBe(false)
+    expect(rows[1].find('.agent-avatar').exists()).toBe(true)
+  })
 })

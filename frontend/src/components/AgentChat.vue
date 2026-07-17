@@ -20,59 +20,68 @@
           :key="index"
           :class="['message-row', `message-row--${message.role}`]"
         >
-          <div
-            :class="[
-              'message-bubble',
-              `message-bubble--${message.role}`,
-            ]"
-          >
+          <AgentAvatar
+            v-if="message.role === 'assistant'"
+            class="message-avatar"
+          />
+          <div :class="['message-main', `message-main--${message.role}`]">
             <div
-              v-if="message.role === 'tool'"
-              class="message-tool-call"
+              :class="[
+                'message-bubble',
+                `message-bubble--${message.role}`,
+              ]"
             >
-              <el-tag size="small" type="info" effect="plain">
-                工具调用
-              </el-tag>
-            </div>
-            <div
-              v-else-if="toolCallNames(message)"
-              class="message-tool-call"
-            >
-              <el-tag size="small" type="warning" effect="plain">
-                调用工具：{{ toolCallNames(message) }}
-              </el-tag>
-            </div>
-            <div
-              v-if="message.content"
-              class="message-content"
-              :class="{
-                'message-content--tool': message.role === 'tool',
-                'is-collapsed':
-                  message.role === 'tool' &&
-                  isToolCollapsed(index, message.content),
-              }"
-            >
-              {{ message.content }}
-            </div>
-            <div
-              v-if="
-                message.role === 'tool' &&
-                shouldCollapseTool(message.content)
-              "
-              class="tool-toggle"
-            >
-              <el-button
-                link
-                size="small"
-                :aria-label="
-                  isToolCollapsed(index, message.content)
-                    ? '展开工具输出'
-                    : '收起工具输出'
-                "
-                @click="toggleTool(index, message.content)"
+              <div
+                v-if="message.role === 'tool'"
+                class="message-tool-call"
               >
-                {{ isToolCollapsed(index, message.content) ? '展开' : '收起' }}
-              </el-button>
+                <el-tag size="small" type="info" effect="plain">
+                  工具调用
+                </el-tag>
+              </div>
+              <div
+                v-else-if="toolCallNames(message)"
+                class="message-tool-call"
+              >
+                <el-tag size="small" type="warning" effect="plain">
+                  调用工具：{{ toolCallNames(message) }}
+                </el-tag>
+              </div>
+              <div
+                v-if="message.content"
+                class="message-content"
+                :class="{
+                  'message-content--tool': message.role === 'tool',
+                  'is-collapsed':
+                    message.role === 'tool' &&
+                    isToolCollapsed(index, message.content),
+                }"
+              >
+                {{ message.content }}
+              </div>
+              <div
+                v-if="
+                  message.role === 'tool' &&
+                  shouldCollapseTool(message.content)
+                "
+                class="tool-toggle"
+              >
+                <el-button
+                  link
+                  size="small"
+                  :aria-label="
+                    isToolCollapsed(index, message.content)
+                      ? '展开工具输出'
+                      : '收起工具输出'
+                  "
+                  @click="toggleTool(index, message.content)"
+                >
+                  {{ isToolCollapsed(index, message.content) ? '展开' : '收起' }}
+                </el-button>
+              </div>
+            </div>
+            <div v-if="message.timestamp" class="message-time">
+              {{ formatMessageTime(message.timestamp) }}
             </div>
           </div>
         </div>
@@ -153,6 +162,8 @@ import { useAgentStore } from '@/stores/agent'
 import { useProjectStore } from '@/stores/project'
 import { DEFAULT_AGENT_MODEL } from '@/api/agent'
 import type { AgentMessage } from '@/api/agent'
+import AgentAvatar from './AgentAvatar.vue'
+import { formatMessageTime } from '@/utils/time'
 
 const agentStore = useAgentStore()
 const projectStore = useProjectStore()
@@ -384,8 +395,38 @@ defineExpose({ clearInput })
   justify-content: center;
 }
 
-.message-bubble {
+.message-main {
+  display: flex;
+  flex-direction: column;
   max-width: 80%;
+}
+
+.message-main--tool {
+  max-width: 90%;
+}
+
+.message-main--user {
+  align-items: flex-end;
+}
+
+.message-main--assistant {
+  align-items: flex-start;
+}
+
+.message-avatar {
+  margin-right: 0.5rem;
+  margin-top: 2px;
+}
+
+.message-time {
+  margin-top: 0.25rem;
+  padding: 0 0.25rem;
+  font-size: 0.75rem;
+  line-height: 1.2;
+  color: #909399;
+}
+
+.message-bubble {
   padding: 0.75rem 1rem;
   border-radius: 8px;
   line-height: 1.5;
@@ -405,7 +446,6 @@ defineExpose({ clearInput })
 }
 
 .message-bubble--tool {
-  max-width: 90%;
   background-color: #f4f4f5;
   color: #606266;
   font-size: 0.875rem;

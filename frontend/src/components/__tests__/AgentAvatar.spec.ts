@@ -8,6 +8,7 @@ describe('AgentAvatar', () => {
     const avatar = wrapper.find('.agent-avatar')
     expect(avatar.exists()).toBe(true)
     expect(avatar.attributes('role')).toBe('img')
+    expect(avatar.attributes('aria-label')).toBe('智能体头像')
     expect(wrapper.find('svg').exists()).toBe(true)
   })
 })
