@@ -199,7 +199,8 @@ def test_get_missing_project_returns_404(client, temp_db):
     assert response.status_code == 404
 
 
-def test_update_config_does_not_persist_api_key(client, temp_db):
+def test_update_config_persists_api_key(client, temp_db):
+    """api_key 明文持久化到 project.yaml，重开项目后自动带回，无需重复粘贴。"""
     store, root = temp_db
     project = store.create_project("A", str(root / "a"), "")
     response = client.put(
@@ -219,7 +220,12 @@ def test_update_config_does_not_persist_api_key(client, temp_db):
     yaml_path = Path(project["path"]) / "project.yaml"
     with open(yaml_path, "r", encoding="utf-8") as f:
         data = yaml.safe_load(f)
-    assert data["analysis"]["api_key"] == ""
+    assert data["analysis"]["api_key"] == "super-secret"
+
+    # 重新加载项目（等价于刷新页面）后 api_key 仍然可见。
+    reload = client.get(f"/api/projects/{project['id']}")
+    assert reload.status_code == 200
+    assert reload.json()["analysis"]["api_key"] == "super-secret"
 
 
 def test_update_config_unifies_model_and_analysis_model(client, temp_db):

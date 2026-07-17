@@ -106,12 +106,14 @@ describe('useProjectStore', () => {
     expect(store.currentConfig?.modality).toBe('CT')
   })
 
-  it('preserves api_key in currentConfig after saving since it is not persisted', async () => {
-    const original = mockProject('1')
-    vi.mocked(api.updateConfig).mockResolvedValue(original)
+  it('uses the persisted api_key from the server response after saving', async () => {
+    // api_key 现在随 project.yaml 持久化，保存后直接使用后端返回的配置。
+    const persisted = mockProject('1')
+    persisted.analysis = { ...persisted.analysis, api_key: 'secret-key' }
+    vi.mocked(api.updateConfig).mockResolvedValue(persisted)
 
     const store = useProjectStore()
-    store.projects = [original]
+    store.projects = [mockProject('1')]
     store.selectProject('1')
     const cfg = { ...store.currentConfig!, api_key: 'secret-key' }
 
