@@ -620,7 +620,7 @@ async def stop_stream(
 async def thread_events(
     thread_id: str,
     request: Request,
-    last_event_id: int = Query(0, alias="last_event_id"),
+    last_event_id: Optional[int] = Query(None, alias="last_event_id"),
     graph=Depends(get_agent_graph),
 ) -> StreamingResponse:
     """Stream agent events for a thread as server-sent events."""
@@ -632,6 +632,17 @@ async def thread_events(
         )
 
     bridge = get_bridge(request)
+
+    # 默认只订阅新事件：当前完整状态由 resume/get 接口返回，全量回放历史
+    # 快照会让前端把过期中间状态逐个重放（长历史时界面从头滚动加载）。
+    # 仅显式传 last_event_id（或 EventSource 自动重连携带 Last-Event-ID 头）
+    # 时才回放其后的历史事件。
+    if last_event_id is None:
+        header = request.headers.get("last-event-id")
+        if header and header.isdigit():
+            last_event_id = int(header)
+    if last_event_id is None:
+        last_event_id = await bridge.next_event_id("agent", thread_id) - 1
 
     async def event_generator():
         queue: asyncio.Queue = await bridge.subscribe(

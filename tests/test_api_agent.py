@@ -221,6 +221,85 @@ async def test_sse_bridge_receives_agent_events(app, client):
     assert item["data"] == {"hello": "world"}
 
 
+def _publish_two_run_events(client, app, thread_id):
+    """通过 mock graph 让后台流式任务发布两个 SSE 事件（operation_log 递增）。"""
+    async def fake_astream(input_value=None, config=None, stream_mode=None):
+        yield {
+            "messages": [],
+            "interrupt_type": None,
+            "operation_log": ["started"],
+        }
+        yield {
+            "messages": [],
+            "interrupt_type": None,
+            "operation_log": ["started", "done"],
+        }
+
+    mock_graph = AsyncMock()
+    mock_graph.aget_state = AsyncMock(
+        return_value=SimpleNamespace(values={"interrupt_type": None})
+    )
+    mock_graph.astream = fake_astream
+    app.dependency_overrides[get_agent_graph] = lambda: mock_graph
+
+    response = client.post(
+        f"/api/agent/threads/{thread_id}/messages",
+        json={"role": "user", "content": "hello"},
+    )
+    assert response.status_code == 202, response.text
+    # 等待后台任务发布完事件并退出。
+    time.sleep(0.5)
+
+
+def test_events_stream_defaults_to_live_only(client, app):
+    """新订阅默认不回放历史快照：当前完整状态已由 resume/get 接口返回，
+    全量回放会让前端把过期中间状态逐个重放（长历史时界面从头滚动加载）。"""
+    project = _create_project(client)
+    thread_id = _create_thread(client, project["id"])["thread_id"]
+    _publish_two_run_events(client, app, thread_id)
+
+    with client.stream("GET", f"/api/agent/threads/{thread_id}/events") as response:
+        assert response.status_code == 200
+        body = "".join(response.iter_text())
+
+    assert "event: agent\n" not in body
+    assert "event: agent_end" in body
+
+
+def test_events_stream_replays_with_explicit_last_event_id(client, app):
+    """显式传 last_event_id 时仍回放其后的历史事件（断线续传场景）。"""
+    project = _create_project(client)
+    thread_id = _create_thread(client, project["id"])["thread_id"]
+    _publish_two_run_events(client, app, thread_id)
+
+    with client.stream(
+        "GET", f"/api/agent/threads/{thread_id}/events?last_event_id=1"
+    ) as response:
+        assert response.status_code == 200
+        body = "".join(response.iter_text())
+
+    assert body.count("event: agent\n") == 1
+    assert '"done"' in body
+
+
+def test_events_stream_replays_with_last_event_id_header(client, app):
+    """EventSource 自动重连通过 Last-Event-ID 头续传历史事件。"""
+    project = _create_project(client)
+    thread_id = _create_thread(client, project["id"])["thread_id"]
+    _publish_two_run_events(client, app, thread_id)
+
+    with client.stream(
+        "GET",
+        f"/api/agent/threads/{thread_id}/events",
+        headers={"Last-Event-ID": "1"},
+    ) as response:
+        assert response.status_code == 200
+        body = "".join(response.iter_text())
+
+    assert body.count("event: agent\n") == 1
+    assert '"done"' in body
+
+
 def test_send_message_conflict_while_streaming(client, app):
     """流式运行进行中发送新消息应返回 409，避免并发运行破坏消息历史。"""
     project = _create_project(client)

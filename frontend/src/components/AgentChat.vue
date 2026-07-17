@@ -78,9 +78,15 @@
         </div>
       </div>
 
-      <div v-if="statusText" class="chat-status" role="status">
-        <el-icon class="is-loading"><Loading /></el-icon>
-        <span>{{ statusText }}</span>
+      <div
+        class="chat-status"
+        :class="{ 'chat-status--idle': !statusText }"
+        role="status"
+      >
+        <template v-if="statusText">
+          <el-icon class="is-loading"><Loading /></el-icon>
+          <span>{{ statusText }}</span>
+        </template>
       </div>
 
       <div class="message-input-area">
@@ -408,9 +414,18 @@ defineExpose({ clearInput })
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  /* 固定占位高度：状态栏出现/消失不再改变消息列表高度，
+     避免贴底滚动时内容被挤压回弹。 */
+  height: calc(0.875rem * 1.5 + 0.5rem);
   padding: 0.25rem 0.5rem;
+  box-sizing: border-box;
   color: #909399;
   font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.chat-status--idle {
+  visibility: hidden;
 }
 
 .message-input-area {

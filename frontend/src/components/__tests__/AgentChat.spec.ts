@@ -252,6 +252,26 @@ describe('AgentChat', () => {
     expect(stopButton).toBeUndefined()
   })
 
+  it('keeps the status bar mounted but hidden when idle to avoid layout shift', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.threadId = 'thread-1'
+    agentStore.messages = [{ role: 'user', content: 'hi' }]
+    agentStore.busy = false
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    // 状态栏必须常驻占位（仅隐藏），否则出现/消失会改变消息列表高度，
+    // 导致贴底滚动时内容被挤压回弹。
+    const status = wrapper.find('.chat-status')
+    expect(status.exists()).toBe(true)
+    expect(status.classes()).toContain('chat-status--idle')
+    expect(status.text()).not.toContain('正在思考')
+  })
+
   it('shows a thinking indicator while the agent is busy', async () => {
     const projectStore = useProjectStore()
     projectStore.currentProject = mockProject()

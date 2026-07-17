@@ -104,6 +104,20 @@ describe('useAgentStore', () => {
     expect(store.busy).toBe(false)
   })
 
+  it('syncs the final state from the server when the stream ends', async () => {
+    // SSE 只推订阅后的新事件，订阅空窗内可能漏事件；
+    // agent_end 时必须同步一次最终状态保证收敛。
+    const store = useAgentStore()
+    await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')
+    await store.sendMessage('Hello')
+    vi.mocked(client.get).mockClear()
+
+    const es = MockEventSource.instances[0]
+    es.emit('agent_end', {})
+
+    expect(client.get).toHaveBeenCalledWith('/agent/threads/thread-1')
+  })
+
   it('sendMessage rolls back the optimistic message and clears busy on API failure', async () => {
     const store = useAgentStore()
     await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')

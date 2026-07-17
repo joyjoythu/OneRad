@@ -242,6 +242,9 @@ export const useAgentStore = defineStore('agent', () => {
         // 本轮流式运行结束（正常完成或在中断处暂停）。
         busy.value = false
         radiomicsProgress.value = null
+        // SSE 只推订阅后的新事件；订阅空窗内漏掉的事件没有回放兜底，
+        // 流结束时同步一次最终状态保证收敛。
+        void syncThread()
       },
       onError: () => {
         disconnect()
@@ -255,6 +258,8 @@ export const useAgentStore = defineStore('agent', () => {
     }
     busy.value = true
     messages.value.push({ role, content })
+    // 先订阅再发起运行，避免漏掉运行初期发布的事件。
+    connect()
     try {
       await api.sendMessage(threadId.value, role, content)
     } catch (err) {
@@ -263,7 +268,6 @@ export const useAgentStore = defineStore('agent', () => {
       busy.value = false
       throw err
     }
-    connect()
   }
 
   async function updatePlan(plan: PendingPlan): Promise<void> {
@@ -279,13 +283,13 @@ export const useAgentStore = defineStore('agent', () => {
       throw new Error('No active agent thread')
     }
     busy.value = true
+    connect()
     try {
       await api.confirm(threadId.value)
     } catch (err) {
       busy.value = false
       throw err
     }
-    connect()
   }
 
   async function cancel(): Promise<void> {
@@ -293,13 +297,13 @@ export const useAgentStore = defineStore('agent', () => {
       throw new Error('No active agent thread')
     }
     busy.value = true
+    connect()
     try {
       await api.cancel(threadId.value)
     } catch (err) {
       busy.value = false
       throw err
     }
-    connect()
   }
 
   async function stop(): Promise<void> {
