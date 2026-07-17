@@ -212,6 +212,8 @@ async def _ensure_message_timestamps(graph, config: Dict[str, Any]) -> None:
         return
     messages = snapshot.values.get("messages") or []
     changed = False
+    # AsyncSqliteSaver 返回反序列化副本，原地修改安全；即使后续写回失败，
+    # 补打也是幂等的，重新执行无副作用。
     for msg in messages:
         if isinstance(msg, dict):
             continue
@@ -294,14 +296,17 @@ async def _stream_agent(
         )
         raise
     finally:
-        # 运行收尾（正常/异常/取消）统一补打本轮新消息的时间戳；
-        # 补打失败不影响清理。
-        with suppress(Exception):
-            await _ensure_message_timestamps(graph, config)
-        app.state.active_agent_streams.discard(thread_id)
-        app.state.pipeline_tasks.discard(task)
-        app.state.agent_stream_tasks.pop(thread_id, None)
-        agent_runtime.unregister(thread_id)
+        # 运行收尾（正常/异常/取消）统一补打本轮新消息的时间戳。
+        # 内层 finally 保证清理无条件执行：补打期间被再次取消
+        # （CancelledError 不受 suppress(Exception) 拦截）也不会跳过清理。
+        try:
+            with suppress(Exception):
+                await _ensure_message_timestamps(graph, config)
+        finally:
+            app.state.active_agent_streams.discard(thread_id)
+            app.state.pipeline_tasks.discard(task)
+            app.state.agent_stream_tasks.pop(thread_id, None)
+            agent_runtime.unregister(thread_id)
 
 
 async def _start_stream(
@@ -686,7 +691,9 @@ async def stop_stream(
                 "operation_log": ["用户停止了当前任务"],
             },
         )
-        await _ensure_message_timestamps(graph, config)
+        # 补打同样是 best-effort：失败不应把已成功的 stop 变成 500
+        with suppress(Exception):
+            await _ensure_message_timestamps(graph, config)
         snapshot = await graph.aget_state(config)
 
     bridge = get_bridge(request)

@@ -2,6 +2,7 @@ import asyncio
 import json
 import time
 import uuid
+from contextlib import suppress
 from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -892,3 +893,45 @@ async def test_stream_backfill_preserves_interrupt_resume_cancel(tmp_path):
     assert tool_msgs, "cancel 后应补齐已取消的 ToolMessage"
     parsed = json.loads(tool_msgs[-1].content)
     assert parsed.get("cancelled") is True
+
+
+@pytest.mark.anyio
+async def test_stream_cleanup_runs_when_backfill_cancelled():
+    """补打挂起期间任务被再次取消（CancelledError 不受 suppress(Exception) 拦截），
+    清理也必须无条件执行，否则线程永远占住 active_agent_streams，后续发送全 409。
+    """
+    backfill_started = asyncio.Event()
+
+    async def empty_astream(input_value=None, config=None, stream_mode=None):
+        if False:
+            yield {}
+
+    async def blocking_aget_state(config):
+        backfill_started.set()
+        await asyncio.Event().wait()  # 永不就绪，模拟补打在读取 checkpoint 处挂起
+
+    graph = SimpleNamespace(astream=empty_astream, aget_state=blocking_aget_state)
+    thread_id = f"ts-cancel-{uuid.uuid4().hex[:8]}"
+    config = {"configurable": {"thread_id": thread_id}}
+    bridge = SimpleNamespace(publish=AsyncMock())
+    app = SimpleNamespace(
+        state=SimpleNamespace(
+            pipeline_tasks=set(),
+            active_agent_streams={thread_id},
+            agent_stream_tasks={},
+        )
+    )
+
+    task = asyncio.create_task(
+        _stream_agent(thread_id, graph, config, bridge, app, {"messages": []})
+    )
+    # 等任务确实挂进补打的 aget_state 再取消，避免时序猜测
+    await asyncio.wait_for(backfill_started.wait(), timeout=2)
+    task.cancel()
+    with suppress(asyncio.CancelledError):
+        await task
+
+    assert task.done()
+    assert thread_id not in app.state.active_agent_streams
+    assert not app.state.pipeline_tasks
+    assert thread_id not in app.state.agent_stream_tasks
