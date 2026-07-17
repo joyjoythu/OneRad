@@ -164,7 +164,7 @@ def test_load_project_degrades_when_config_read_stalls(temp_db, monkeypatch):
     store.save_project_config(p["id"], {**store._default_analysis(), "modality": "ct"})
 
     def stall(_self, _path):
-        time.sleep(30)
+        time.sleep(3)
         return store._default_analysis()
 
     monkeypatch.setattr(projects_module.ProjectStore, "_read_analysis_file", stall)
