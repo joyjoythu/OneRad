@@ -199,6 +199,25 @@ def _make_message(role: str, content: str) -> BaseMessage:
     )
 
 
+async def _aupdate_state_preserving_resume(
+    graph, config: Dict[str, Any], values: Dict[str, Any]
+) -> None:
+    """写回 graph state：优先裸更新，保留 interrupt 恢复语义。
+
+    显式 as_node 会把更新伪装成该节点的写入，使 interrupt 处挂起的任务被
+    跳过，confirm/cancel 恢复静默失效。裸更新让 langgraph 依据 checkpoint
+    的 versions_seen 推断归属；仅对未经任何节点执行的 input-only
+    checkpoint（不可能有挂起中断）裸更新抛 InvalidUpdateError，此时回退
+    显式 as_node="__start__"：其 writer 是纯 ChannelWrite，不执行任何
+    分支函数（as_node="call_llm" 会连带执行 should_continue，在空消息
+    历史上 IndexError），且触发痕迹与 create_thread 的播种写入一致。
+    """
+    try:
+        await graph.aupdate_state(config, values)
+    except InvalidUpdateError:
+        await graph.aupdate_state(config, values, as_node="__start__")
+
+
 async def _ensure_message_timestamps(graph, config: Dict[str, Any]) -> None:
     """为 state 中缺少 timestamp 的消息补打当前 UTC 时间并写回 checkpoint。
 
@@ -222,17 +241,9 @@ async def _ensure_message_timestamps(graph, config: Dict[str, Any]) -> None:
             kwargs["timestamp"] = _utc_now_iso()
             changed = True
     if changed:
-        # 优先裸更新：让 langgraph 依据 checkpoint 的 versions_seen 推断写回
-        # 归属。显式 as_node 会把更新伪装成该节点的写入，使 interrupt 处挂起
-        # 的任务被跳过，confirm/cancel 恢复静默失效（线程卡死在待确认状态）。
-        # 仅对未经任何节点执行的 input-only checkpoint（不可能有挂起中断），
-        # 裸更新因无法推断来源报 InvalidUpdateError，此时回退显式 as_node。
-        try:
-            await graph.aupdate_state(config, {"messages": list(messages)})
-        except InvalidUpdateError:
-            await graph.aupdate_state(
-                config, {"messages": list(messages)}, as_node="call_llm"
-            )
+        await _aupdate_state_preserving_resume(
+            graph, config, {"messages": list(messages)}
+        )
 
 
 def _unanswered_tool_call_ids(messages: List[Any]) -> List[str]:
@@ -560,7 +571,9 @@ async def update_plan(
     """Update the pending plan on a thread without running the graph."""
     config = await _agent_config(thread_id, request.app)
     try:
-        await graph.aupdate_state(config, {"pending_plan": payload.plan})
+        await _aupdate_state_preserving_resume(
+            graph, config, {"pending_plan": payload.plan}
+        )
         snapshot = await graph.aget_state(config)
     except KeyError:
         raise HTTPException(

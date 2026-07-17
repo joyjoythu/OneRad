@@ -935,3 +935,21 @@ async def test_stream_cleanup_runs_when_backfill_cancelled():
     assert thread_id not in app.state.active_agent_streams
     assert not app.state.pipeline_tasks
     assert thread_id not in app.state.agent_stream_tasks
+
+
+def test_update_plan_on_fresh_thread(client):
+    """回归：全新会话（尚未运行）更新计划不应 500。
+
+    新鲜 checkpoint 未经任何节点执行（input-only），裸 aupdate_state 会抛
+    InvalidUpdateError；修复后走回退路径正常写入。
+    """
+    project = _create_project(client)
+    thread_id = _create_thread(client, project['id'])["thread_id"]
+
+    plan = {"steps": [{"title": "步骤1", "description": "测试计划"}]}
+    response = client.put(
+        f"/api/agent/threads/{thread_id}/plan",
+        json={"plan": plan},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["pending_plan"] == plan
