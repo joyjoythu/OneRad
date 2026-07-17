@@ -3,8 +3,8 @@
     <header class="app-header">
       <h1>OneRad</h1>
       <nav class="app-nav">
-        <router-link to="/" exact-active-class="active">分析</router-link>
-        <router-link to="/agent" exact-active-class="active">Agent</router-link>
+        <router-link to="/" exact-active-class="active">Agent</router-link>
+        <router-link to="/settings" exact-active-class="active">设置</router-link>
       </nav>
     </header>
     <div class="app-body">
