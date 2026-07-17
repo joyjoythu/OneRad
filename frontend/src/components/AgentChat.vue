@@ -219,8 +219,12 @@ const inputPlaceholder = computed(() => {
   return '请输入消息，Enter 发送，Shift+Enter 换行'
 })
 
-function handleAutoApproveChange(value: string | number | boolean): void {
-  void agentStore.setAutoApprove(Boolean(value))
+async function handleAutoApproveChange(value: string | number | boolean): Promise<void> {
+  try {
+    await agentStore.setAutoApprove(Boolean(value))
+  } catch {
+    // 错误已由 axios 拦截器统一提示；store 已回滚开关状态。
+  }
 }
 
 // 根据运行状态推导用户可见的状态文案。
