@@ -87,4 +87,13 @@ describe('ThreadList', () => {
     expect(wrapper.find('.thread-list-items').exists()).toBe(true)
     expect(wrapper.classes()).not.toContain('thread-list--collapsed')
   })
+
+  it('renders updated time for each thread', () => {
+    const wrapper = mountThreadList({ threads, currentThreadId: null })
+    const times = wrapper.findAll('.thread-item-time')
+    expect(times).toHaveLength(2)
+    for (const t of times) {
+      expect(t.text()).toMatch(/^\d{2}:\d{2}$|^\d{2}-\d{2} \d{2}:\d{2}$/)
+    }
+  })
 })

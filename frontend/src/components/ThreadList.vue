@@ -39,7 +39,12 @@
         >
           <div class="thread-item-content">
             <el-icon class="thread-item-icon"><ChatDotRound /></el-icon>
-            <span class="thread-item-title">{{ thread.title || '未命名会话' }}</span>
+            <div class="thread-item-text">
+              <span class="thread-item-title">{{ thread.title || '未命名会话' }}</span>
+              <span v-if="threadTime(thread)" class="thread-item-time">
+                {{ threadTime(thread) }}
+              </span>
+            </div>
           </div>
           <div class="thread-item-actions">
             <el-button
@@ -73,6 +78,7 @@ import {
 } from '@element-plus/icons-vue'
 import { ElMessageBox } from 'element-plus'
 import type { ThreadSummary } from '@/api/agent'
+import { formatMessageTime } from '@/utils/time'
 
 defineProps<{
   threads: ThreadSummary[]
@@ -87,6 +93,10 @@ const emit = defineEmits<{
   delete: [threadId: string]
   'toggle-collapse': []
 }>()
+
+function threadTime(thread: ThreadSummary): string {
+  return formatMessageTime(thread.updated_at || thread.created_at)
+}
 
 function handleSelect(threadId: string): void {
   emit('select', threadId)
@@ -224,6 +234,18 @@ async function handleDelete(thread: ThreadSummary): Promise<void> {
   white-space: nowrap;
   color: #303133;
   font-size: 0.875rem;
+}
+
+.thread-item-text {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.thread-item-time {
+  font-size: 0.75rem;
+  color: #909399;
+  white-space: nowrap;
 }
 
 .thread-item-actions {
