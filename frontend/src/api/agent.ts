@@ -44,7 +44,7 @@ export interface PendingScript {
   tool_call_id: string
   code: string
   risk_level: 'low' | 'medium' | 'high'
-  explanation: string
+  description: string
 }
 
 export interface RadiomicsProgress {

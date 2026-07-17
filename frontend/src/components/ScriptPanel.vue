@@ -9,11 +9,11 @@
       </template>
 
       <div v-if="script" class="script-body">
-        <pre class="script-code" tabindex="0"><code>{{ script.code }}</code></pre>
+        <pre class="script-code" tabindex="0"><code>{{ script.code || '脚本内容不可用' }}</code></pre>
 
-        <div v-if="script.explanation" class="script-explanation">
+        <div v-if="script.description" class="script-explanation">
           <div class="script-section-title">说明</div>
-          <p>{{ script.explanation }}</p>
+          <p>{{ script.description }}</p>
         </div>
 
         <div class="script-actions">
