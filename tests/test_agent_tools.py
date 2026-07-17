@@ -62,6 +62,18 @@ def test_execute_python_script_returns_low_pending(tmp_path):
     assert data["script"]["risk_level"] == "low"
 
 
+def test_execute_python_script_pending_includes_code_and_description(tmp_path):
+    fake_llm = MagicMock()
+    tools = build_tools(str(tmp_path), fake_llm)
+    code = "print('hello from agent tool')"
+    result = tools["execute_python_script"].invoke(
+        {"description": "low risk test", "code": code}
+    )
+    data = json.loads(result)
+    assert data["script"]["code"] == code
+    assert data["script"]["description"] == "low risk test"
+
+
 def test_discover_radiomics_pairs_tool_exists(tmp_path):
     fake_llm = MagicMock()
     tools = build_tools(str(tmp_path), fake_llm)

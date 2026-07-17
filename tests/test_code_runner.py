@@ -241,3 +241,11 @@ def test_run_script_header_does_not_expose_os(tmp_path, monkeypatch):
     assert result["success"] is True
     assert "_os_deleted" in result["stdout"]
     assert (tmp_path / "x.txt").read_text(encoding="utf-8") == "x"
+
+
+def test_prepare_script_meta_includes_code(tmp_path):
+    """meta 携带源码，前端右侧面板据此展示脚本内容。"""
+    code = "print('hello')"
+    meta = prepare_script(code, "demo", str(tmp_path))
+    assert meta["code"] == code
+    assert Path(meta["script_path"]).read_text(encoding="utf-8") == meta["code"]

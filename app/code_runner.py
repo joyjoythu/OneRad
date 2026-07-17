@@ -215,6 +215,7 @@ def prepare_script(code: str, description: str, project_path: str) -> Dict[str, 
         "script_path": str(script_path),
         "risk_level": risk_level,
         "created_at": ts,
+        "code": code,
     }
 
 
