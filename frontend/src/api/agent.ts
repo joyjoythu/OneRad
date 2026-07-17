@@ -12,6 +12,7 @@ export interface ToolCall {
 export interface AgentMessage {
   role: string
   content: string
+  timestamp?: string
   tool_calls?: ToolCall[]
   tool_call_id?: string
 }
