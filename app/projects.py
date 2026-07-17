@@ -1,3 +1,4 @@
+import concurrent.futures
 import os
 import shutil
 import sqlite3
@@ -14,6 +15,11 @@ DEFAULT_DB_PATH = DEFAULT_DB_DIR / "projects.db"
 DEFAULT_PARAMS_TEMPLATE = (
     Path(__file__).resolve().parent.parent / "config" / "Params_labels.yaml"
 )
+
+# 带超时读取项目配置专用的小线程池。线程若因不可达路径（如断开的网络盘）
+# 阻塞会滞留到系统调用返回，但最多占满 worker 数，不会再耗尽 API 线程池。
+_CONFIG_EXECUTOR = concurrent.futures.ThreadPoolExecutor(max_workers=2)
+_CONFIG_READ_TIMEOUT = 2.0  # 秒
 
 
 class ProjectStore:
@@ -181,7 +187,22 @@ class ProjectStore:
         if not row:
             return None
         project = dict(row)
-        project_path = Path(project["path"])
+        project["analysis"] = self._load_analysis(Path(project["path"]))
+        return project
+
+    def _load_analysis(self, project_path: Path) -> Dict[str, Any]:
+        """带超时读取项目配置；路径不可达或读取失败时降级为默认配置。
+
+        网络盘等不可达路径的文件访问会阻塞数十秒，逐个项目串行读取会拖垮
+        整个列表接口（API 线程池被占满）。超时后返回默认配置保证接口有界。
+        """
+        future = _CONFIG_EXECUTOR.submit(self._read_analysis_file, project_path)
+        try:
+            return future.result(timeout=_CONFIG_READ_TIMEOUT)
+        except (concurrent.futures.TimeoutError, OSError):
+            return self._default_analysis()
+
+    def _read_analysis_file(self, project_path: Path) -> Dict[str, Any]:
         yaml_path = project_path / "project.yaml"
         if yaml_path.exists():
             with open(yaml_path, "r", encoding="utf-8") as f:
@@ -189,10 +210,8 @@ class ProjectStore:
                     data = yaml.safe_load(f) or {}
                 except yaml.YAMLError:
                     data = {}
-            project["analysis"] = data.get("analysis", self._default_analysis())
-        else:
-            project["analysis"] = self._default_analysis()
-        return project
+            return data.get("analysis", self._default_analysis())
+        return self._default_analysis()
 
     def _default_analysis(self) -> Dict[str, Any]:
         return {
