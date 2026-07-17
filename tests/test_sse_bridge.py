@@ -181,12 +181,40 @@ async def test_publish_cancelled_mid_write_keeps_ids_unique_and_events(bridge):
     # fresh id and its own write must complete.
     id_b = await bridge.publish("s", "id1", {"n": 2})
 
+    # While write 1 is still blocked, a subscriber must wait for it inside
+    # _await_pending_writes instead of reading the store early. Spy on it for
+    # a deterministic handshake: it fires exactly when the subscriber is about
+    # to block on the in-flight write. Without shielding, the cancelled write
+    # is discarded from tracking and this wait times out — the regression.
+    subscriber_waiting = asyncio.Event()
+    original_await_pending = bridge._await_pending_writes
+
+    async def spy_await_pending(key):
+        if bridge._pending_writes.get(key):
+            subscriber_waiting.set()
+        await original_await_pending(key)
+
+    bridge._await_pending_writes = spy_await_pending
+
+    subscribe_task = asyncio.create_task(
+        bridge.subscribe("s", "id1", last_event_id=0)
+    )
+    await asyncio.wait_for(subscriber_waiting.wait(), timeout=2)
+    assert not subscribe_task.done()
+
     release_write1.set()
     assert await asyncio.to_thread(write1_finished.wait, 2)
+
+    # The subscriber's historical replay must contain both events.
+    replay_queue = await asyncio.wait_for(subscribe_task, timeout=2)
+    replayed = [replay_queue.get_nowait(), replay_queue.get_nowait()]
+    assert [e["event_id"] for e in replayed] == [1, 2]
+    assert [e["data"]["n"] for e in replayed] == [1, 2]
 
     events = bridge.store.list_sse_events("s", "id1", limit=10)
     assert id_b == 2
     assert [e["event_id"] for e in events] == [1, 2]
     assert [json.loads(e["data"])["n"] for e in events] == [1, 2]
-    # In the fixed bridge this also awaits the abandoned pending write.
+    # Post-shield the abandoned write stays tracked until it lands, so this
+    # also awaits it.
     assert await bridge.next_event_id("s", "id1") == 3
