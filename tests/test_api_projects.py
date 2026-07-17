@@ -21,7 +21,7 @@ def temp_db():
 
 
 @pytest.fixture
-def client(temp_db):
+def client(temp_db, monkeypatch):
     store, root = temp_db
     app = create_app()
 
@@ -30,16 +30,12 @@ def client(temp_db):
 
     app.dependency_overrides[get_project_store] = override_store
 
-    # Allow tests to create projects under the temporary root.
-    import app.api.projects as projects_module
+    # 相对项目路径必须落在临时数据目录下：通过环境变量切换数据目录
+    # （app.api.projects 每次调用现读该变量，monkeypatch 因此生效）。
+    monkeypatch.setenv("ONERAD_DATA_DIR", str(root))
 
-    original_data_dir = projects_module.ONERAD_DATA_DIR
-    projects_module.ONERAD_DATA_DIR = root
-    try:
-        with TestClient(app) as test_client:
-            yield test_client
-    finally:
-        projects_module.ONERAD_DATA_DIR = original_data_dir
+    with TestClient(app) as test_client:
+        yield test_client
 
 
 def test_create_and_list_project(client, temp_db):
@@ -267,3 +263,17 @@ def test_update_config_unifies_model_and_analysis_model(client, temp_db):
     data = response.json()
     assert data["analysis"]["analysis_model"] == "xgboost"
     assert data["analysis"]["model"] == "xgboost"
+
+
+def test_relative_project_path_resolves_against_env_data_dir(client, temp_db):
+    """相对项目路径必须基于（可被 monkeypatch 的）环境变量数据目录解析，
+    而不是 import 时固化的真实 ~/.onerad——否则测试会在真实数据目录建目录。"""
+    _store, root = temp_db
+    response = client.post(
+        "/api/projects",
+        json={"name": "rel-path", "path": "rel-check", "description": ""},
+    )
+    assert response.status_code == 201, response.text
+    resolved = Path(response.json()["path"])
+    assert root in resolved.parents
+    assert (root / "rel-check").is_dir()

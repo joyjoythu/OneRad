@@ -12,17 +12,21 @@ from app.projects import ProjectStore
 
 router = APIRouter()
 
-ONERAD_DATA_DIR = Path(
-    os.environ.get("ONERAD_DATA_DIR", str(Path.home() / ".onerad"))
-).resolve()
+
+def _data_dir() -> Path:
+    """数据目录：每次调用现读环境变量，保证测试的 monkeypatch 生效。"""
+    return Path(
+        os.environ.get("ONERAD_DATA_DIR", str(Path.home() / ".onerad"))
+    ).resolve()
 
 
 def _resolve_project_path(path: str) -> Path:
     """Resolve a user-supplied project path.
 
     Rejects paths that contain '..' as a path component. Relative paths are
-    resolved relative to ONERAD_DATA_DIR; absolute paths are accepted as-is,
-    allowing projects to live outside the default data directory.
+    resolved relative to the data directory (ONERAD_DATA_DIR env var, read
+    lazily at call time); absolute paths are accepted as-is, allowing
+    projects to live outside the default data directory.
     """
     parsed = Path(path)
     if ".." in parsed.parts:
@@ -33,7 +37,7 @@ def _resolve_project_path(path: str) -> Path:
     if parsed.is_absolute():
         resolved = parsed.resolve()
     else:
-        resolved = (ONERAD_DATA_DIR / parsed).resolve()
+        resolved = (_data_dir() / parsed).resolve()
 
     return resolved
 

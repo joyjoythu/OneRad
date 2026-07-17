@@ -13,17 +13,28 @@ from app.api.deps import get_project_store
 from app.projects import ProjectStore
 
 
+def _rmtree_with_retry(path, attempts=20, delay=0.5):
+    """Windows 上被遗弃的后台线程可能仍短暂占用 sqlite 文件句柄，重试等待其释放。"""
+    for _ in range(attempts):
+        try:
+            shutil.rmtree(path)
+            return
+        except PermissionError:
+            time.sleep(delay)
+    shutil.rmtree(path, ignore_errors=True)
+
+
 @pytest.fixture
 def temp_db():
     tmp = tempfile.mkdtemp()
     db_path = Path(tmp) / "test.db"
     store = ProjectStore(str(db_path))
     yield store, Path(tmp)
-    shutil.rmtree(tmp)
+    _rmtree_with_retry(tmp)
 
 
 @pytest.fixture
-def client(temp_db):
+def client(temp_db, monkeypatch):
     store, root = temp_db
     app = create_app()
 
@@ -32,15 +43,12 @@ def client(temp_db):
 
     app.dependency_overrides[get_project_store] = override_store
 
-    import app.api.projects as projects_module
+    # 相对项目路径必须落在临时数据目录下：通过环境变量切换数据目录
+    # （app.api.projects 每次调用现读该变量，monkeypatch 因此生效）。
+    monkeypatch.setenv("ONERAD_DATA_DIR", str(root))
 
-    original_data_dir = projects_module.ONERAD_DATA_DIR
-    projects_module.ONERAD_DATA_DIR = root
-    try:
-        with TestClient(app) as test_client:
-            yield test_client
-    finally:
-        projects_module.ONERAD_DATA_DIR = original_data_dir
+    with TestClient(app) as test_client:
+        yield test_client
 
 
 def _run_config():
