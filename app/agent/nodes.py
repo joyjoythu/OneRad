@@ -232,9 +232,20 @@ def process_tool_calls(state: AgentState, config: Optional[RunnableConfig] = Non
     return updates
 
 
-def route_after_process(state: AgentState) -> Literal["human_review", "call_llm"]:
-    """根据是否有待确认的中断决定路由。"""
-    return "human_review" if state.get("interrupt_type") else "call_llm"
+def route_after_process(
+    state: AgentState, config: RunnableConfig
+) -> Literal["human_review", "auto_confirm", "call_llm"]:
+    """根据是否有待确认的中断决定路由；自动审批开启时跳过人工确认。"""
+    if not state.get("interrupt_type"):
+        return "call_llm"
+    if config.get("configurable", {}).get("auto_approve"):
+        return "auto_confirm"
+    return "human_review"
+
+
+def auto_confirm(state: AgentState) -> dict:
+    """自动审批：跳过 human_review，直接标记为已确认。"""
+    return {"confirmed": True}
 
 
 def human_review(state: AgentState) -> dict:

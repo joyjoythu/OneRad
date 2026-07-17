@@ -4,7 +4,7 @@ from unittest.mock import patch, MagicMock
 import pytest
 from langchain_core.messages import AIMessage
 
-from app.agent.nodes import _build_llm, _resolve_api_key, call_llm
+from app.agent.nodes import _build_llm, _resolve_api_key, auto_confirm, call_llm, route_after_process
 from app.agent.state import AgentState
 
 
@@ -131,3 +131,23 @@ def test_call_llm_omits_context_usage_when_api_returns_none(tmp_path):
         result = call_llm(state)
 
     assert "context_usage" not in result
+
+
+def test_route_after_process_returns_call_llm_without_interrupt():
+    state = {"interrupt_type": None}
+    assert route_after_process(state, {"configurable": {}}) == "call_llm"
+
+
+def test_route_after_process_returns_human_review_by_default():
+    state = {"interrupt_type": "system_command"}
+    assert route_after_process(state, {"configurable": {}}) == "human_review"
+
+
+def test_route_after_process_returns_auto_confirm_when_enabled():
+    state = {"interrupt_type": "system_command"}
+    config = {"configurable": {"auto_approve": True}}
+    assert route_after_process(state, config) == "auto_confirm"
+
+
+def test_auto_confirm_marks_confirmed():
+    assert auto_confirm({}) == {"confirmed": True}

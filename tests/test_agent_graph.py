@@ -349,3 +349,35 @@ def test_process_tool_calls_unknown_tool_returns_error():
     parsed = json.loads(tool_msg.content)
     assert "error" in parsed
     assert "nonexistent_tool" in parsed["error"]
+
+
+def test_graph_auto_approve_skips_interrupt(tmp_path):
+    project = {"path": str(tmp_path), "analysis": {"api_key": "fake", "model": "deepseek-v4-pro"}}
+    state = build_initial_state(project)
+    state["messages"] = [HumanMessage(content="list files")]
+
+    graph = create_agent_graph()
+    config = {"configurable": {"thread_id": "test-auto-approve", "auto_approve": True}}
+
+    with patch("app.agent.nodes.ChatOpenAI") as mock_llm_class:
+        mock_llm = MagicMock()
+        mock_llm.bind_tools.return_value = mock_llm
+        mock_llm.invoke.side_effect = [
+            AIMessage(
+                content="",
+                tool_calls=[{"name": "list_directory", "args": {"path": "."}, "id": "call_list"}],
+            ),
+            AIMessage(content="Done"),
+        ]
+        mock_llm_class.return_value = mock_llm
+
+        events = list(graph.stream(state, config))
+        assert not any("__interrupt__" in e for e in events)
+
+        final = graph.get_state(config).values
+
+    tool_msg = _find_result_tool_message(final["messages"], tool_call_id="call_list")
+    assert tool_msg is not None
+    parsed = json.loads(tool_msg.content)
+    assert parsed["tool"] == "list_directory"
+    assert "result" in parsed
