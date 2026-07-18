@@ -3,12 +3,14 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
-from langchain_core.messages import ToolMessage
+from langchain_core.messages import AIMessage, ToolMessage, convert_to_openai_messages
 from langchain_core.runnables import RunnableConfig
+from langchain_core.utils.function_calling import convert_to_openai_tool
 from langchain_openai import ChatOpenAI
 from langgraph.types import interrupt
+from openai import OpenAI
 
 from app.agent.state import AgentState
 from app.agent.tools import build_tools
@@ -22,17 +24,22 @@ from app.radiomics_analysis import run_radiomics_cv_analysis
 logger = logging.getLogger(__name__)
 
 
-def _build_llm(
-    api_key: str, state: AgentState, config: Optional[RunnableConfig] = None
-) -> ChatOpenAI:
-    """根据状态构造 ChatOpenAI 实例。"""
+def _resolve_model(state: AgentState, config: Optional[RunnableConfig] = None) -> str:
+    """解析本次调用使用的模型名：config 覆盖优先于 state。"""
     model = state["model"]
     if config is not None:
         model = config.get("configurable", {}).get("llm_model") or model
+    return model
+
+
+def _build_llm(
+    api_key: str, state: AgentState, config: Optional[RunnableConfig] = None
+) -> ChatOpenAI:
+    """根据状态构造 ChatOpenAI 实例（供工具内部调用，如 plan_file_operations）。"""
     return ChatOpenAI(
         api_key=api_key or None,
         base_url=state["base_url"],
-        model=model,
+        model=_resolve_model(state, config),
         temperature=0.2,
     )
 
@@ -66,17 +73,114 @@ def _extract_context_usage(response: Any) -> Optional[Dict[str, int]]:
 
 
 def call_llm(state: AgentState, config: Optional[RunnableConfig] = None) -> dict:
-    """调用 LLM，绑定工具后生成回复。"""
+    """流式调用 LLM，边收 reasoning_content 边推送 thinking 事件，组装 AIMessage。"""
     api_key = _resolve_api_key(state, config)
     llm = _build_llm(api_key, state, config)
     tools = build_tools(state["project_path"], llm)
-    model_with_tools = llm.bind_tools(list(tools.values()), parallel_tool_calls=False)
-    response = model_with_tools.invoke(state["messages"])
+    thread_id = (config or {}).get("configurable", {}).get("thread_id")
+    response = _stream_chat_completion(
+        api_key=api_key,
+        base_url=state["base_url"],
+        model=_resolve_model(state, config),
+        messages=state["messages"],
+        tools=list(tools.values()),
+        thread_id=thread_id,
+    )
     updates: dict = {"messages": [response]}
     usage = _extract_context_usage(response)
     if usage is not None:
         updates["context_usage"] = usage
     return updates
+
+
+def _stream_chat_completion(
+    api_key: str,
+    base_url: str,
+    model: str,
+    messages: List[Any],
+    tools: List[Any],
+    thread_id: Optional[str] = None,
+) -> AIMessage:
+    """openai SDK 流式调用 DeepSeek，返回组装好的 AIMessage。
+
+    LangChain 的 ChatOpenAI 会丢弃 DeepSeek 的非标准 reasoning_content 字段，
+    因此直接用 openai SDK：流式循环中累积 reasoning/content/tool_calls 三类
+    delta，reasoning 累积全文经 _publish_thinking 旁路推送给前端；思考链最终
+    挂在 AIMessage.additional_kwargs["reasoning_content"] 上随快照持久化。
+    """
+    client = OpenAI(api_key=api_key or None, base_url=base_url)
+    stream = client.chat.completions.create(
+        model=model,
+        messages=convert_to_openai_messages(messages),
+        tools=[convert_to_openai_tool(t) for t in tools],
+        temperature=0.2,
+        parallel_tool_calls=False,
+        stream=True,
+        stream_options={"include_usage": True},
+    )
+
+    reasoning_parts: List[str] = []
+    content_parts: List[str] = []
+    tool_slots: Dict[int, Dict[str, str]] = {}
+    usage_metadata = None
+
+    _publish_thinking(thread_id, "", False)
+    for chunk in stream:
+        usage = getattr(chunk, "usage", None)
+        if usage is not None:
+            usage_metadata = {
+                "input_tokens": getattr(usage, "prompt_tokens", 0) or 0,
+                "output_tokens": getattr(usage, "completion_tokens", 0) or 0,
+                "total_tokens": getattr(usage, "total_tokens", 0) or 0,
+            }
+        if not getattr(chunk, "choices", None):
+            continue
+        delta = chunk.choices[0].delta
+        reasoning = getattr(delta, "reasoning_content", None)
+        if reasoning:
+            reasoning_parts.append(reasoning)
+            _publish_thinking(thread_id, "".join(reasoning_parts), False)
+        if getattr(delta, "content", None):
+            content_parts.append(delta.content)
+        for tc in getattr(delta, "tool_calls", None) or []:
+            slot = tool_slots.setdefault(tc.index, {"id": "", "name": "", "arguments": ""})
+            if tc.id:
+                slot["id"] += tc.id
+            function = getattr(tc, "function", None)
+            if function is not None:
+                if getattr(function, "name", None):
+                    slot["name"] += function.name
+                if getattr(function, "arguments", None):
+                    slot["arguments"] += function.arguments
+
+    full_reasoning = "".join(reasoning_parts)
+    _publish_thinking(thread_id, full_reasoning, True)
+
+    tool_calls = []
+    for index in sorted(tool_slots):
+        slot = tool_slots[index]
+        try:
+            args = json.loads(slot["arguments"]) if slot["arguments"] else {}
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"工具调用参数不是合法 JSON（{slot['name']}）: {slot['arguments']}"
+            ) from exc
+        tool_calls.append({
+            "name": slot["name"],
+            "args": args,
+            "id": slot["id"] or f"call_{index}",
+            "type": "tool_call",
+        })
+
+    additional_kwargs: Dict[str, Any] = {}
+    if full_reasoning:
+        additional_kwargs["reasoning_content"] = full_reasoning
+    return AIMessage(
+        content="".join(content_parts),
+        tool_calls=tool_calls,
+        additional_kwargs=additional_kwargs,
+        usage_metadata=usage_metadata,
+    )
 
 
 def should_continue(state: AgentState) -> Literal["process_tool_calls", "__end__"]:
@@ -316,6 +420,31 @@ def _publish_agent_progress(thread_id: Optional[str], payload: Optional[dict]) -
         )
     except Exception:
         logger.debug("推送提取进度失败", exc_info=True)
+
+
+def _publish_thinking(thread_id: Optional[str], text: str, done: bool) -> None:
+    """从节点线程向 SSE 订阅者推送模型思考链（reasoning_content）。
+
+    与 _publish_agent_progress 同模式：节点在工作线程中运行，经
+    run_coroutine_threadsafe 回到主事件循环发布。发送累积全文而非增量，
+    丢事件/重连均自洽。persist=False 避免高频 delta 撑大 sse_events 表；
+    重连后的兜底是 values 快照里 AIMessage 携带的完整思考链。
+    """
+    ctx = agent_runtime.get(thread_id)
+    if ctx is None or ctx.loop is None or ctx.bridge is None:
+        return
+    try:
+        asyncio.run_coroutine_threadsafe(
+            ctx.bridge.publish(
+                "agent",
+                thread_id,
+                {"thinking": {"text": text, "done": done}, "running": True},
+                persist=False,
+            ),
+            ctx.loop,
+        )
+    except Exception:
+        logger.debug("推送思考内容失败", exc_info=True)
 
 
 def execute_confirmed(state: AgentState, config: Optional[RunnableConfig] = None) -> dict:

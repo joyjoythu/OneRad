@@ -1,4 +1,5 @@
 import os
+from types import SimpleNamespace
 from unittest.mock import patch, MagicMock
 
 import pytest
@@ -24,6 +25,35 @@ def _make_state(api_key: str = "") -> AgentState:
         "tool_outputs": [],
         "operation_log": [],
     }
+
+
+def _tc_delta(index, id=None, name=None, arguments=None):
+    """构造一个 openai SDK 流式 tool_calls delta。"""
+    return SimpleNamespace(
+        index=index,
+        id=id,
+        function=SimpleNamespace(name=name, arguments=arguments),
+    )
+
+
+def _chunk(content=None, reasoning=None, tool_calls=None, usage=None):
+    """构造一个 openai SDK 流式响应 chunk。"""
+    delta = SimpleNamespace(
+        content=content,
+        reasoning_content=reasoning,
+        tool_calls=tool_calls or [],
+    )
+    return SimpleNamespace(choices=[SimpleNamespace(delta=delta)], usage=usage)
+
+
+def _patch_openai_stream(chunks):
+    """patch app.agent.nodes.OpenAI，使其 chat.completions.create 返回给定 chunk 流。"""
+    mock_openai = patch("app.agent.nodes.OpenAI")
+    mock_cls = mock_openai.start()
+    client = MagicMock()
+    client.chat.completions.create.return_value = iter(chunks)
+    mock_cls.return_value = client
+    return mock_openai, client
 
 
 def test_resolve_api_key_prefers_config():
@@ -96,41 +126,109 @@ def test_build_llm_falls_back_to_state_model():
     assert llm.model_name == "deepseek-v4-pro"
 
 
-def test_call_llm_records_context_usage(tmp_path):
-    """call_llm 应从响应的 usage_metadata 提取 token 用量写入 state 更新。"""
-    state = _make_state()
+def test_call_llm_streams_reasoning_and_publishes_thinking(tmp_path):
+    """reasoning_content delta 累积进 additional_kwargs，并逐次推送 thinking 事件。"""
+    state = _make_state(api_key="test-key")
     state["project_path"] = str(tmp_path)
-    ai = AIMessage(
-        content="Hi",
-        usage_metadata={"input_tokens": 1234, "output_tokens": 56, "total_tokens": 1290},
-    )
-    with patch("app.agent.nodes.ChatOpenAI") as mock_llm_class:
-        mock_llm = MagicMock()
-        mock_llm.bind_tools.return_value = mock_llm
-        mock_llm.invoke.return_value = ai
-        mock_llm_class.return_value = mock_llm
-        result = call_llm(state)
+    chunks = [
+        _chunk(reasoning="先分析"),
+        _chunk(reasoning="再回答"),
+        _chunk(content="你好"),
+        _chunk(usage=SimpleNamespace(prompt_tokens=10, completion_tokens=5, total_tokens=15)),
+    ]
+    mock_openai, _ = _patch_openai_stream(chunks)
+    try:
+        with patch("app.agent.nodes._publish_thinking") as mock_pub:
+            result = call_llm(state, {"configurable": {"thread_id": "t1"}})
+    finally:
+        mock_openai.stop()
 
-    assert result["messages"] == [ai]
+    ai = result["messages"][0]
+    assert ai.content == "你好"
+    assert ai.additional_kwargs["reasoning_content"] == "先分析再回答"
     assert result["context_usage"] == {
-        "input_tokens": 1234,
-        "output_tokens": 56,
-        "total_tokens": 1290,
+        "input_tokens": 10,
+        "output_tokens": 5,
+        "total_tokens": 15,
     }
+    # 推送时序：重置 → 逐次累积 → done
+    calls = [c.args for c in mock_pub.call_args_list]
+    assert calls[0] == ("t1", "", False)
+    assert ("t1", "先分析", False) in calls
+    assert ("t1", "先分析再回答", False) in calls
+    assert calls[-1] == ("t1", "先分析再回答", True)
 
 
-def test_call_llm_omits_context_usage_when_api_returns_none(tmp_path):
-    """API 未返回 usage_metadata 时不更新该字段（保留旧值）。"""
-    state = _make_state()
+def test_call_llm_accumulates_tool_call_deltas(tmp_path):
+    """tool_calls 的 id/name/arguments 按 index 跨 chunk 拼接，arguments 解析为 dict。"""
+    state = _make_state(api_key="test-key")
     state["project_path"] = str(tmp_path)
-    with patch("app.agent.nodes.ChatOpenAI") as mock_llm_class:
-        mock_llm = MagicMock()
-        mock_llm.bind_tools.return_value = mock_llm
-        mock_llm.invoke.return_value = AIMessage(content="Hi")  # usage_metadata=None
-        mock_llm_class.return_value = mock_llm
-        result = call_llm(state)
+    chunks = [
+        _chunk(tool_calls=[_tc_delta(0, id="call_1", name="list_directory")]),
+        _chunk(tool_calls=[_tc_delta(0, arguments='{"path":')]),
+        _chunk(tool_calls=[_tc_delta(0, arguments=' "."}')]),
+    ]
+    mock_openai, _ = _patch_openai_stream(chunks)
+    try:
+        with patch("app.agent.nodes._publish_thinking"):
+            result = call_llm(state)
+    finally:
+        mock_openai.stop()
+
+    ai = result["messages"][0]
+    assert ai.tool_calls == [
+        {"name": "list_directory", "args": {"path": "."}, "id": "call_1", "type": "tool_call"}
+    ]
+
+
+def test_call_llm_omits_context_usage_when_stream_has_no_usage(tmp_path):
+    """流中没有 usage chunk 时不更新 context_usage（保留旧值）。"""
+    state = _make_state(api_key="test-key")
+    state["project_path"] = str(tmp_path)
+    mock_openai, _ = _patch_openai_stream([_chunk(content="Hi")])
+    try:
+        with patch("app.agent.nodes._publish_thinking"):
+            result = call_llm(state)
+    finally:
+        mock_openai.stop()
 
     assert "context_usage" not in result
+    ai = result["messages"][0]
+    assert "reasoning_content" not in ai.additional_kwargs
+
+
+def test_call_llm_raises_on_invalid_tool_arguments(tmp_path):
+    """tool_calls 参数 JSON 解析失败必须抛错，不得带错参数执行工具。"""
+    state = _make_state(api_key="test-key")
+    state["project_path"] = str(tmp_path)
+    chunks = [_chunk(tool_calls=[_tc_delta(0, id="call_1", name="list_directory", arguments="{oops")])]
+    mock_openai, _ = _patch_openai_stream(chunks)
+    try:
+        with patch("app.agent.nodes._publish_thinking"):
+            with pytest.raises(ValueError, match="list_directory"):
+                call_llm(state)
+    finally:
+        mock_openai.stop()
+
+
+def test_call_llm_passes_model_and_tools_to_api(tmp_path):
+    """验证请求参数：模型名来自 config、messages 转为 OpenAI 格式、附带 tools。"""
+    state = _make_state(api_key="test-key")
+    state["project_path"] = str(tmp_path)
+    state["messages"] = [AIMessage(content="之前")]
+    mock_openai, client = _patch_openai_stream([_chunk(content="好")])
+    try:
+        with patch("app.agent.nodes._publish_thinking"):
+            call_llm(state, {"configurable": {"llm_model": "deepseek-v4-flash"}})
+    finally:
+        mock_openai.stop()
+
+    kwargs = client.chat.completions.create.call_args.kwargs
+    assert kwargs["model"] == "deepseek-v4-flash"
+    assert kwargs["stream"] is True
+    assert kwargs["parallel_tool_calls"] is False
+    assert kwargs["messages"] == [{"role": "assistant", "content": "之前"}]
+    assert any(t["function"]["name"] == "list_directory" for t in kwargs["tools"])
 
 
 def test_route_after_process_returns_call_llm_without_interrupt():
