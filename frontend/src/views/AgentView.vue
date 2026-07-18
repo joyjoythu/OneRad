@@ -8,16 +8,6 @@
     </header>
 
     <div class="agent-workspace">
-      <ThreadList
-        :threads="agentStore.threads"
-        :current-thread-id="agentStore.currentThread?.id ?? null"
-        :collapsed="isThreadListCollapsed"
-        @select="handleSelectThread"
-        @create="handleCreateThread"
-        @rename="handleRenameThread"
-        @delete="handleDeleteThread"
-        @toggle-collapse="handleToggleThreadListCollapse"
-      />
       <div class="agent-chat-wrapper">
         <AgentChat
           ref="agentChatRef"
@@ -75,44 +65,27 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
 import { useAgentStore } from '@/stores/agent'
 import { useProjectStore } from '@/stores/project'
 import AgentChat from '@/components/AgentChat.vue'
-import ThreadList from '@/components/ThreadList.vue'
 import { Expand, Fold } from '@element-plus/icons-vue'
 import PlanDisplay from '@/components/PlanDisplay.vue'
 import CommandPanel from '@/components/CommandPanel.vue'
 import ScriptPanel from '@/components/ScriptPanel.vue'
 import RadiomicsPanel from '@/components/RadiomicsPanel.vue'
 import AnalysisPanel from '@/components/AnalysisPanel.vue'
-import { DEFAULT_AGENT_MODEL } from '@/api/agent'
 
 const agentStore = useAgentStore()
 const projectStore = useProjectStore()
 
-const selectedModel = ref(DEFAULT_AGENT_MODEL)
+const selectedModel = computed({
+  get: () => agentStore.selectedModel,
+  set: (value: string) => {
+    agentStore.selectedModel = value
+  },
+})
 const agentChatRef = ref<InstanceType<typeof AgentChat> | null>(null)
-
-const THREAD_LIST_COLLAPSED_KEY = 'onerad:agent:threadListCollapsed'
-
-function loadThreadListCollapsed(): boolean {
-  try {
-    return localStorage.getItem(THREAD_LIST_COLLAPSED_KEY) === 'true'
-  } catch {
-    return false
-  }
-}
-
-function saveThreadListCollapsed(value: boolean): void {
-  try {
-    localStorage.setItem(THREAD_LIST_COLLAPSED_KEY, String(value))
-  } catch {
-    // ignore
-  }
-}
-
-const isThreadListCollapsed = ref(loadThreadListCollapsed())
 
 const SIDE_PANEL_COLLAPSED_KEY = 'onerad:agent:sidePanelCollapsed'
 
@@ -207,46 +180,6 @@ async function handleStop(): Promise<void> {
   }
 }
 
-async function handleSelectThread(threadId: string): Promise<void> {
-  const projectId = projectStore.currentProject?.id
-  const config = projectStore.currentConfig
-  if (!projectId || !config) return
-  if (threadId === agentStore.currentThread?.id) return
-  const thread = agentStore.threads.find((t) => t.id === threadId)
-  if (!thread) return
-  selectedModel.value = thread.llm_model
-  await agentStore.loadThread(threadId, config.api_key, thread.llm_model)
-}
-
-async function handleCreateThread(): Promise<void> {
-  const projectId = projectStore.currentProject?.id
-  const config = projectStore.currentConfig
-  if (!projectId || !config) return
-  await agentStore.createThread(projectId, config.api_key, selectedModel.value)
-  agentChatRef.value?.clearInput()
-}
-
-async function handleRenameThread(threadId: string, title: string): Promise<void> {
-  const projectId = projectStore.currentProject?.id
-  if (!projectId) return
-  await agentStore.renameThread(threadId, title, projectId)
-}
-
-async function handleDeleteThread(threadId: string): Promise<void> {
-  const projectId = projectStore.currentProject?.id
-  if (!projectId) return
-  await agentStore.deleteThread(threadId, projectId)
-}
-
-function handleToggleThreadListCollapse(): void {
-  isThreadListCollapsed.value = !isThreadListCollapsed.value
-  saveThreadListCollapsed(isThreadListCollapsed.value)
-}
-
-onMounted(() => {
-  // 项目切换 watcher 已设置 immediate: true，首次加载会自动处理。
-})
-
 onUnmounted(() => {
   agentStore.disconnect()
 })
@@ -254,23 +187,25 @@ onUnmounted(() => {
 watch(
   () => projectStore.currentProject?.id,
   async (newId, oldId) => {
-    if (newId !== oldId) {
-      agentStore.resetThread()
-      if (newId) {
-        await agentStore.listThreads(newId)
-        if (agentStore.threads.length > 0) {
-          const config = projectStore.currentConfig
-          if (config) {
-            const latest = agentStore.threads[0]
-            await agentStore.loadThread(
-              latest.id,
-              config.api_key,
-              latest.llm_model
-            )
-            selectedModel.value = latest.llm_model
-          }
-        }
-      }
+    if (newId === oldId) return
+    // 当前对话已属于该项目（例如在设置页通过侧边栏打开了当前项目的会话）：
+    // 不重置、不重复加载。
+    if (newId && agentStore.threadId && agentStore.currentThread?.project_id === newId) {
+      return
+    }
+    agentStore.resetThread()
+    if (!newId) return
+    await agentStore.listThreads(newId)
+    const config = projectStore.currentConfig
+    if (!config) return
+    // 侧边栏跨项目点选对话时设置了 preferredThreadId，优先加载它。
+    const preferred = agentStore.preferredThreadId
+    agentStore.preferredThreadId = null
+    const target =
+      agentStore.threads.find((t) => t.id === preferred) ?? agentStore.threads[0]
+    if (target) {
+      await agentStore.loadThread(target.id, config.api_key, target.llm_model)
+      agentStore.selectedModel = target.llm_model
     }
   },
   { immediate: true }

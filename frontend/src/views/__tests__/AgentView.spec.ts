@@ -59,51 +59,6 @@ describe('AgentView', () => {
     expect(resetThreadSpy).toHaveBeenCalled()
   })
 
-  it('persists thread list collapse state in localStorage', async () => {
-    const projectStore = useProjectStore()
-    const agentStore = useAgentStore()
-    vi.spyOn(agentStore, 'listThreads').mockResolvedValue(undefined)
-    vi.spyOn(agentStore, 'loadThread').mockResolvedValue(undefined)
-
-    const project = mockProject('1')
-    projectStore.projects = [project]
-    projectStore.selectProject(project.id)
-
-    const wrapper = setupWrapper()
-
-    await flushPromises()
-
-    const collapseButton = wrapper.find('.thread-list-header button')
-    expect(collapseButton.exists()).toBe(true)
-
-    await collapseButton.trigger('click')
-    expect(localStorage.getItem('onerad:agent:threadListCollapsed')).toBe('true')
-    expect(wrapper.find('.thread-list').classes()).toContain('thread-list--collapsed')
-
-    await collapseButton.trigger('click')
-    expect(localStorage.getItem('onerad:agent:threadListCollapsed')).toBe('false')
-    expect(wrapper.find('.thread-list').classes()).not.toContain('thread-list--collapsed')
-  })
-
-  it('restores thread list collapse state from localStorage on mount', async () => {
-    localStorage.setItem('onerad:agent:threadListCollapsed', 'true')
-
-    const projectStore = useProjectStore()
-    const agentStore = useAgentStore()
-    vi.spyOn(agentStore, 'listThreads').mockResolvedValue(undefined)
-    vi.spyOn(agentStore, 'loadThread').mockResolvedValue(undefined)
-
-    const project = mockProject('1')
-    projectStore.projects = [project]
-    projectStore.selectProject(project.id)
-
-    const wrapper = setupWrapper()
-
-    await flushPromises()
-
-    expect(wrapper.find('.thread-list').classes()).toContain('thread-list--collapsed')
-  })
-
   it('shows the empty state in the side panel when no approval is pending', async () => {
     const projectStore = useProjectStore()
     const agentStore = useAgentStore()
@@ -183,5 +138,59 @@ describe('AgentView', () => {
     expect(wrapper.find('.agent-side-panel').classes()).toContain(
       'agent-side-panel--collapsed'
     )
+  })
+
+  it('loads the preferred thread instead of the latest when one is set', async () => {
+    const projectStore = useProjectStore()
+    const agentStore = useAgentStore()
+    const t1 = {
+      id: 't1',
+      project_id: '2',
+      title: 'Latest',
+      llm_model: 'deepseek-v4-flash',
+      created_at: '2026-01-01',
+      updated_at: '2026-01-03',
+    }
+    const t2 = { ...t1, id: 't2', title: 'Preferred', updated_at: '2026-01-02' }
+    vi.spyOn(agentStore, 'listThreads').mockImplementation(async () => {
+      agentStore.threads = [t1, t2]
+    })
+    const loadSpy = vi.spyOn(agentStore, 'loadThread').mockResolvedValue(undefined)
+
+    // 用 selectProject 而不是直接赋值，保证 currentConfig 被设置（watcher 依赖）
+    projectStore.projects = [mockProject('1'), mockProject('2')]
+    projectStore.selectProject('1')
+    setupWrapper()
+    await flushPromises()
+
+    agentStore.preferredThreadId = 't2'
+    projectStore.selectProject('2')
+    await flushPromises()
+
+    expect(loadSpy).toHaveBeenCalledWith('t2', expect.any(String), 'deepseek-v4-flash')
+    expect(agentStore.preferredThreadId).toBeNull()
+  })
+
+  it('does not reload when the current thread already belongs to the project', async () => {
+    const projectStore = useProjectStore()
+    const agentStore = useAgentStore()
+    const listSpy = vi.spyOn(agentStore, 'listThreads').mockResolvedValue(undefined)
+    vi.spyOn(agentStore, 'loadThread').mockResolvedValue(undefined)
+
+    agentStore.threadId = 't1'
+    agentStore.currentThread = {
+      id: 't1',
+      project_id: '1',
+      title: 'Open',
+      llm_model: 'deepseek-v4-flash',
+      created_at: '2026-01-01',
+      updated_at: '2026-01-02',
+    }
+
+    projectStore.currentProject = mockProject('1')
+    setupWrapper()
+    await flushPromises()
+
+    expect(listSpy).not.toHaveBeenCalled()
   })
 })
