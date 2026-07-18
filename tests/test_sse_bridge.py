@@ -218,3 +218,25 @@ async def test_publish_cancelled_mid_write_keeps_ids_unique_and_events(bridge):
     # Post-shield the abandoned write stays tracked until it lands, so this
     # also awaits it.
     assert await bridge.next_event_id("s", "id1") == 3
+
+
+@pytest.mark.anyio
+async def test_publish_without_persist_delivers_but_skips_store(bridge):
+    """persist=False 的事件投递给订阅者但不落库、不回放。"""
+    queue = await bridge.subscribe("run", "run-1")
+
+    event_id = await bridge.publish(
+        "run", "run-1", {"thinking": {"text": "想", "done": False}}, persist=False
+    )
+
+    received = await asyncio.wait_for(queue.get(), timeout=1.0)
+    assert received["event_id"] == event_id
+    assert received["data"] == {"thinking": {"text": "想", "done": False}}
+
+    # 不落库：新订阅者从头回放时拿不到该事件
+    replay = await bridge.subscribe("run", "run-1", last_event_id=0)
+    assert replay.empty()
+
+    # id 照常单调递增：后续持久化事件 id 更大（空洞安全）
+    next_id = await bridge.publish("run", "run-1", {"message": "after"})
+    assert next_id > event_id

@@ -75,24 +75,27 @@ class EventBridge:
         )
         return max_id + 1
 
-    async def publish(self, scope: str, scope_id: str, data: Any) -> int:
+    async def publish(
+        self, scope: str, scope_id: str, data: Any, *, persist: bool = True
+    ) -> int:
         payload = json.dumps(data, ensure_ascii=False)
         lock = self._scope_lock(scope, scope_id)
         key = self._key(scope, scope_id)
 
         async with lock:
             event_id = await self._allocate_event_id(key, scope, scope_id)
-            write_task = asyncio.ensure_future(
-                run_in_threadpool(
-                    self.store.record_sse_event, scope, scope_id, event_id, payload
+            if persist:
+                write_task = asyncio.ensure_future(
+                    run_in_threadpool(
+                        self.store.record_sse_event, scope, scope_id, event_id, payload
+                    )
                 )
-            )
-            self._track_write(key, write_task)
-            # shield 阻止发布者被取消时取消传播进写任务：写任务只在 store
-            # 写入真正落库后才完成。若发布者在等待期间被取消，写入仍会落库
-            # （回放/重连可获取；流结束时前端还会同步最终状态），仅本次
-            # 不再向订阅队列投递。
-            await asyncio.shield(write_task)
+                self._track_write(key, write_task)
+                # shield 阻止发布者被取消时取消传播进写任务：写任务只在 store
+                # 写入真正落库后才完成。若发布者在等待期间被取消，写入仍会落库
+                # （回放/重连可获取；流结束时前端还会同步最终状态），仅本次
+                # 不再向订阅队列投递。
+                await asyncio.shield(write_task)
             for queue in self._queues.get(key, {}).values():
                 if queue.full():
                     try:
