@@ -307,6 +307,8 @@ export const useAgentStore = defineStore('agent', () => {
         }
       },
       onError: () => {
+        // 断连后陈旧 thinking 无快照兜底纠正，直接清空；重连后由新一轮重置事件重建。
+        currentThinking.value = null
         disconnect()
       },
     })

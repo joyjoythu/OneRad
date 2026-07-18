@@ -532,6 +532,19 @@ describe('useAgentStore', () => {
     expect(store.busy).toBe(false)
   })
 
+  it('clears current thinking when the event stream errors', async () => {
+    const store = useAgentStore()
+    await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')
+    await store.sendMessage('你好')
+    const es = MockEventSource.instances[0]
+    es.emit('agent', { thinking: { text: '思考中', done: false }, running: true })
+    expect(store.currentThinking).not.toBeNull()
+
+    es.onerror?.(new Event('error'))
+
+    expect(store.currentThinking).toBeNull()
+  })
+
   it('tracks pending radiomics plan/execution from SSE state', async () => {
     const store = useAgentStore()
     await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')

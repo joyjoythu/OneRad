@@ -78,13 +78,18 @@ class EventBridge:
     async def publish(
         self, scope: str, scope_id: str, data: Any, *, persist: bool = True
     ) -> int:
-        payload = json.dumps(data, ensure_ascii=False)
+        """发布事件给在线订阅者；persist=False 时不写库、不参与回放。
+
+        事件 id 照常分配（烧 id 留空洞，与失败写同语义）。id 单调性仅在
+        进程生命周期内保证：重启后从 store max 重新计数。
+        """
         lock = self._scope_lock(scope, scope_id)
         key = self._key(scope, scope_id)
 
         async with lock:
             event_id = await self._allocate_event_id(key, scope, scope_id)
             if persist:
+                payload = json.dumps(data, ensure_ascii=False)
                 write_task = asyncio.ensure_future(
                     run_in_threadpool(
                         self.store.record_sse_event, scope, scope_id, event_id, payload
