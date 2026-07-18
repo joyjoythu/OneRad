@@ -277,3 +277,34 @@ def test_relative_project_path_resolves_against_env_data_dir(client, temp_db):
     resolved = Path(response.json()["path"])
     assert root in resolved.parents
     assert (root / "rel-check").is_dir()
+
+
+def test_rename_project(client, temp_db):
+    store, root = temp_db
+    project = store.create_project("A", str(root / "a"), "")
+    response = client.patch(f"/api/projects/{project['id']}", json={"name": "B"})
+    assert response.status_code == 200
+    assert response.json()["name"] == "B"
+
+    response = client.get(f"/api/projects/{project['id']}")
+    assert response.json()["name"] == "B"
+
+
+def test_rename_project_not_found(client):
+    response = client.patch("/api/projects/non-existent-id", json={"name": "B"})
+    assert response.status_code == 404
+
+
+def test_rename_project_empty_name(client, temp_db):
+    store, root = temp_db
+    project = store.create_project("A", str(root / "a"), "")
+    response = client.patch(f"/api/projects/{project['id']}", json={"name": "   "})
+    assert response.status_code == 400
+
+
+def test_rename_project_duplicate_name(client, temp_db):
+    store, root = temp_db
+    store.create_project("A", str(root / "a"), "")
+    p2 = store.create_project("B", str(root / "b"), "")
+    response = client.patch(f"/api/projects/{p2['id']}", json={"name": "A"})
+    assert response.status_code == 400

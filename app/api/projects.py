@@ -63,6 +63,12 @@ class UpdateConfigRequest(BaseModel):
     api_key: str = ""
 
 
+class UpdateProjectRequest(BaseModel):
+    """Request body for renaming a project."""
+
+    name: str
+
+
 @router.get("", response_model=List[Dict[str, Any]])
 def list_projects(store: ProjectStore = Depends(get_project_store)):
     """List all projects ordered by most recently updated."""
@@ -86,6 +92,26 @@ def get_project(project_id: str, store: ProjectStore = Depends(get_project_store
     if project is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="项目不存在")
     return project
+
+
+@router.patch("/{project_id}", response_model=Dict[str, Any])
+def update_project(
+    project_id: str,
+    payload: UpdateProjectRequest,
+    store: ProjectStore = Depends(get_project_store),
+):
+    """Rename a project."""
+    if store.load_project(project_id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="项目不存在")
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="项目名不能为空"
+        )
+    try:
+        return store.update_project_name(project_id, name)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
 
 @router.put("/{project_id}/config", response_model=Dict[str, Any])
