@@ -574,4 +574,28 @@ describe('AgentChat', () => {
     expect(rows[0].find('.agent-avatar').exists()).toBe(false)
     expect(rows[1].find('.agent-avatar').exists()).toBe(true)
   })
+
+  it('renders the approval panel between the message list and the input area when an interrupt is pending', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.threadId = 'thread-1'
+    agentStore.interrupt = 'system_command'
+    agentStore.pendingCommand = {
+      tool_call_id: 'tc-cmd-1',
+      _pending_tool: 'run_command',
+      args: { cmd: 'ls' },
+    }
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    const panel = wrapper.find('.approval-panel')
+    expect(panel.exists()).toBe(true)
+
+    const html = wrapper.html()
+    expect(html.indexOf('message-list')).toBeLessThan(html.indexOf('approval-panel'))
+    expect(html.indexOf('approval-panel')).toBeLessThan(html.indexOf('message-input-area'))
+  })
 })

@@ -87,6 +87,8 @@
         </div>
       </div>
 
+      <ApprovalPanel />
+
       <div
         class="chat-status"
         :class="{ 'chat-status--idle': !statusText }"
@@ -163,6 +165,7 @@ import { useProjectStore } from '@/stores/project'
 import { DEFAULT_AGENT_MODEL } from '@/api/agent'
 import type { AgentMessage } from '@/api/agent'
 import AgentAvatar from './AgentAvatar.vue'
+import ApprovalPanel from './ApprovalPanel.vue'
 import { formatMessageTime } from '@/utils/time'
 
 const agentStore = useAgentStore()
