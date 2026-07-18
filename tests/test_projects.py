@@ -174,3 +174,19 @@ def test_load_project_degrades_when_config_read_stalls(temp_db, monkeypatch):
     elapsed = time.time() - t0
     assert loaded["analysis"] == store._default_analysis()
     assert elapsed < 5
+
+
+def test_update_project_name(temp_db):
+    store, root = temp_db
+    p = store.create_project("A", str(root / "a"), "")
+    updated = store.update_project_name(p["id"], "B")
+    assert updated["name"] == "B"
+    assert store.load_project(p["id"])["name"] == "B"
+
+
+def test_update_project_name_duplicate_raises(temp_db):
+    store, root = temp_db
+    store.create_project("A", str(root / "a"), "")
+    p2 = store.create_project("B", str(root / "b"), "")
+    with pytest.raises(ValueError):
+        store.update_project_name(p2["id"], "A")

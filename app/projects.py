@@ -305,6 +305,24 @@ class ProjectStore:
             conn.close()
         return self.get_thread_meta(thread_id)
 
+    def update_project_name(self, project_id: str, name: str) -> Dict[str, Any]:
+        now = self._now()
+        conn = self._connect()
+        try:
+            conn.execute(
+                "UPDATE projects SET name = ?, updated_at = ? WHERE id = ?",
+                (name, now, project_id),
+            )
+            conn.commit()
+        except sqlite3.IntegrityError as e:
+            raise ValueError(f"项目名已存在: {e}")
+        finally:
+            conn.close()
+        project = self.load_project(project_id)
+        if project is None:
+            raise ValueError(f"项目不存在: {project_id}")
+        return project
+
     def update_thread_timestamp(self, thread_id: str) -> None:
         now = self._now()
         conn = self._connect()
