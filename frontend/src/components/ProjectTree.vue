@@ -106,7 +106,15 @@
               />
             </span>
           </li>
-          <li v-if="threadsOf(project.id).length === 0" class="thread-empty">暂无会话</li>
+          <li
+            v-if="failedIds.has(project.id)"
+            class="thread-retry"
+            data-testid="thread-retry"
+            @click="retryLoadThreads(project.id)"
+          >
+            加载失败，点击重试
+          </li>
+          <li v-else-if="threadsOf(project.id).length === 0" class="thread-empty">暂无会话</li>
         </ul>
       </li>
     </ul>
@@ -180,6 +188,9 @@ const rules = reactive<FormRules>({
 // 展开状态：会话内存即可，刷新后默认只展开当前项目。
 const expandedIds = ref<Set<string>>(new Set())
 
+// 对话加载失败的项目集合：展示内联重试入口。
+const failedIds = ref<Set<string>>(new Set())
+
 function isExpanded(projectId: string): boolean {
   return expandedIds.value.has(projectId)
 }
@@ -216,8 +227,19 @@ async function ensureThreadsLoaded(projectId: string): Promise<void> {
   if (agentStore.threadsByProject[projectId]) return
   try {
     await agentStore.loadProjectThreads(projectId)
+    failedIds.value.delete(projectId)
   } catch {
-    // axios 拦截器统一 toast；折叠后重新展开即可重试
+    // axios 拦截器统一 toast；行内提供重试入口
+    failedIds.value.add(projectId)
+  }
+}
+
+async function retryLoadThreads(projectId: string): Promise<void> {
+  failedIds.value.delete(projectId)
+  try {
+    await agentStore.loadProjectThreads(projectId)
+  } catch {
+    failedIds.value.add(projectId)
   }
 }
 
@@ -260,10 +282,16 @@ function handleNewTask(): void {
 }
 
 async function handleNewThread(project: Project): Promise<void> {
-  if (projectStore.currentProject?.id !== project.id) {
+  const isCurrent = projectStore.currentProject?.id === project.id
+  try {
+    await agentStore.createThread(project.id, project.analysis.api_key, agentStore.selectedModel)
+  } catch {
+    // axios 拦截器统一 toast；创建失败不切换项目
+    return
+  }
+  if (!isCurrent) {
     projectStore.selectProject(project.id)
   }
-  await agentStore.createThread(project.id, project.analysis.api_key, agentStore.selectedModel)
   if (route.path !== '/') {
     void router.push('/')
   }
@@ -294,10 +322,14 @@ async function handleDeleteProject(project: Project): Promise<void> {
     return
   }
 
+  const wasCurrent = projectStore.currentProject?.id === project.id
   try {
     await projectStore.deleteProject(project.id)
     agentStore.clearProjectThreads(project.id)
     expandedIds.value.delete(project.id)
+    if (wasCurrent) {
+      agentStore.resetThread()
+    }
   } catch (err: any) {
     ElMessage.error(err.response?.data?.detail || err.message || '删除项目失败')
   }
@@ -516,5 +548,17 @@ function resetForm(): void {
   padding: 0.375rem 0.625rem;
   font-size: 0.75rem;
   color: var(--app-text-muted);
+}
+
+.thread-retry {
+  padding: 0.375rem 0.625rem;
+  font-size: 0.75rem;
+  color: var(--app-text-secondary);
+  border-radius: var(--app-radius-md);
+  cursor: pointer;
+}
+
+.thread-retry:hover {
+  background-color: var(--app-sidebar-hover);
 }
 </style>

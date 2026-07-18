@@ -315,4 +315,55 @@ describe('ProjectTree', () => {
     expect(ElMessage.warning).toHaveBeenCalled()
     expect(agentApi.createThread).not.toHaveBeenCalled()
   })
+
+  it('creates the thread before switching project via another project\'s plus action', async () => {
+    vi.mocked(projectsApi.listProjects).mockResolvedValue([mockProject('1'), mockProject('2')])
+    let resolveCreate: (v: { thread_id: string }) => void = () => {}
+    vi.mocked(agentApi.createThread).mockImplementation(
+      () => new Promise((resolve) => { resolveCreate = resolve })
+    )
+    vi.mocked(agentApi.listThreads).mockResolvedValue({ threads: [] })
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    const projectStore = useProjectStore()
+    projectStore.selectProject('1')
+
+    const rows = wrapper.findAll('[data-testid="project-row"]')
+    await rows[1].find('[data-testid="project-new-thread"]').trigger('click')
+    await flushPromises()
+
+    // 创建未完成前不切换项目
+    expect(projectStore.currentProject?.id).toBe('1')
+
+    resolveCreate({ thread_id: 't-new' })
+    await flushPromises()
+
+    expect(agentApi.createThread).toHaveBeenCalledWith('2', expect.objectContaining({
+      llm_model: 'deepseek-v4-flash',
+    }))
+    expect(projectStore.currentProject?.id).toBe('2')
+  })
+
+  it('shows an inline retry when loading threads fails and recovers on click', async () => {
+    vi.mocked(projectsApi.listProjects).mockResolvedValue([mockProject('1')])
+    vi.mocked(agentApi.listThreads).mockRejectedValueOnce(new Error('boom'))
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    await wrapper.find('[data-testid="project-row"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="thread-retry"]').exists()).toBe(true)
+    expect(wrapper.text()).not.toContain('暂无会话')
+
+    vi.mocked(agentApi.listThreads).mockResolvedValueOnce({ threads: [mockThread('t1', '1')] })
+    await wrapper.find('[data-testid="thread-retry"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="thread-retry"]').exists()).toBe(false)
+    expect(wrapper.findAll('[data-testid="thread-row"]')).toHaveLength(1)
+  })
 })
