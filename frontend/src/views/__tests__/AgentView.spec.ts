@@ -103,4 +103,85 @@ describe('AgentView', () => {
 
     expect(wrapper.find('.thread-list').classes()).toContain('thread-list--collapsed')
   })
+
+  it('shows the empty state in the side panel when no approval is pending', async () => {
+    const projectStore = useProjectStore()
+    const agentStore = useAgentStore()
+    vi.spyOn(agentStore, 'listThreads').mockResolvedValue(undefined)
+    vi.spyOn(agentStore, 'loadThread').mockResolvedValue(undefined)
+
+    projectStore.currentProject = mockProject('1')
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('暂无待审批的计划/文件')
+  })
+
+  it('shows the read-only script panel in the side panel for python_script interrupts', async () => {
+    const projectStore = useProjectStore()
+    const agentStore = useAgentStore()
+    vi.spyOn(agentStore, 'listThreads').mockResolvedValue(undefined)
+    vi.spyOn(agentStore, 'loadThread').mockResolvedValue(undefined)
+
+    projectStore.currentProject = mockProject('1')
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    // 生产中 interrupt 状态在 mount 后由 loadThread/SSE 写入
+    agentStore.interrupt = 'python_script'
+    agentStore.pendingScript = {
+      tool_call_id: 'tc-1',
+      code: "print('hello')",
+      risk_level: 'low' as const,
+      description: '打印测试',
+    }
+    await flushPromises()
+
+    const sidePanel = wrapper.find('.agent-side-panel')
+    expect(sidePanel.text()).toContain('待执行 Python 脚本')
+    expect(sidePanel.text()).toContain("print('hello')")
+  })
+
+  it('collapses the side panel and persists state in localStorage', async () => {
+    const projectStore = useProjectStore()
+    const agentStore = useAgentStore()
+    vi.spyOn(agentStore, 'listThreads').mockResolvedValue(undefined)
+    vi.spyOn(agentStore, 'loadThread').mockResolvedValue(undefined)
+
+    projectStore.currentProject = mockProject('1')
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    const toggle = wrapper.find('[data-testid="side-panel-toggle"]')
+    expect(toggle.exists()).toBe(true)
+
+    await toggle.trigger('click')
+    expect(localStorage.getItem('onerad:agent:sidePanelCollapsed')).toBe('true')
+    expect(wrapper.find('.agent-side-panel').classes()).toContain(
+      'agent-side-panel--collapsed'
+    )
+
+    await toggle.trigger('click')
+    expect(localStorage.getItem('onerad:agent:sidePanelCollapsed')).toBe('false')
+    expect(wrapper.find('.agent-side-panel').classes()).not.toContain(
+      'agent-side-panel--collapsed'
+    )
+  })
+
+  it('restores side panel collapse state from localStorage on mount', async () => {
+    localStorage.setItem('onerad:agent:sidePanelCollapsed', 'true')
+
+    const projectStore = useProjectStore()
+    const agentStore = useAgentStore()
+    vi.spyOn(agentStore, 'listThreads').mockResolvedValue(undefined)
+    vi.spyOn(agentStore, 'loadThread').mockResolvedValue(undefined)
+
+    projectStore.currentProject = mockProject('1')
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    expect(wrapper.find('.agent-side-panel').classes()).toContain(
+      'agent-side-panel--collapsed'
+    )
+  })
 })

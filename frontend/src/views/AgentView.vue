@@ -28,36 +28,47 @@
         />
       </div>
 
-      <div class="agent-side-panel">
-        <PlanPanel
-          v-if="!agentStore.busy && agentStore.interrupt === 'file_plan' && agentStore.pendingPlan"
-        />
-        <CommandPanel
-          v-else-if="!agentStore.busy && agentStore.interrupt === 'system_command' && agentStore.pendingCommand"
-        />
-        <ScriptPanel
-          v-else-if="!agentStore.busy && agentStore.interrupt === 'python_script' && agentStore.pendingScript"
-        />
-        <RadiomicsPanel
-          v-else-if="!agentStore.busy && (agentStore.interrupt === 'radiomics_plan' || agentStore.interrupt === 'radiomics_execution') && (agentStore.pendingRadiomicsPlan || agentStore.pendingRadiomicsExecution)"
-        />
-        <AnalysisPanel
-          v-else-if="!agentStore.busy && agentStore.interrupt === 'radiomics_analysis' && agentStore.pendingRadiomicsAnalysis"
-        />
+      <div
+        class="agent-side-panel"
+        :class="{ 'agent-side-panel--collapsed': isSidePanelCollapsed }"
+      >
+        <div class="side-panel-header">
+          <el-button
+            link
+            size="small"
+            :icon="isSidePanelCollapsed ? Expand : Fold"
+            :aria-label="isSidePanelCollapsed ? '展开计划文件面板' : '折叠计划文件面板'"
+            data-testid="side-panel-toggle"
+            @click="handleToggleSidePanel"
+          />
+          <span v-show="!isSidePanelCollapsed" class="side-panel-title">
+            计划 / 文件
+          </span>
+        </div>
+        <template v-if="!isSidePanelCollapsed">
+          <div class="side-panel-content">
+            <PlanDisplay v-if="showPlan" />
+            <CommandPanel v-else-if="showCommand" />
+            <ScriptPanel v-else-if="showScript" />
+            <RadiomicsPanel v-else-if="showRadiomics" />
+            <AnalysisPanel v-else-if="showAnalysis" />
+            <div v-else class="side-panel-empty">暂无待审批的计划/文件</div>
+          </div>
 
-        <el-collapse v-if="agentStore.operationLog.length > 0">
-          <el-collapse-item title="操作日志">
-            <div class="operation-log">
-              <div
-                v-for="(log, index) in agentStore.operationLog"
-                :key="index"
-                class="operation-log-entry"
-              >
-                {{ log }}
+          <el-collapse v-if="agentStore.operationLog.length > 0">
+            <el-collapse-item title="操作日志">
+              <div class="operation-log">
+                <div
+                  v-for="(log, index) in agentStore.operationLog"
+                  :key="index"
+                  class="operation-log-entry"
+                >
+                  {{ log }}
+                </div>
               </div>
-            </div>
-          </el-collapse-item>
-        </el-collapse>
+            </el-collapse-item>
+          </el-collapse>
+        </template>
       </div>
     </div>
   </div>
@@ -69,7 +80,8 @@ import { useAgentStore } from '@/stores/agent'
 import { useProjectStore } from '@/stores/project'
 import AgentChat from '@/components/AgentChat.vue'
 import ThreadList from '@/components/ThreadList.vue'
-import PlanPanel from '@/components/PlanPanel.vue'
+import { Expand, Fold } from '@element-plus/icons-vue'
+import PlanDisplay from '@/components/PlanDisplay.vue'
 import CommandPanel from '@/components/CommandPanel.vue'
 import ScriptPanel from '@/components/ScriptPanel.vue'
 import RadiomicsPanel from '@/components/RadiomicsPanel.vue'
@@ -101,6 +113,50 @@ function saveThreadListCollapsed(value: boolean): void {
 }
 
 const isThreadListCollapsed = ref(loadThreadListCollapsed())
+
+const SIDE_PANEL_COLLAPSED_KEY = 'onerad:agent:sidePanelCollapsed'
+
+function loadSidePanelCollapsed(): boolean {
+  try {
+    return localStorage.getItem(SIDE_PANEL_COLLAPSED_KEY) === 'true'
+  } catch {
+    return false
+  }
+}
+
+function saveSidePanelCollapsed(value: boolean): void {
+  try {
+    localStorage.setItem(SIDE_PANEL_COLLAPSED_KEY, String(value))
+  } catch {
+    // ignore
+  }
+}
+
+const isSidePanelCollapsed = ref(loadSidePanelCollapsed())
+
+function handleToggleSidePanel(): void {
+  isSidePanelCollapsed.value = !isSidePanelCollapsed.value
+  saveSidePanelCollapsed(isSidePanelCollapsed.value)
+}
+
+const showPlan = computed(
+  () => !agentStore.busy && agentStore.interrupt === 'file_plan' && agentStore.pendingPlan
+)
+const showCommand = computed(
+  () => !agentStore.busy && agentStore.interrupt === 'system_command' && agentStore.pendingCommand
+)
+const showScript = computed(
+  () => !agentStore.busy && agentStore.interrupt === 'python_script' && agentStore.pendingScript
+)
+const showRadiomics = computed(
+  () =>
+    !agentStore.busy &&
+    (agentStore.interrupt === 'radiomics_plan' || agentStore.interrupt === 'radiomics_execution') &&
+    (agentStore.pendingRadiomicsPlan || agentStore.pendingRadiomicsExecution)
+)
+const showAnalysis = computed(
+  () => !agentStore.busy && agentStore.interrupt === 'radiomics_analysis' && agentStore.pendingRadiomicsAnalysis
+)
 
 const pageTitle = computed(() => {
   return projectStore.currentProject
@@ -264,6 +320,44 @@ watch(
   flex-direction: column;
   gap: 1rem;
   overflow-y: auto;
+  transition: width 0.2s ease;
+}
+
+.agent-side-panel--collapsed {
+  width: 40px;
+  align-items: center;
+}
+
+.side-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.agent-side-panel--collapsed .side-panel-header {
+  justify-content: center;
+}
+
+.side-panel-title {
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--app-text);
+}
+
+.side-panel-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.side-panel-empty {
+  padding: 2rem 1rem;
+  text-align: center;
+  color: var(--app-text-muted);
+  font-size: 0.875rem;
+  border: 1px dashed var(--app-border-strong);
+  border-radius: var(--app-radius-md);
 }
 
 .operation-log {
