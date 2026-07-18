@@ -55,3 +55,8 @@ export const updateConfig = async (
 export const deleteProject = async (projectId: string): Promise<void> => {
   await client.delete(`/projects/${encodeURIComponent(projectId)}`)
 }
+
+export const renameProject = async (projectId: string, name: string): Promise<Project> => {
+  const res = await client.patch(`/projects/${encodeURIComponent(projectId)}`, { name })
+  return res.data
+}

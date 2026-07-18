@@ -72,6 +72,19 @@ export const useProjectStore = defineStore('project', () => {
     }
   }
 
+  async function renameProject(projectId: string, name: string): Promise<Project> {
+    const updated = await api.renameProject(projectId, name)
+    const idx = projects.value.findIndex((p) => p.id === projectId)
+    if (idx >= 0) {
+      projects.value[idx] = updated
+    }
+    if (currentProject.value?.id === projectId) {
+      currentProject.value = updated
+      currentConfig.value = { ...updated.analysis }
+    }
+    return updated
+  }
+
   return {
     projects,
     currentProject,
@@ -82,5 +95,6 @@ export const useProjectStore = defineStore('project', () => {
     createProject,
     deleteProject,
     saveConfig,
+    renameProject,
   }
 })

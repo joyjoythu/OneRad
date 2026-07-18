@@ -9,6 +9,7 @@ vi.mock('@/api/projects', () => ({
   createProject: vi.fn(),
   updateConfig: vi.fn(),
   deleteProject: vi.fn(),
+  renameProject: vi.fn(),
 }))
 
 import * as api from '@/api/projects'
@@ -134,5 +135,37 @@ describe('useProjectStore', () => {
     expect(store.projects).toHaveLength(0)
     expect(store.currentProject).toBeNull()
     expect(store.currentConfig).toBeNull()
+  })
+
+  it('renames a project and refreshes list and current project', async () => {
+    const original = mockProject('1')
+    const renamed: Project = { ...original, name: 'Renamed' }
+    vi.mocked(api.renameProject).mockResolvedValue(renamed)
+
+    const store = useProjectStore()
+    store.projects = [original]
+    store.selectProject('1')
+
+    await store.renameProject('1', 'Renamed')
+
+    expect(api.renameProject).toHaveBeenCalledWith('1', 'Renamed')
+    expect(store.projects[0].name).toBe('Renamed')
+    expect(store.currentProject?.name).toBe('Renamed')
+  })
+
+  it('renames a non-current project without touching currentProject', async () => {
+    const original = mockProject('2')
+    const renamed: Project = { ...original, name: 'Renamed' }
+    vi.mocked(api.renameProject).mockResolvedValue(renamed)
+
+    const store = useProjectStore()
+    store.projects = [mockProject('1'), original]
+    store.selectProject('1')
+
+    await store.renameProject('2', 'Renamed')
+
+    expect(store.projects[1].name).toBe('Renamed')
+    expect(store.currentProject?.id).toBe('1')
+    expect(store.currentProject?.name).toBe('Project 1')
   })
 })
