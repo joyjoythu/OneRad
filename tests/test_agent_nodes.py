@@ -197,6 +197,32 @@ def test_call_llm_omits_context_usage_when_stream_has_no_usage(tmp_path):
     assert "reasoning_content" not in ai.additional_kwargs
 
 
+def test_call_llm_handles_usage_chunk_with_empty_choices(tmp_path):
+    """DeepSeek 的 usage-only chunk choices 为空列表，不得 IndexError，usage 照常记录。"""
+    state = _make_state(api_key="test-key")
+    state["project_path"] = str(tmp_path)
+    chunks = [
+        _chunk(content="你好"),
+        SimpleNamespace(
+            choices=[],
+            usage=SimpleNamespace(prompt_tokens=8, completion_tokens=4, total_tokens=12),
+        ),
+    ]
+    mock_openai, _ = _patch_openai_stream(chunks)
+    try:
+        with patch("app.agent.nodes._publish_thinking"):
+            result = call_llm(state)
+    finally:
+        mock_openai.stop()
+
+    assert result["messages"][0].content == "你好"
+    assert result["context_usage"] == {
+        "input_tokens": 8,
+        "output_tokens": 4,
+        "total_tokens": 12,
+    }
+
+
 def test_call_llm_raises_on_invalid_tool_arguments(tmp_path):
     """tool_calls 参数 JSON 解析失败必须抛错，不得带错参数执行工具。"""
     state = _make_state(api_key="test-key")
