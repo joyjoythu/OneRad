@@ -373,9 +373,9 @@ defineExpose({ clearInput })
   min-height: 0;
   overflow-y: auto;
   padding: 1rem;
-  border: 1px solid #e4e7ed;
-  border-radius: 4px;
-  background-color: #ffffff;
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-lg);
+  background-color: var(--app-bg-panel);
 }
 
 .message-row {
@@ -423,31 +423,34 @@ defineExpose({ clearInput })
   padding: 0 0.25rem;
   font-size: 0.75rem;
   line-height: 1.2;
-  color: #909399;
+  color: var(--app-text-muted);
 }
 
 .message-bubble {
   padding: 0.75rem 1rem;
-  border-radius: 8px;
+  border-radius: var(--app-radius-lg);
   line-height: 1.5;
   word-break: break-word;
   white-space: pre-wrap;
 }
 
 .message-bubble--user {
-  background-color: #409eff;
-  color: #ffffff;
+  background-color: var(--app-bg-bubble);
+  color: var(--app-text);
 }
 
 .message-bubble--assistant {
-  background-color: #f5f7fa;
-  color: #303133;
-  border: 1px solid #e4e7ed;
+  background-color: transparent;
+  color: var(--app-text);
+  padding-left: 0;
+  padding-right: 0;
 }
 
 .message-bubble--tool {
-  background-color: #f4f4f5;
-  color: #606266;
+  background-color: var(--app-bg-hover);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-md);
+  color: var(--app-text-secondary);
   font-size: 0.875rem;
   padding: 0.5rem 0.75rem;
 }
@@ -481,7 +484,7 @@ defineExpose({ clearInput })
   height: calc(0.875rem * 1.5 + 0.5rem);
   padding: 0.25rem 0.5rem;
   box-sizing: border-box;
-  color: #909399;
+  color: var(--app-text-secondary);
   font-size: 0.875rem;
   line-height: 1.5;
 }
@@ -496,7 +499,7 @@ defineExpose({ clearInput })
   align-items: center;
   gap: 0.5rem;
   padding: 0 0.25rem 0.25rem;
-  color: #909399;
+  color: var(--app-text-muted);
   font-size: 0.75rem;
 }
 
@@ -523,18 +526,18 @@ defineExpose({ clearInput })
   align-items: center;
   gap: 0.25rem;
   font-size: 0.75rem;
-  color: #909399;
+  color: var(--app-text-muted);
   white-space: nowrap;
   margin-bottom: 1px;
   cursor: default;
 }
 
 .context-usage--warning {
-  color: #e6a23c;
+  color: var(--app-warning);
 }
 
 .context-usage--danger {
-  color: #f56c6c;
+  color: var(--app-danger);
 }
 
 .model-selector :deep(.el-select__wrapper) {
