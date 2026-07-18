@@ -118,6 +118,18 @@ describe('useAgentStore', () => {
     expect(client.get).toHaveBeenCalledWith('/agent/threads/thread-1')
   })
 
+  it('refreshes the thread list when the stream ends so generated titles show up', async () => {
+    const store = useAgentStore()
+    await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')
+    await store.sendMessage('Hello')
+    const listSpy = vi.spyOn(agentApi, 'listThreads').mockResolvedValue({ threads: [] })
+
+    const es = MockEventSource.instances[0]
+    es.emit('agent_end', {})
+
+    expect(listSpy).toHaveBeenCalledWith('project-1')
+  })
+
   it('sendMessage rolls back the optimistic message and clears busy on API failure', async () => {
     const store = useAgentStore()
     await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')

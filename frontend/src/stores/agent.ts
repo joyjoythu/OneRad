@@ -285,6 +285,16 @@ export const useAgentStore = defineStore('agent', () => {
         // SSE 只推订阅后的新事件；订阅空窗内漏掉的事件没有回放兜底，
         // 流结束时同步一次最终状态保证收敛。
         void syncThread()
+        // 首轮对话后后端会生成摘要标题，刷新列表让侧边栏及时显示；
+        // 非当前项目只刷缓存，避免污染扁平列表。
+        const pid = currentThread.value?.project_id
+        if (pid) {
+          if (pid === threadsProjectId.value) {
+            void listThreads(pid)
+          } else {
+            void loadProjectThreads(pid)
+          }
+        }
       },
       onError: () => {
         disconnect()

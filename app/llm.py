@@ -65,6 +65,23 @@ def build_column_identification_prompt(context: Dict[str, Any]) -> Tuple[str, st
     return system, user
 
 
+THREAD_TITLE_TEMPLATE = """请为以下用户消息生成一个简短的对话标题。
+要求：
+1. 不超过 15 个字
+2. 概括用户的核心意图
+3. 只输出标题本身：不要引号、不要标点结尾、不要解释
+
+用户消息：
+{content}
+"""
+
+
+def build_thread_title_prompt(content: str) -> Tuple[str, str]:
+    """构造会话标题生成 prompt；消息截断到 500 字避免浪费 token。"""
+    system = "你是一个对话标题生成器。只输出标题文本。"
+    return system, THREAD_TITLE_TEMPLATE.format(content=content[:500])
+
+
 class LLMClient:
     def __init__(
         self,

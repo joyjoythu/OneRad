@@ -953,3 +953,106 @@ def test_update_plan_on_fresh_thread(client):
     )
     assert response.status_code == 200, response.text
     assert response.json()["pending_plan"] == plan
+
+
+def _wait_for_title_tasks(app, timeout=5.0):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if all(t.done() for t in app.state.agent_title_tasks):
+            return
+        time.sleep(0.05)
+    raise AssertionError("title generation tasks did not finish in time")
+
+
+def _mock_idle_graph(app):
+    mock_graph = AsyncMock()
+    mock_graph.aget_state = AsyncMock(
+        return_value=SimpleNamespace(values={"interrupt_type": None})
+    )
+
+    async def fake_astream(input_value=None, config=None, stream_mode=None):
+        if False:
+            yield
+
+    mock_graph.astream = fake_astream
+    app.dependency_overrides[get_agent_graph] = lambda: mock_graph
+
+
+def test_thread_title_generated_via_llm(client, app, monkeypatch):
+    """有 API key 时，首条用户消息触发后台 LLM 摘要命名。"""
+    project = _create_project(client)
+    thread_id = _create_thread(client, project["id"], api_key="sk-test")["thread_id"]
+
+    class FakeLLM:
+        def __init__(self, api_key=None, base_url=None, model=None):
+            pass
+
+        def call(self, system, user, temperature=0.1, max_tokens=1500):
+            return "影像组学特征提取"
+
+    monkeypatch.setattr("app.api.agent.LLMClient", FakeLLM)
+    _mock_idle_graph(app)
+
+    response = client.post(
+        f"/api/agent/threads/{thread_id}/messages",
+        json={"role": "user", "content": "帮我提取这批病例的影像组学特征"},
+    )
+    assert response.status_code == 202, response.text
+
+    _wait_for_title_tasks(app)
+    threads = _list_threads(client, project["id"])
+    assert threads[0]["title"] == "影像组学特征提取"
+
+
+def test_thread_title_falls_back_to_truncation_on_llm_failure(client, app, monkeypatch):
+    """LLM 调用失败时回退为首句截断命名。"""
+    project = _create_project(client)
+    thread_id = _create_thread(client, project["id"], api_key="sk-test")["thread_id"]
+
+    class FailingLLM:
+        def __init__(self, api_key=None, base_url=None, model=None):
+            pass
+
+        def call(self, system, user, temperature=0.1, max_tokens=1500):
+            raise RuntimeError("api down")
+
+    monkeypatch.setattr("app.api.agent.LLMClient", FailingLLM)
+    _mock_idle_graph(app)
+
+    content = "hello world this is a test"
+    response = client.post(
+        f"/api/agent/threads/{thread_id}/messages",
+        json={"role": "user", "content": content},
+    )
+    assert response.status_code == 202, response.text
+
+    _wait_for_title_tasks(app)
+    threads = _list_threads(client, project["id"])
+    assert threads[0]["title"] == content[:30]
+
+
+def test_thread_title_not_overwritten_after_first_message(client, app, monkeypatch):
+    """已有标题的会话不再触发自动命名。"""
+    project = _create_project(client)
+    thread_id = _create_thread(client, project["id"], api_key="sk-test")["thread_id"]
+
+    class FakeLLM:
+        def __init__(self, api_key=None, base_url=None, model=None):
+            pass
+
+        def call(self, system, user, temperature=0.1, max_tokens=1500):
+            return "影像组学特征提取"
+
+    monkeypatch.setattr("app.api.agent.LLMClient", FakeLLM)
+    _mock_idle_graph(app)
+
+    client.patch(f"/api/agent/threads/{thread_id}", json={"title": "手动标题"})
+
+    response = client.post(
+        f"/api/agent/threads/{thread_id}/messages",
+        json={"role": "user", "content": "你好"},
+    )
+    assert response.status_code == 202, response.text
+
+    threads = _list_threads(client, project["id"])
+    assert threads[0]["title"] == "手动标题"

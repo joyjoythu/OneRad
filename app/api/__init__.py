@@ -33,6 +33,7 @@ async def lifespan(app: FastAPI):
     app.state.agent_api_keys = {}
     app.state.agent_llm_models = {}
     app.state.agent_auto_approve = {}
+    app.state.agent_title_tasks = set()
     async with AsyncSqliteSaver.from_conn_string(
         str(data_dir / "checkpoints.db")
     ) as saver:

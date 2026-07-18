@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import uuid
 from contextlib import suppress
 from datetime import datetime, timezone
@@ -22,9 +23,12 @@ from app.agent import build_initial_state, create_agent_graph
 from app.agent import runtime as agent_runtime
 from app.api.deps import get_project_store
 from app.api.runner import get_bridge
+from app.llm import LLMClient, build_thread_title_prompt
 from app.projects import ProjectStore
 
 router = APIRouter()
+
+logger = logging.getLogger(__name__)
 
 
 class MessageRequest(BaseModel):
@@ -72,6 +76,37 @@ async def _run_store_sync(fn, *args):
     """Run a synchronous ProjectStore method in the default executor."""
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, fn, *args)
+
+
+def _schedule_title_generation(app, thread_id: str, content: str) -> None:
+    """后台为首次对话生成摘要标题，不阻塞消息响应。"""
+    task = asyncio.create_task(_generate_thread_title(app, thread_id, content))
+    app.state.agent_title_tasks.add(task)
+    task.add_done_callback(app.state.agent_title_tasks.discard)
+
+
+async def _generate_thread_title(app, thread_id: str, content: str) -> None:
+    """用 LLM 概括首条消息作为会话标题；失败时回退为首句截断。"""
+    store: ProjectStore = app.state.project_store
+    api_key = app.state.agent_api_keys.get(thread_id, "")
+    model = app.state.agent_llm_models.get(thread_id) or "deepseek-v4-pro"
+    title = ""
+    try:
+        client = LLMClient(api_key=api_key, model=model)
+        system, user = build_thread_title_prompt(content)
+        raw = await asyncio.to_thread(client.call, system, user, 0.3, 30)
+        # 只取首行并去掉引号/结尾标点，防止模型输出格式漂移
+        title = raw.splitlines()[0].strip().strip("\"'。！？!?.…") if raw else ""
+    except Exception:
+        logger.warning("生成会话标题失败，回退为截断命名", exc_info=True)
+    if not title:
+        title = content[:30]
+    if not title:
+        return
+    # 用户可能在生成期间已手动改名：只覆盖仍为空的标题。
+    meta = await _run_store_sync(store.get_thread_meta, thread_id)
+    if meta and not meta.get("title"):
+        await _run_store_sync(store.update_thread_title, thread_id, title)
 
 
 async def _agent_config(thread_id: str, app) -> Dict[str, Any]:
@@ -547,8 +582,14 @@ async def send_message(
     if payload.role == "user":
         meta = await _run_store_sync(store.get_thread_meta, thread_id)
         if meta and not meta.get("title"):
-            title = payload.content[:30] if payload.content else ""
-            await _run_store_sync(store.update_thread_title, thread_id, title)
+            if request.app.state.agent_api_keys.get(thread_id):
+                _schedule_title_generation(
+                    request.app, thread_id, payload.content or ""
+                )
+            else:
+                # 无 API key 时回退为首句截断命名
+                title = payload.content[:30] if payload.content else ""
+                await _run_store_sync(store.update_thread_title, thread_id, title)
 
     bridge = get_bridge(request)
     await _start_stream(
