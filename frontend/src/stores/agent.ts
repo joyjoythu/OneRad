@@ -33,6 +33,8 @@ export const useAgentStore = defineStore('agent', () => {
   // 按项目分组的对话列表缓存，供合并侧边栏懒加载展示；
   // listThreads 会同步对应项目的缓存，保证增删改后一致。
   const threadsByProject = ref<Record<string, ThreadSummary[]>>({})
+  // 扁平 threads 列表所属的项目 id；只有该项目的列表才允许覆盖 threads。
+  const threadsProjectId = ref<string | null>(null)
   // 期望打开的对话 id：跨项目点击对话时由侧边栏设置，
   // AgentView 的项目切换 watcher 消费后完成加载（保证只加载一次）。
   const preferredThreadId = ref<string | null>(null)
@@ -173,6 +175,7 @@ export const useAgentStore = defineStore('agent', () => {
     const data = await api.listThreads(projectId)
     threads.value = data.threads ?? []
     threadsByProject.value[projectId] = threads.value
+    threadsProjectId.value = projectId
   }
 
   async function loadProjectThreads(projectId: string): Promise<void> {
@@ -240,7 +243,11 @@ export const useAgentStore = defineStore('agent', () => {
     if (currentThread.value?.id === threadIdToDelete) {
       resetInternalState()
     }
-    await listThreads(projectId)
+    if (projectId === threadsProjectId.value) {
+      await listThreads(projectId)
+    } else {
+      await loadProjectThreads(projectId)
+    }
   }
 
   async function renameThread(
@@ -249,7 +256,11 @@ export const useAgentStore = defineStore('agent', () => {
     projectId: string
   ): Promise<void> {
     await api.renameThread(threadIdToRename, title)
-    await listThreads(projectId)
+    if (projectId === threadsProjectId.value) {
+      await listThreads(projectId)
+    } else {
+      await loadProjectThreads(projectId)
+    }
     if (currentThread.value?.id === threadIdToRename) {
       currentThread.value =
         threads.value.find((t) => t.id === threadIdToRename) || currentThread.value
@@ -373,6 +384,7 @@ export const useAgentStore = defineStore('agent', () => {
   function resetThread(): void {
     resetInternalState()
     threads.value = []
+    threadsProjectId.value = null
   }
 
   return {
@@ -391,6 +403,7 @@ export const useAgentStore = defineStore('agent', () => {
     contextWindow,
     threads,
     threadsByProject,
+    threadsProjectId,
     preferredThreadId,
     selectedModel,
     currentThread,

@@ -278,6 +278,50 @@ describe('useAgentStore', () => {
     expect(store.selectedModel).toBe('deepseek-v4-pro')
   })
 
+  it('resetThread clears the flat list but keeps the per-project cache', async () => {
+    const store = useAgentStore()
+    const thread = {
+      id: 't1',
+      project_id: 'p1',
+      title: 'T1',
+      llm_model: 'deepseek-v4-flash',
+      created_at: '2024-01-01T00:00:00Z',
+      updated_at: '2024-01-01T00:00:00Z',
+    }
+    vi.spyOn(agentApi, 'listThreads').mockResolvedValueOnce({ threads: [thread] })
+    await store.listThreads('p1')
+
+    store.resetThread()
+
+    expect(store.threads).toEqual([])
+    expect(store.threadsByProject['p1']).toEqual([thread])
+  })
+
+  it('deleteThread of another project only refreshes the cache, not the flat list', async () => {
+    const store = useAgentStore()
+    const current = {
+      id: 't-cur',
+      project_id: 'p1',
+      title: 'Current',
+      llm_model: 'deepseek-v4-flash',
+      created_at: '2024-01-01T00:00:00Z',
+      updated_at: '2024-01-01T00:00:00Z',
+    }
+    vi.spyOn(agentApi, 'listThreads').mockResolvedValueOnce({ threads: [current] })
+    await store.listThreads('p1')
+
+    vi.spyOn(agentApi, 'deleteThread').mockResolvedValueOnce(undefined)
+    const otherSpy = vi
+      .spyOn(agentApi, 'listThreads')
+      .mockResolvedValueOnce({ threads: [] })
+
+    await store.deleteThread('t-other', 'p2')
+
+    expect(otherSpy).toHaveBeenCalledWith('p2')
+    expect(store.threads).toEqual([current])
+    expect(store.threadsByProject['p2']).toEqual([])
+  })
+
   it('createThread creates a new thread, refreshes the list and connects SSE', async () => {
     const store = useAgentStore()
     vi.spyOn(agentApi, 'createThread').mockResolvedValueOnce({ thread_id: 'thread-new' })
