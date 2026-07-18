@@ -64,16 +64,25 @@ function handleToggleSidebar(): void {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  background-color: var(--app-bg);
+  color: var(--app-text);
 }
 
 .app-header {
-  padding: 1rem 2rem;
-  border-bottom: 1px solid #e4e7ed;
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 0.75rem 1.5rem;
+  border-bottom: 1px solid var(--app-border);
+  background-color: var(--app-bg);
 }
 
 .app-header h1 {
   margin: 0;
-  font-size: 1.5rem;
+  font-size: 1.125rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--app-text);
 }
 
 .app-nav {
@@ -82,7 +91,7 @@ function handleToggleSidebar(): void {
 }
 
 .app-nav a {
-  color: #606266;
+  color: var(--app-text-secondary);
   text-decoration: none;
   font-size: 0.9375rem;
   padding: 0.25rem 0;
@@ -91,12 +100,12 @@ function handleToggleSidebar(): void {
 }
 
 .app-nav a:hover {
-  color: #409eff;
+  color: var(--app-text);
 }
 
 .app-nav a.active {
-  color: #409eff;
-  border-bottom-color: #409eff;
+  color: var(--app-text);
+  border-bottom-color: var(--app-accent);
 }
 
 .app-body {
@@ -107,7 +116,8 @@ function handleToggleSidebar(): void {
 
 .app-sidebar {
   width: 320px;
-  border-right: 1px solid #e4e7ed;
+  border-right: 1px solid var(--app-border);
+  background-color: var(--app-bg-panel);
   overflow-y: auto;
   transition: width 0.2s ease;
 }
@@ -130,7 +140,7 @@ function handleToggleSidebar(): void {
 
 .app-main {
   flex: 1;
-  padding: 1.5rem 2rem;
+  padding: 1.25rem 1.5rem;
   overflow-y: auto;
 }
 </style>
