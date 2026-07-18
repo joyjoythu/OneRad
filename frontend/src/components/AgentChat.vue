@@ -32,6 +32,28 @@
               ]"
             >
               <div
+                v-if="message.role === 'assistant' && message.reasoning_content"
+                class="reasoning-block"
+              >
+                <el-button
+                  link
+                  size="small"
+                  class="reasoning-toggle"
+                  :aria-label="
+                    isReasoningExpanded(index) ? '收起思考过程' : '展开思考过程'
+                  "
+                  @click="toggleReasoning(index)"
+                >
+                  {{ isReasoningExpanded(index) ? '收起' : '展开' }}思考过程
+                </el-button>
+                <div
+                  v-show="isReasoningExpanded(index)"
+                  class="reasoning-content"
+                >
+                  {{ message.reasoning_content }}
+                </div>
+              </div>
+              <div
                 v-if="message.role === 'tool'"
                 class="message-tool-call"
               >
@@ -82,6 +104,21 @@
             </div>
             <div v-if="message.timestamp" class="message-time">
               {{ formatMessageTime(message.timestamp) }}
+            </div>
+          </div>
+        </div>
+        <div
+          v-if="showThinkingStream"
+          class="message-row message-row--assistant"
+        >
+          <AgentAvatar class="message-avatar" />
+          <div class="message-main message-main--assistant">
+            <div class="message-bubble message-bubble--assistant thinking-stream">
+              <div class="thinking-stream-header">
+                <el-icon class="is-loading"><Loading /></el-icon>
+                <span>思考过程</span>
+              </div>
+              <div class="thinking-stream-content">{{ agentStore.currentThinking?.text }}</div>
             </div>
           </div>
         </div>
@@ -199,6 +236,25 @@ const TOOL_COLLAPSE_LINE_THRESHOLD = 10
 const TOOL_COLLAPSE_CHAR_THRESHOLD = 600
 /** 记录用户手动展开/收起的工具输出索引。 */
 const expandedToolIndexes = ref<Record<number, boolean>>({})
+
+/** 记录用户手动展开/收起的思考过程区块索引（默认折叠）。 */
+const expandedReasoningIndexes = ref<Record<number, boolean>>({})
+
+function isReasoningExpanded(index: number): boolean {
+  return !!expandedReasoningIndexes.value[index]
+}
+
+function toggleReasoning(index: number): void {
+  expandedReasoningIndexes.value[index] = !expandedReasoningIndexes.value[index]
+}
+
+/** 流式思考气泡：busy 且当前轮思考未结束时显示。 */
+const showThinkingStream = computed(() => {
+  const thinking = agentStore.currentThinking
+  return (
+    agentStore.busy && !!thinking && !thinking.done && thinking.text.length > 0
+  )
+})
 
 function shouldCollapseTool(content?: string): boolean {
   if (!content) return false
@@ -322,6 +378,14 @@ function toolCallNames(message: AgentMessage): string {
 
 watchEffect(async () => {
   if (agentStore.messages.length) {
+    await nextTick()
+    scrollToBottom()
+  }
+})
+
+// 流式思考文本更新时保持贴底滚动。
+watchEffect(async () => {
+  if (agentStore.currentThinking?.text) {
     await nextTick()
     scrollToBottom()
   }
@@ -480,6 +544,42 @@ defineExpose({ clearInput })
   display: flex;
   justify-content: flex-end;
   margin-top: 0.25rem;
+}
+
+.reasoning-block {
+  margin-bottom: 0.25rem;
+}
+
+.reasoning-content {
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--app-text-secondary);
+  font-size: 0.875rem;
+  border-left: 2px solid var(--app-border);
+  padding-left: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.thinking-stream {
+  width: 100%;
+}
+
+.thinking-stream-header {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  color: var(--app-text-muted);
+  font-size: 0.875rem;
+  margin-bottom: 0.25rem;
+}
+
+.thinking-stream-content {
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--app-text-secondary);
+  font-size: 0.875rem;
+  border-left: 2px solid var(--app-border);
+  padding-left: 0.5rem;
 }
 
 .chat-status {

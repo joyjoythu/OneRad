@@ -29,6 +29,9 @@ const mockProject = (): Project => ({
 
 function setupWrapper() {
   return mount(AgentChat, {
+    // 挂载到 document：jsdom 对游离元素缓存 getComputedStyle 结果，
+    // v-show 切换后 isVisible() 会读到过期的 display: none。
+    attachTo: document.body,
     global: {
       plugins: [ElementPlus],
     },
@@ -605,5 +608,76 @@ describe('AgentChat', () => {
     expect(toolbar.find('.auto-approve-row').exists()).toBe(true)
     expect(toolbar.find('.model-selector').exists()).toBe(true)
     expect(toolbar.find('[aria-label="发送"]').exists()).toBe(true)
+  })
+
+  it('renders streaming thinking bubble while busy', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.threadId = 'thread-1'
+    agentStore.busy = true
+    agentStore.currentThinking = { text: '正在分析数据…', done: false }
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    const bubble = wrapper.find('.thinking-stream')
+    expect(bubble.exists()).toBe(true)
+    expect(bubble.text()).toContain('思考过程')
+    expect(bubble.text()).toContain('正在分析数据…')
+  })
+
+  it('hides streaming bubble when thinking is done or not busy', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.threadId = 'thread-1'
+    agentStore.busy = true
+    agentStore.currentThinking = { text: '想完了', done: true }
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    expect(wrapper.find('.thinking-stream').exists()).toBe(false)
+  })
+
+  it('renders collapsed reasoning block for assistant messages and expands on click', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.threadId = 'thread-1'
+    agentStore.messages = [
+      { role: 'assistant', content: '答案', reasoning_content: '完整的思考过程' },
+    ]
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    const toggle = wrapper.find('.reasoning-toggle')
+    expect(toggle.exists()).toBe(true)
+    const reasoning = wrapper.find('.reasoning-content')
+    expect(reasoning.exists()).toBe(true)
+    expect(reasoning.isVisible()).toBe(false)
+
+    await toggle.trigger('click')
+    expect(wrapper.find('.reasoning-content').isVisible()).toBe(true)
+    expect(wrapper.find('.reasoning-content').text()).toContain('完整的思考过程')
+  })
+
+  it('does not render reasoning block for messages without reasoning_content', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.threadId = 'thread-1'
+    agentStore.messages = [{ role: 'assistant', content: '普通回复' }]
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    expect(wrapper.find('.reasoning-toggle').exists()).toBe(false)
   })
 })
