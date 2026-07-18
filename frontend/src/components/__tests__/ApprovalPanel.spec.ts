@@ -112,4 +112,69 @@ describe('ApprovalPanel', () => {
     const wrapper = setupWrapper()
     expect(wrapper.find('.approval-panel').exists()).toBe(false)
   })
+
+  it('shows the pairs summary for radiomics_plan interrupts', () => {
+    const store = useAgentStore()
+    store.interrupt = 'radiomics_plan'
+    store.pendingRadiomicsPlan = {
+      tool_call_id: 'tc-rp-1',
+      _pending_tool: 'discover_radiomics_pairs',
+      success: true,
+      images_found: 40,
+      masks_found: 40,
+      pairs: { high: [{}], medium: [], low: [] },
+      unmatched_images: [],
+      unmatched_masks: [],
+    } as never
+
+    const wrapper = setupWrapper()
+
+    expect(wrapper.text()).toContain('待确认：配对计划')
+    expect(wrapper.text()).toContain('发现 40 图 / 40 掩膜')
+    expect(wrapper.text()).toContain('确认')
+  })
+
+  it('shows the case count for radiomics_execution interrupts', () => {
+    const store = useAgentStore()
+    store.interrupt = 'radiomics_execution'
+    store.pendingRadiomicsExecution = {
+      tool_call_id: 'tc-re-1',
+      pairs: [],
+      n_cases: 12,
+      yaml_path: 'Params_labels.yaml',
+      output_dir: 'out',
+    } as never
+
+    const wrapper = setupWrapper()
+
+    expect(wrapper.text()).toContain('待确认：特征提取')
+    expect(wrapper.text()).toContain('病例数：12')
+    expect(wrapper.text()).toContain('确认提取')
+  })
+
+  it('shows the analysis summary for radiomics_analysis interrupts', () => {
+    const store = useAgentStore()
+    store.interrupt = 'radiomics_analysis'
+    store.pendingRadiomicsAnalysis = {
+      tool_call_id: 'tc-ra-1',
+      feature_csv: 'features/radiomics.csv',
+      clinical: 'clinical/data.csv',
+      id_col: 'patient_id',
+      label_col: 'label',
+      covariates: [],
+      output_dir: 'analysis_output',
+      n_feature_cases: 100,
+      n_features: 120,
+      n_matched: 95,
+      available_clinical_columns: [],
+    } as never
+
+    const wrapper = setupWrapper()
+
+    expect(wrapper.text()).toContain('待确认：影像组学分析')
+    expect(wrapper.text()).toContain('特征：features/radiomics.csv')
+    expect(wrapper.text()).toContain('标签列：label')
+    expect(wrapper.text()).toContain('匹配 95 例')
+    expect(wrapper.text()).toContain('确认分析')
+  })
 })
