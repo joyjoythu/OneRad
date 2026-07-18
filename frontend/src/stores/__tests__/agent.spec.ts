@@ -235,6 +235,49 @@ describe('useAgentStore', () => {
     expect(store.threads).toEqual([])
   })
 
+  it('listThreads also syncs the per-project cache', async () => {
+    const store = useAgentStore()
+    const thread = {
+      id: 't1',
+      project_id: 'p1',
+      title: 'T1',
+      llm_model: 'deepseek-v4-flash',
+      created_at: '2024-01-01T00:00:00Z',
+      updated_at: '2024-01-01T00:00:00Z',
+    }
+    vi.spyOn(agentApi, 'listThreads').mockResolvedValueOnce({ threads: [thread] })
+
+    await store.listThreads('p1')
+
+    expect(store.threadsByProject['p1']).toEqual([thread])
+  })
+
+  it('loadProjectThreads caches threads per project without touching current list', async () => {
+    const store = useAgentStore()
+    const thread = {
+      id: 't2',
+      project_id: 'p2',
+      title: 'T2',
+      llm_model: 'deepseek-v4-flash',
+      created_at: '2024-01-01T00:00:00Z',
+      updated_at: '2024-01-01T00:00:00Z',
+    }
+    const spy = vi.spyOn(agentApi, 'listThreads').mockResolvedValueOnce({ threads: [thread] })
+
+    await store.loadProjectThreads('p2')
+
+    expect(spy).toHaveBeenCalledWith('p2')
+    expect(store.threadsByProject['p2']).toEqual([thread])
+    expect(store.threads).toEqual([])
+  })
+
+  it('exposes selectedModel with the default agent model', () => {
+    const store = useAgentStore()
+    expect(store.selectedModel).toBe(agentApi.DEFAULT_AGENT_MODEL)
+    store.selectedModel = 'deepseek-v4-pro'
+    expect(store.selectedModel).toBe('deepseek-v4-pro')
+  })
+
   it('createThread creates a new thread, refreshes the list and connects SSE', async () => {
     const store = useAgentStore()
     vi.spyOn(agentApi, 'createThread').mockResolvedValueOnce({ thread_id: 'thread-new' })

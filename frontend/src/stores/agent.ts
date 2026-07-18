@@ -2,6 +2,7 @@ import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import { ElMessage } from 'element-plus'
 import * as api from '@/api/agent'
+import { DEFAULT_AGENT_MODEL } from '@/api/agent'
 import type {
   AgentState,
   AgentMessage,
@@ -29,6 +30,14 @@ export const useAgentStore = defineStore('agent', () => {
   const pendingRadiomicsAnalysis = ref<PendingRadiomicsAnalysis | null>(null)
 
   const threads = ref<ThreadSummary[]>([])
+  // 按项目分组的对话列表缓存，供合并侧边栏懒加载展示；
+  // listThreads 会同步对应项目的缓存，保证增删改后一致。
+  const threadsByProject = ref<Record<string, ThreadSummary[]>>({})
+  // 期望打开的对话 id：跨项目点击对话时由侧边栏设置，
+  // AgentView 的项目切换 watcher 消费后完成加载（保证只加载一次）。
+  const preferredThreadId = ref<string | null>(null)
+  // 对话模型选择从 AgentView 提升到 store，侧边栏切换对话时同步更新。
+  const selectedModel = ref(DEFAULT_AGENT_MODEL)
   const currentThread = ref<ThreadSummary | null>(null)
   // 智能体是否正在处理中（流式运行期间为 true），用于禁用输入并展示状态。
   const busy = ref(false)
@@ -163,6 +172,12 @@ export const useAgentStore = defineStore('agent', () => {
   async function listThreads(projectId: string): Promise<void> {
     const data = await api.listThreads(projectId)
     threads.value = data.threads ?? []
+    threadsByProject.value[projectId] = threads.value
+  }
+
+  async function loadProjectThreads(projectId: string): Promise<void> {
+    const data = await api.listThreads(projectId)
+    threadsByProject.value[projectId] = data.threads ?? []
   }
 
   async function loadThread(
@@ -375,6 +390,9 @@ export const useAgentStore = defineStore('agent', () => {
     contextUsage,
     contextWindow,
     threads,
+    threadsByProject,
+    preferredThreadId,
+    selectedModel,
     currentThread,
     busy,
     autoApprove,
@@ -390,6 +408,7 @@ export const useAgentStore = defineStore('agent', () => {
     disconnect,
     resetThread,
     listThreads,
+    loadProjectThreads,
     loadThread,
     createThread,
     deleteThread,
