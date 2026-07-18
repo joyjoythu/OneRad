@@ -94,12 +94,15 @@ async def _generate_thread_title(app, thread_id: str, content: str) -> None:
     try:
         client = LLMClient(api_key=api_key, model=model)
         system, user = build_thread_title_prompt(content)
-        raw = await asyncio.to_thread(client.call, system, user, 0.3, 30)
+        # max_tokens 需要余量：推理模型（如 deepseek-v4-flash）会先消耗
+        # reasoning tokens，额度太小会导致 content 为空、静默落入截断兜底。
+        raw = await asyncio.to_thread(client.call, system, user, 0.3, 200)
         # 只取首行并去掉引号/结尾标点，防止模型输出格式漂移
         title = raw.splitlines()[0].strip().strip("\"'。！？!?.…") if raw else ""
     except Exception:
         logger.warning("生成会话标题失败，回退为截断命名", exc_info=True)
     if not title:
+        logger.warning("LLM 返回空标题，回退为截断命名（thread_id=%s）", thread_id)
         title = content[:30]
     if not title:
         return
