@@ -410,6 +410,8 @@ import { DEFAULT_AGENT_MODEL } from '@/api/agent'
 
 4) return 中追加导出：`threadsByProject`、`preferredThreadId`、`selectedModel`、`loadProjectThreads`。
 
+> 执行期补充（质量审查后落地）：store 另增 `threadsProjectId`（扁平列表所属项目，`listThreads` 设置、`resetThread` 清空；`renameThread`/`deleteThread` 跨项目时只刷缓存走 `loadProjectThreads`）与 `clearProjectThreads(projectId)` action（删除项目时清缓存，供 ProjectTree 调用）。
+
 - [ ] **Step 4: 运行确认通过**
 
 Run: `cd frontend && npx vitest run src/stores/__tests__/agent.spec.ts`
@@ -616,7 +618,15 @@ describe('ProjectTree', () => {
   it('loads a thread of the current project directly on click', async () => {
     vi.mocked(projectsApi.listProjects).mockResolvedValue([mockProject('1')])
     vi.mocked(agentApi.listThreads).mockResolvedValue({ threads: [mockThread('t1', '1')] })
-    vi.mocked(agentApi.resumeThread).mockResolvedValue({ thread_id: 't1', messages: [] })
+    vi.mocked(agentApi.resumeThread).mockResolvedValue({
+      thread_id: 't1',
+      messages: [],
+      interrupt_type: null,
+      operation_log: [],
+      pending_plan: null,
+      pending_command: null,
+      pending_script: null,
+    })
 
     const wrapper = setupWrapper()
     await flushPromises()
@@ -679,8 +689,13 @@ describe('ProjectTree', () => {
   it('deletes a project after confirming', async () => {
     vi.mocked(projectsApi.listProjects).mockResolvedValue([mockProject('1')])
     vi.mocked(projectsApi.deleteProject).mockResolvedValue(undefined)
+    vi.mocked(agentApi.listThreads).mockResolvedValue({ threads: [] })
 
     const wrapper = setupWrapper()
+    await flushPromises()
+
+    // 点击删除前先展开项目造出缓存
+    await wrapper.find('[data-testid="project-row"]').trigger('click')
     await flushPromises()
 
     await wrapper.find('[data-testid="project-delete"]').trigger('click')
@@ -688,6 +703,8 @@ describe('ProjectTree', () => {
 
     expect(ElMessageBox.confirm).toHaveBeenCalled()
     expect(projectsApi.deleteProject).toHaveBeenCalledWith('1')
+    const agentStore = useAgentStore()
+    expect(agentStore.threadsByProject['1']).toBeUndefined()
   })
 
   it('renames a thread via prompt', async () => {
@@ -870,7 +887,10 @@ Expected: FAIL（找不到模块 `../ProjectTree.vue`）
             class="thread-row"
             :class="{ 'thread-row--active': agentStore.currentThread?.id === thread.id }"
             data-testid="thread-row"
+            tabindex="0"
+            role="button"
             @click="handleThreadClick(project, thread)"
+            @keydown.enter="handleThreadClick(project, thread)"
           >
             <el-icon class="row-icon"><ChatDotRound /></el-icon>
             <span class="row-label">{{ thread.title || '未命名会话' }}</span>
@@ -1084,7 +1104,7 @@ async function handleDeleteProject(project: Project): Promise<void> {
 
   try {
     await projectStore.deleteProject(project.id)
-    delete agentStore.threadsByProject[project.id]
+    agentStore.clearProjectThreads(project.id)
     expandedIds.value.delete(project.id)
   } catch (err: any) {
     ElMessage.error(err.response?.data?.detail || err.message || '删除项目失败')
@@ -1257,7 +1277,9 @@ function resetForm(): void {
 }
 
 .project-row:hover .row-actions,
-.thread-row:hover .row-actions {
+.project-row:focus-within .row-actions,
+.thread-row:hover .row-actions,
+.thread-row:focus-within .row-actions {
   opacity: 1;
 }
 
@@ -1283,6 +1305,11 @@ function resetForm(): void {
 
 .thread-row:hover {
   background-color: var(--app-sidebar-hover);
+}
+
+.thread-row:focus-visible {
+  outline: 2px solid var(--app-accent);
+  outline-offset: -2px;
 }
 
 .thread-row--active {
