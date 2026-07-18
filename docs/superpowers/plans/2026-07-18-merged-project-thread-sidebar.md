@@ -1541,6 +1541,8 @@ git commit -m "feat(frontend): remove ThreadList; consume preferredThreadId in A
 
 ### Task 9: 全量验证
 
+> 执行期补充（终审后落地）：`handleNewThread` 改为先 `createThread` 成功后再 `selectProject`（消除与 watcher 的竞态）；新增 `failedIds` + 行内"加载失败，点击重试"；删除当前项目时同步 `agentStore.resetThread()`。
+
 - [ ] **Step 1: 后端全量测试**
 
 Run: `.venv/Scripts/python -m pytest tests/ -q`
