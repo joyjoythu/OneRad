@@ -484,6 +484,54 @@ describe('useAgentStore', () => {
     expect(store.busy).toBe(false)
   })
 
+  it('tracks thinking stream from SSE and clears it on stream end', async () => {
+    const store = useAgentStore()
+    await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')
+    await store.sendMessage('你好')
+    const es = MockEventSource.instances[0]
+
+    es.emit('agent', { thinking: { text: '先分析', done: false }, running: true })
+    expect(store.currentThinking).toEqual({ text: '先分析', done: false })
+    expect(store.busy).toBe(true)
+    // thinking 事件不带 messages 字段时，现有消息不受影响
+    expect(store.messages).toEqual([{ role: 'user', content: '你好' }])
+
+    es.emit('agent', { thinking: { text: '先分析再回答', done: true }, running: true })
+    expect(store.currentThinking).toEqual({ text: '先分析再回答', done: true })
+
+    es.emit('agent_end', {})
+    expect(store.currentThinking).toBeNull()
+    expect(store.busy).toBe(false)
+  })
+
+  it('clears current thinking when an error payload arrives', async () => {
+    const store = useAgentStore()
+    await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')
+    await store.sendMessage('你好')
+    const es = MockEventSource.instances[0]
+
+    es.emit('agent', { thinking: { text: '思考中', done: false }, running: true })
+    expect(store.currentThinking).not.toBeNull()
+
+    es.emit('agent', { ...mockState(), messages: [], error: 'stream error: boom' })
+    expect(store.currentThinking).toBeNull()
+    expect(store.busy).toBe(false)
+  })
+
+  it('stop clears current thinking', async () => {
+    const store = useAgentStore()
+    await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')
+    await store.sendMessage('你好')
+    const es = MockEventSource.instances[0]
+    es.emit('agent', { thinking: { text: '思考中', done: false }, running: true })
+    expect(store.currentThinking).not.toBeNull()
+
+    await store.stop()
+
+    expect(store.currentThinking).toBeNull()
+    expect(store.busy).toBe(false)
+  })
+
   it('tracks pending radiomics plan/execution from SSE state', async () => {
     const store = useAgentStore()
     await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')

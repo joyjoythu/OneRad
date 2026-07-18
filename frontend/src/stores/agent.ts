@@ -14,6 +14,7 @@ import type {
   PendingRadiomicsExecution,
   PendingRadiomicsAnalysis,
   RadiomicsProgress,
+  ThinkingState,
   ThreadSummary,
 } from '@/api/agent'
 
@@ -49,6 +50,9 @@ export const useAgentStore = defineStore('agent', () => {
   const autoApproveSyncing = ref(false)
   // 影像组学特征提取的实时进度（由后端节点线程推送，null 表示无提取在进行）。
   const radiomicsProgress = ref<RadiomicsProgress | null>(null)
+  // 当前轮 LLM 的流式思考内容（推理模型的 reasoning_content；null 表示无）。
+  // 独立于 messages：快照会整体替换 messages，流式文本必须走独立 ref。
+  const currentThinking = ref<ThinkingState | null>(null)
   // 最近一次 LLM 调用的 token 用量与模型上下文窗口（null 表示尚无数据）。
   const contextUsage = ref<ContextUsage | null>(null)
   const contextWindow = ref<number | null>(null)
@@ -59,6 +63,7 @@ export const useAgentStore = defineStore('agent', () => {
     if (state.error) {
       // 流式运行出错：保留现有消息，仅提示错误并解除忙碌。
       busy.value = false
+      currentThinking.value = null
       ElMessage.error(state.error)
     }
     // 错误载荷中的 messages 为空数组，不能直接覆盖现有消息。
@@ -97,6 +102,9 @@ export const useAgentStore = defineStore('agent', () => {
     if (state.radiomics_progress !== undefined) {
       radiomicsProgress.value = state.radiomics_progress
     }
+    if (state.thinking !== undefined) {
+      currentThinking.value = state.thinking
+    }
     if (state.context_usage !== undefined) {
       contextUsage.value = state.context_usage
     }
@@ -120,6 +128,7 @@ export const useAgentStore = defineStore('agent', () => {
     currentThread.value = null
     busy.value = false
     radiomicsProgress.value = null
+    currentThinking.value = null
     contextUsage.value = null
     contextWindow.value = null
   }
@@ -282,6 +291,7 @@ export const useAgentStore = defineStore('agent', () => {
         // 本轮流式运行结束（正常完成或在中断处暂停）。
         busy.value = false
         radiomicsProgress.value = null
+        currentThinking.value = null
         // SSE 只推订阅后的新事件；订阅空窗内漏掉的事件没有回放兜底，
         // 流结束时同步一次最终状态保证收敛。
         void syncThread()
@@ -383,6 +393,7 @@ export const useAgentStore = defineStore('agent', () => {
       // 若后端仍在运行，后续发送会被 409 兜底，状态自愈。
       busy.value = false
       radiomicsProgress.value = null
+      currentThinking.value = null
     }
   }
 
@@ -416,6 +427,7 @@ export const useAgentStore = defineStore('agent', () => {
     pendingRadiomicsExecution,
     pendingRadiomicsAnalysis,
     radiomicsProgress,
+    currentThinking,
     contextUsage,
     contextWindow,
     threads,

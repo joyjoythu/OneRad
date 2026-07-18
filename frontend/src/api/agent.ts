@@ -15,6 +15,7 @@ export interface AgentMessage {
   timestamp?: string
   tool_calls?: ToolCall[]
   tool_call_id?: string
+  reasoning_content?: string
 }
 
 export interface ContextUsage {
@@ -53,6 +54,11 @@ export interface RadiomicsProgress {
   current: number
   total: number
   patient_id?: string
+}
+
+export interface ThinkingState {
+  text: string
+  done: boolean
 }
 
 export interface RadiomicsPair {
@@ -113,6 +119,7 @@ export interface AgentState {
   pending_radiomics_execution?: PendingRadiomicsExecution | null
   pending_radiomics_analysis?: PendingRadiomicsAnalysis | null
   radiomics_progress?: RadiomicsProgress | null
+  thinking?: ThinkingState | null
   context_usage?: ContextUsage | null
   context_window?: number
   running?: boolean
