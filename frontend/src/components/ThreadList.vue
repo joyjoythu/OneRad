@@ -149,8 +149,8 @@ async function handleDelete(thread: ThreadSummary): Promise<void> {
   flex-direction: column;
   width: 240px;
   height: 100%;
-  border-right: 1px solid #e4e7ed;
-  background-color: #f5f7fa;
+  border-right: 1px solid var(--app-border);
+  background-color: var(--app-bg);
   transition: width 0.2s ease;
 }
 
@@ -177,12 +177,12 @@ async function handleDelete(thread: ThreadSummary): Promise<void> {
   align-items: center;
   justify-content: space-between;
   padding: 0.75rem 1rem;
-  border-bottom: 1px solid #e4e7ed;
+  border-bottom: 1px solid var(--app-border);
 }
 
 .thread-list-title {
   font-weight: 600;
-  color: #303133;
+  color: var(--app-text);
 }
 
 .thread-list-empty {
@@ -206,14 +206,14 @@ async function handleDelete(thread: ThreadSummary): Promise<void> {
   justify-content: space-between;
   padding: 0.5rem 0.75rem;
   margin: 0 0.5rem;
-  border-radius: 4px;
+  border-radius: var(--app-radius-md);
   cursor: pointer;
   transition: background-color 0.2s;
 }
 
 .thread-item:hover,
 .thread-item--active {
-  background-color: #e6f2ff;
+  background-color: var(--app-bg-hover);
 }
 
 .thread-item-content {
@@ -225,14 +225,14 @@ async function handleDelete(thread: ThreadSummary): Promise<void> {
 
 .thread-item-icon {
   flex-shrink: 0;
-  color: #909399;
+  color: var(--app-text-muted);
 }
 
 .thread-item-title {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #303133;
+  color: var(--app-text);
   font-size: 0.875rem;
 }
 
@@ -244,7 +244,7 @@ async function handleDelete(thread: ThreadSummary): Promise<void> {
 
 .thread-item-time {
   font-size: 0.75rem;
-  color: #909399;
+  color: var(--app-text-muted);
   white-space: nowrap;
 }
 
