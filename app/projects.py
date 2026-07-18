@@ -168,8 +168,16 @@ class ProjectStore:
         conn = self._connect()
         try:
             conn.row_factory = sqlite3.Row
+            # 按最新对话活动排序：有对话的项目按 MAX(threads.updated_at)，
+            # 无对话的回退到 projects.updated_at。
             rows = conn.execute(
-                "SELECT id, name, path, description, created_at, updated_at FROM projects ORDER BY updated_at DESC"
+                """
+                SELECT p.id, p.name, p.path, p.description, p.created_at, p.updated_at
+                FROM projects p
+                LEFT JOIN threads t ON t.project_id = p.id
+                GROUP BY p.id
+                ORDER BY COALESCE(MAX(t.updated_at), p.updated_at) DESC
+                """
             ).fetchall()
             return [self.load_project(row["id"]) for row in rows]
         finally:

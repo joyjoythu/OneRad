@@ -190,3 +190,14 @@ def test_update_project_name_duplicate_raises(temp_db):
     p2 = store.create_project("B", str(root / "b"), "")
     with pytest.raises(ValueError):
         store.update_project_name(p2["id"], "A")
+
+
+def test_list_projects_sorted_by_latest_thread_activity(temp_db):
+    store, root = temp_db
+    p1 = store.create_project("A", str(root / "a"), "")
+    p2 = store.create_project("B", str(root / "b"), "")
+    # B 后创建（updated_at 更晚），但 A 有最新对话 → A 排最前
+    store.record_thread(p1["id"], "t1", "T", "m")
+    projects = store.list_projects()
+    assert projects[0]["id"] == p1["id"]
+    assert projects[1]["id"] == p2["id"]

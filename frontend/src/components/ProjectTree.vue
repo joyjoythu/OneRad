@@ -5,6 +5,10 @@
         <el-icon><Plus /></el-icon>
         <span>新建任务</span>
       </button>
+    </div>
+
+    <div class="project-tree-group">
+      <span>项目</span>
       <el-button
         link
         size="small"
@@ -12,12 +16,8 @@
         data-testid="new-project"
         title="新建项目"
         @click="dialogVisible = true"
-      >
-        新建项目
-      </el-button>
+      />
     </div>
-
-    <div class="project-tree-group">项目</div>
 
     <el-skeleton
       v-if="projectStore.loading && !projectStore.projects.length"
@@ -417,13 +417,13 @@ function resetForm(): void {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.375rem;
-  padding: 0.5rem 0.75rem;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
   border: 1px solid var(--app-border-strong);
   border-radius: var(--app-radius-lg);
   background: transparent;
   color: var(--app-text);
-  font-size: 0.875rem;
+  font-size: 0.75rem;
   cursor: pointer;
   transition: background-color 0.2s;
 }
@@ -433,9 +433,20 @@ function resetForm(): void {
 }
 
 .project-tree-group {
-  padding: 1rem 1rem 0.375rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem 0.375rem;
   font-size: 0.75rem;
   color: var(--app-text-muted);
+}
+
+.project-tree-group .el-button {
+  color: var(--app-text-muted);
+}
+
+.project-tree-group .el-button:hover {
+  color: var(--app-text);
 }
 
 .tree-skeleton {
