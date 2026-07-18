@@ -40,13 +40,6 @@
             <code class="analysis-code">{{ analysis.output_dir }}</code>
           </div>
         </div>
-
-        <div class="analysis-actions">
-          <el-button type="primary" :icon="CircleCheck" @click="handleConfirm">
-            确认分析
-          </el-button>
-          <el-button :icon="Close" @click="handleCancel">取消</el-button>
-        </div>
       </div>
     </el-card>
   </div>
@@ -54,28 +47,11 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { CircleCheck, Close } from '@element-plus/icons-vue'
 import { useAgentStore } from '@/stores/agent'
 
 const agentStore = useAgentStore()
 
 const analysis = computed(() => agentStore.pendingRadiomicsAnalysis)
-
-async function handleConfirm(): Promise<void> {
-  try {
-    await agentStore.confirm()
-  } catch {
-    // 错误已由 axios 拦截器统一提示
-  }
-}
-
-async function handleCancel(): Promise<void> {
-  try {
-    await agentStore.cancel()
-  } catch {
-    // 错误已由 axios 拦截器统一提示
-  }
-}
 </script>
 
 <style scoped>
@@ -122,10 +98,5 @@ async function handleCancel(): Promise<void> {
 
 .analysis-placeholder {
   color: var(--app-text-muted);
-}
-
-.analysis-actions {
-  display: flex;
-  gap: 0.75rem;
 }
 </style>

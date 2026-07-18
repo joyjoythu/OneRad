@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import ElementPlus from 'element-plus'
@@ -49,31 +49,12 @@ describe('AnalysisPanel', () => {
     expect(text).toContain('analysis_output')
   })
 
-  it('calls store.confirm when confirm button is clicked', async () => {
+  it('renders no action buttons (read-only display)', async () => {
     const store = useAgentStore()
     store.pendingRadiomicsAnalysis = mockAnalysis
-    const confirmSpy = vi.spyOn(store, 'confirm').mockResolvedValue(undefined)
 
     const wrapper = setupWrapper()
-    const confirmButton = wrapper
-      .findAll('button')
-      .find((b) => b.text().includes('确认分析'))
-    expect(confirmButton).toBeDefined()
-    await confirmButton!.trigger('click')
-    expect(confirmSpy).toHaveBeenCalled()
-  })
 
-  it('calls store.cancel when cancel button is clicked', async () => {
-    const store = useAgentStore()
-    store.pendingRadiomicsAnalysis = mockAnalysis
-    const cancelSpy = vi.spyOn(store, 'cancel').mockResolvedValue(undefined)
-
-    const wrapper = setupWrapper()
-    const cancelButton = wrapper
-      .findAll('button')
-      .find((b) => b.text().trim() === '取消')
-    expect(cancelButton).toBeDefined()
-    await cancelButton!.trigger('click')
-    expect(cancelSpy).toHaveBeenCalled()
+    expect(wrapper.findAll('button')).toHaveLength(0)
   })
 })

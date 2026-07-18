@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import ElementPlus from 'element-plus'
@@ -44,10 +44,9 @@ describe('RadiomicsPanel', () => {
     setActivePinia(createPinia())
   })
 
-  it('renders execution details and confirm triggers store.confirm', async () => {
+  it('renders execution details (read-only)', async () => {
     const store = useAgentStore()
     store.pendingRadiomicsExecution = mockExecution
-    const confirmSpy = vi.spyOn(store, 'confirm').mockResolvedValue(undefined)
 
     const wrapper = setupWrapper()
 
@@ -56,31 +55,18 @@ describe('RadiomicsPanel', () => {
     expect(wrapper.text()).toContain('2')
     expect(wrapper.text()).toContain('Params_labels.yaml')
     expect(wrapper.text()).toContain('p1: images/p1.nii.gz → masks/p1.nii.gz')
-
-    const confirmButton = wrapper
-      .findAll('button')
-      .find((b) => b.text().includes('确认提取'))
-    expect(confirmButton).toBeDefined()
-    await confirmButton!.trigger('click')
-    expect(confirmSpy).toHaveBeenCalled()
+    expect(wrapper.findAll('button')).toHaveLength(0)
   })
 
-  it('renders plan summary and cancel triggers store.cancel', async () => {
+  it('renders plan summary (read-only)', async () => {
     const store = useAgentStore()
     store.pendingRadiomicsPlan = mockPlan
-    const cancelSpy = vi.spyOn(store, 'cancel').mockResolvedValue(undefined)
 
     const wrapper = setupWrapper()
 
     expect(wrapper.text()).toContain('待确认配对计划')
     expect(wrapper.text()).toContain('40 / 40')
     expect(wrapper.text()).toContain('高置信 1')
-
-    const cancelButton = wrapper
-      .findAll('button')
-      .find((b) => b.text().trim() === '取消')
-    expect(cancelButton).toBeDefined()
-    await cancelButton!.trigger('click')
-    expect(cancelSpy).toHaveBeenCalled()
+    expect(wrapper.findAll('button')).toHaveLength(0)
   })
 })

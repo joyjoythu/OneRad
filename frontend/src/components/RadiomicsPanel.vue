@@ -35,13 +35,6 @@
             </div>
           </div>
         </div>
-
-        <div class="radiomics-actions">
-          <el-button type="primary" :icon="CircleCheck" @click="handleConfirm">
-            确认提取
-          </el-button>
-          <el-button :icon="Close" @click="handleCancel">取消</el-button>
-        </div>
       </div>
 
       <div v-else-if="plan" class="radiomics-body">
@@ -77,13 +70,6 @@
             </div>
           </div>
         </div>
-
-        <div class="radiomics-actions">
-          <el-button type="primary" :icon="CircleCheck" @click="handleConfirm">
-            确认
-          </el-button>
-          <el-button :icon="Close" @click="handleCancel">取消</el-button>
-        </div>
       </div>
     </el-card>
   </div>
@@ -91,7 +77,6 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { CircleCheck, Close } from '@element-plus/icons-vue'
 import { useAgentStore } from '@/stores/agent'
 import type { RadiomicsPair } from '@/api/agent'
 
@@ -111,22 +96,6 @@ const matchedPairs = computed<RadiomicsPair[]>(() => [
   ...planPairs.value.high,
   ...planPairs.value.medium,
 ])
-
-async function handleConfirm(): Promise<void> {
-  try {
-    await agentStore.confirm()
-  } catch {
-    // 错误已由 axios 拦截器统一提示
-  }
-}
-
-async function handleCancel(): Promise<void> {
-  try {
-    await agentStore.cancel()
-  } catch {
-    // 错误已由 axios 拦截器统一提示
-  }
-}
 </script>
 
 <style scoped>
@@ -188,10 +157,5 @@ async function handleCancel(): Promise<void> {
 .radiomics-pair {
   white-space: pre-wrap;
   word-break: break-all;
-}
-
-.radiomics-actions {
-  display: flex;
-  gap: 0.75rem;
 }
 </style>

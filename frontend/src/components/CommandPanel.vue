@@ -18,13 +18,6 @@
           <div class="command-label">参数：</div>
           <pre class="command-args-pre">{{ formattedArgs }}</pre>
         </div>
-
-        <div class="command-actions">
-          <el-button type="primary" :icon="CircleCheck" @click="handleConfirm">
-            确认执行
-          </el-button>
-          <el-button :icon="Close" @click="handleCancel">取消</el-button>
-        </div>
       </div>
     </el-card>
   </div>
@@ -32,7 +25,6 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { CircleCheck, Close } from '@element-plus/icons-vue'
 import { useAgentStore } from '@/stores/agent'
 
 const agentStore = useAgentStore()
@@ -43,22 +35,6 @@ const formattedArgs = computed(() => {
   if (!command.value) return ''
   return JSON.stringify(command.value.args, null, 2)
 })
-
-async function handleConfirm(): Promise<void> {
-  try {
-    await agentStore.confirm()
-  } catch {
-    // 错误已由 axios 拦截器统一提示
-  }
-}
-
-async function handleCancel(): Promise<void> {
-  try {
-    await agentStore.cancel()
-  } catch {
-    // 错误已由 axios 拦截器统一提示
-  }
-}
 </script>
 
 <style scoped>
@@ -111,10 +87,5 @@ async function handleCancel(): Promise<void> {
   font-size: 0.875rem;
   white-space: pre-wrap;
   word-break: break-all;
-}
-
-.command-actions {
-  display: flex;
-  gap: 0.75rem;
 }
 </style>
