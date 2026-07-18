@@ -169,13 +169,15 @@ async function handleDelete(projectId: string): Promise<void> {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 1rem;
-  border-bottom: 1px solid #e4e7ed;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--app-border);
 }
 
 .project-list-header h2 {
   margin: 0;
-  font-size: 1.125rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--app-text);
 }
 
 .project-skeleton {
@@ -185,7 +187,7 @@ async function handleDelete(projectId: string): Promise<void> {
 .project-items {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 0.5rem 0;
   overflow-y: auto;
   flex: 1;
 }
@@ -194,25 +196,31 @@ async function handleDelete(projectId: string): Promise<void> {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.75rem 1rem;
-  border-bottom: 1px solid #ebeef5;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  margin: 0 0.5rem;
+  border-radius: var(--app-radius-md);
   cursor: pointer;
   transition: background-color 0.2s;
   outline: none;
 }
 
 .project-items li:hover {
-  background-color: #f5f7fa;
+  background-color: var(--app-bg-hover);
 }
 
 .project-items li:focus-visible {
-  outline: 2px solid #409eff;
+  outline: 2px solid var(--app-accent);
   outline-offset: -2px;
-  background-color: #f5f7fa;
+  background-color: var(--app-bg-hover);
 }
 
 .project-items li.active {
-  background-color: #ecf5ff;
+  background-color: var(--app-bg-hover);
+}
+
+.project-items li.active .project-name {
+  font-weight: 600;
 }
 
 .project-info {
@@ -221,12 +229,12 @@ async function handleDelete(projectId: string): Promise<void> {
 
 .project-name {
   font-weight: 500;
-  color: #303133;
+  color: var(--app-text);
 }
 
 .project-path {
   font-size: 0.75rem;
-  color: #909399;
+  color: var(--app-text-muted);
   margin-top: 0.25rem;
   word-break: break-all;
 }
