@@ -4,6 +4,18 @@
       <h2>{{ pageTitle }}</h2>
     </header>
 
+    <div class="settings-section">
+      <h3 class="settings-section-title">外观</h3>
+      <el-radio-group
+        :model-value="currentTheme"
+        aria-label="主题外观"
+        @change="handleThemeChange"
+      >
+        <el-radio-button value="dark">深色</el-radio-button>
+        <el-radio-button value="light">浅色</el-radio-button>
+      </el-radio-group>
+    </div>
+
     <el-empty v-if="!projectStore.currentProject" description="请先选择一个项目" />
 
     <el-form v-else label-width="100px" class="settings-form">
@@ -33,10 +45,19 @@
 import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useProjectStore } from '@/stores/project'
+import { getTheme, setTheme, type Theme } from '@/utils/theme'
 
 const projectStore = useProjectStore()
 
 const apiKeyDraft = ref(projectStore.currentConfig?.api_key ?? '')
+
+const currentTheme = ref<Theme>(getTheme())
+
+function handleThemeChange(value: string | number | boolean): void {
+  const theme: Theme = value === 'light' ? 'light' : 'dark'
+  currentTheme.value = theme
+  setTheme(theme)
+}
 
 // 切换项目/保存成功后，草稿跟随最新配置
 watch(
@@ -78,7 +99,16 @@ async function handleSave(): Promise<void> {
 
 .settings-header h2 {
   margin: 0;
-  font-size: 1.25rem;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--app-text);
+}
+
+.settings-section-title {
+  margin: 0 0 0.75rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--app-text);
 }
 
 .settings-form {
@@ -88,6 +118,6 @@ async function handleSave(): Promise<void> {
 .api-key-hint {
   margin: 0.25rem 0 0;
   font-size: 0.8125rem;
-  color: #909399;
+  color: var(--app-text-muted);
 }
 </style>

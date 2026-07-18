@@ -49,7 +49,7 @@ describe('SettingsView', () => {
 
     const wrapper = setupWrapper()
 
-    const input = wrapper.find('input')
+    const input = wrapper.find('.settings-form input')
     expect((input.element as HTMLInputElement).value).toBe('sk-old')
   })
 
@@ -61,7 +61,7 @@ describe('SettingsView', () => {
     const saveSpy = vi.spyOn(store, 'saveConfig').mockResolvedValue(project)
 
     const wrapper = setupWrapper()
-    await wrapper.find('input').setValue('sk-new')
+    await wrapper.find('.settings-form input').setValue('sk-new')
     await wrapper.find('[data-testid="settings-save"]').trigger('click')
     await flushPromises()
 
