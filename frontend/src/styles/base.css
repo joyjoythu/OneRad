@@ -45,3 +45,15 @@ body {
 html:not(.dark) .el-card {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 }
+
+/* 深色主题下开关开启态：轨道为近白强调色，滑块改用对比色 */
+html.dark .el-switch.is-checked .el-switch__action {
+  background-color: var(--app-accent-text);
+}
+
+/* 深色主题下 radio 按钮选中态：选中底为近白强调色，文字改用对比色。
+   必须定义在 .el-radio-button 元素上——EP 把该变量定义在元素级，
+   写在 html.dark 上会被遮蔽。 */
+html.dark .el-radio-button {
+  --el-radio-button-checked-text-color: var(--app-accent-text);
+}

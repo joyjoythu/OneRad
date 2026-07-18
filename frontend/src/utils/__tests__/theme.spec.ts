@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { getTheme, setTheme, initTheme } from '../theme'
 
 const THEME_KEY = 'onerad:theme'
@@ -34,5 +34,20 @@ describe('theme', () => {
     localStorage.setItem(THEME_KEY, 'light')
     initTheme()
     expect(document.documentElement.classList.contains('dark')).toBe(false)
+  })
+
+  it('falls back to dark and still toggles the class when localStorage throws', () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('denied')
+    })
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('denied')
+    })
+
+    expect(getTheme()).toBe('dark')
+    setTheme('light')
+    expect(document.documentElement.classList.contains('dark')).toBe(false)
+
+    vi.restoreAllMocks()
   })
 })
