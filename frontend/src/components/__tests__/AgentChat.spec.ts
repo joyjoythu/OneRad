@@ -89,11 +89,9 @@ describe('AgentChat', () => {
     const textarea = wrapper.find('textarea')
     await textarea.setValue('Test message')
 
-    const sendButton = wrapper
-      .findAll('button')
-      .find((b) => b.text().includes('发送'))
-    expect(sendButton).toBeDefined()
-    await sendButton!.trigger('click')
+    const sendButton = wrapper.find('[aria-label="发送"]')
+    expect(sendButton.exists()).toBe(true)
+    await sendButton.trigger('click')
     await flushPromises()
 
     expect(wrapper.emitted('send-message')).toHaveLength(1)
@@ -219,16 +217,11 @@ describe('AgentChat', () => {
     const wrapper = setupWrapper()
     await flushPromises()
 
-    const stopButton = wrapper
-      .findAll('button')
-      .find((b) => b.text().includes('停止'))
-    expect(stopButton).toBeDefined()
-    const sendButton = wrapper
-      .findAll('button')
-      .find((b) => b.text().includes('发送'))
-    expect(sendButton).toBeUndefined()
+    const stopButton = wrapper.find('[aria-label="停止"]')
+    expect(stopButton.exists()).toBe(true)
+    expect(wrapper.find('[aria-label="发送"]').exists()).toBe(false)
 
-    await stopButton!.trigger('click')
+    await stopButton.trigger('click')
     expect(wrapper.emitted('stop')).toHaveLength(1)
   })
 
@@ -242,14 +235,8 @@ describe('AgentChat', () => {
     const wrapper = setupWrapper()
     await flushPromises()
 
-    const sendButton = wrapper
-      .findAll('button')
-      .find((b) => b.text().includes('发送'))
-    expect(sendButton).toBeDefined()
-    const stopButton = wrapper
-      .findAll('button')
-      .find((b) => b.text().includes('停止'))
-    expect(stopButton).toBeUndefined()
+    expect(wrapper.find('[aria-label="发送"]').exists()).toBe(true)
+    expect(wrapper.find('[aria-label="停止"]').exists()).toBe(false)
   })
 
   it('keeps the status bar mounted but hidden when idle to avoid layout shift', async () => {
@@ -596,6 +583,27 @@ describe('AgentChat', () => {
 
     const html = wrapper.html()
     expect(html.indexOf('message-list')).toBeLessThan(html.indexOf('approval-panel'))
-    expect(html.indexOf('approval-panel')).toBeLessThan(html.indexOf('message-input-area'))
+    expect(html.indexOf('approval-panel')).toBeLessThan(html.indexOf('input-container'))
+  })
+
+  it('renders the input area as a unified container with a toolbar', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.threadId = 'thread-1'
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    const container = wrapper.find('.input-container')
+    expect(container.exists()).toBe(true)
+    expect(container.find('textarea').exists()).toBe(true)
+
+    const toolbar = container.find('.input-toolbar')
+    expect(toolbar.exists()).toBe(true)
+    expect(toolbar.find('.auto-approve-row').exists()).toBe(true)
+    expect(toolbar.find('.model-selector').exists()).toBe(true)
+    expect(toolbar.find('[aria-label="发送"]').exists()).toBe(true)
   })
 })

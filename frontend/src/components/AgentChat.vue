@@ -100,17 +100,7 @@
         </template>
       </div>
 
-      <div class="auto-approve-row">
-        <span class="auto-approve-label">自动审批</span>
-        <el-switch
-          :model-value="agentStore.autoApprove"
-          :disabled="agentStore.autoApproveSyncing"
-          aria-label="自动审批"
-          @change="handleAutoApproveChange"
-        />
-      </div>
-
-      <div class="message-input-area">
+      <div class="input-container">
         <el-input
           v-model="input"
           type="textarea"
@@ -121,37 +111,51 @@
           :disabled="inputDisabled"
           @keydown="handleKeydown"
         />
-        <el-select
-          v-model="selectedModel"
-          class="model-selector"
-          placeholder="模型（仅新会话）"
-        >
-          <el-option label="DeepSeek-V4 Flash" value="deepseek-v4-flash" />
-          <el-option label="DeepSeek-V4 Pro" value="deepseek-v4-pro" />
-        </el-select>
-        <el-tooltip :content="contextTooltip" placement="top">
-          <span class="context-usage" :class="contextUsageLevel">
-            <el-icon><Odometer /></el-icon>
-            <span>{{ contextUsageText }}</span>
-          </span>
-        </el-tooltip>
-        <el-button
-          v-if="agentStore.busy"
-          type="danger"
-          :icon="CircleClose"
-          @click="handleStop"
-        >
-          停止
-        </el-button>
-        <el-button
-          v-else
-          type="primary"
-          :icon="Promotion"
-          :disabled="!canSend"
-          @click="handleSend"
-        >
-          发送
-        </el-button>
+        <div class="input-toolbar">
+          <div class="auto-approve-row">
+            <span class="auto-approve-label">自动审批</span>
+            <el-switch
+              :model-value="agentStore.autoApprove"
+              :disabled="agentStore.autoApproveSyncing"
+              size="small"
+              aria-label="自动审批"
+              @change="handleAutoApproveChange"
+            />
+          </div>
+          <div class="input-toolbar-right">
+            <el-tooltip :content="contextTooltip" placement="top">
+              <span class="context-usage" :class="contextUsageLevel">
+                <el-icon><Odometer /></el-icon>
+                <span>{{ contextUsageText }}</span>
+              </span>
+            </el-tooltip>
+            <el-select
+              v-model="selectedModel"
+              class="model-selector"
+              placeholder="模型（仅新会话）"
+            >
+              <el-option label="DeepSeek-V4 Flash" value="deepseek-v4-flash" />
+              <el-option label="DeepSeek-V4 Pro" value="deepseek-v4-pro" />
+            </el-select>
+            <el-button
+              v-if="agentStore.busy"
+              circle
+              type="danger"
+              :icon="CircleClose"
+              aria-label="停止"
+              @click="handleStop"
+            />
+            <el-button
+              v-else
+              circle
+              type="primary"
+              :icon="Promotion"
+              :disabled="!canSend"
+              aria-label="发送"
+              @click="handleSend"
+            />
+          </div>
+        </div>
       </div>
     </template>
   </div>
@@ -496,28 +500,56 @@ defineExpose({ clearInput })
   visibility: hidden;
 }
 
+.input-container {
+  border: 1px solid var(--app-border-strong);
+  border-radius: var(--app-radius-lg);
+  background-color: var(--app-bg-panel);
+  transition: border-color 0.2s;
+  /* 容器内输入控件去边框去底色：边框由容器统一提供 */
+  --el-input-border-color: transparent;
+  --el-input-hover-border-color: transparent;
+  --el-input-focus-border-color: transparent;
+  --el-input-bg-color: transparent;
+  --el-fill-color-blank: transparent;
+  --el-disabled-bg-color: transparent;
+  --el-disabled-border-color: transparent;
+}
+
+.input-container:focus-within {
+  border-color: var(--app-text-muted);
+}
+
+.input-container :deep(.el-textarea__inner) {
+  padding: 0.75rem 0.75rem 0.25rem;
+}
+
+/* select 的边线是 box-shadow（读 --el-border-color），容器变量覆盖不到，需显式去除 */
+.input-container :deep(.el-select__wrapper),
+.input-container :deep(.el-select__wrapper.is-hovering),
+.input-container :deep(.el-select__wrapper.is-focused) {
+  box-shadow: none;
+}
+
+.input-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.25rem 0.75rem 0.5rem;
+}
+
 .auto-approve-row {
   display: flex;
-  justify-content: flex-end;
   align-items: center;
   gap: 0.5rem;
-  padding: 0 0.25rem 0.25rem;
   color: var(--app-text-muted);
   font-size: 0.75rem;
 }
 
-.message-input-area {
+.input-toolbar-right {
   display: flex;
-  align-items: flex-end;
-  gap: 0.75rem;
-}
-
-.message-input-area :deep(.el-textarea) {
-  flex: 1;
-}
-
-.message-input-area .el-button {
-  margin-bottom: 1px;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
 }
 
 .model-selector {
@@ -531,7 +563,6 @@ defineExpose({ clearInput })
   font-size: 0.75rem;
   color: var(--app-text-muted);
   white-space: nowrap;
-  margin-bottom: 1px;
   cursor: default;
 }
 
@@ -541,9 +572,5 @@ defineExpose({ clearInput })
 
 .context-usage--danger {
   color: var(--app-danger);
-}
-
-.model-selector :deep(.el-select__wrapper) {
-  margin-bottom: 1px;
 }
 </style>
