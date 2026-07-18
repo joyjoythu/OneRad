@@ -88,6 +88,7 @@ async function handleCancel(): Promise<void> {
 
 .script-title {
   font-weight: 500;
+  color: var(--app-text);
 }
 
 .script-body {
@@ -96,12 +97,13 @@ async function handleCancel(): Promise<void> {
   gap: 1rem;
 }
 
+/* 代码块刻意保持常暗：代码编辑器观感在深浅主题下均成立 */
 .script-code {
   margin: 0;
   padding: 1rem;
   background-color: #1e1e1e;
   color: #d4d4d4;
-  border-radius: 4px;
+  border-radius: var(--app-radius-md);
   overflow-x: auto;
   font-family: 'Menlo', 'Monaco', 'Consolas', 'Courier New', monospace;
   font-size: 0.875rem;
@@ -115,20 +117,20 @@ async function handleCancel(): Promise<void> {
 
 .script-explanation {
   padding: 0.75rem 1rem;
-  background-color: #f5f7fa;
-  border: 1px solid #e4e7ed;
-  border-radius: 4px;
+  background-color: var(--app-bg-hover);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-md);
 }
 
 .script-explanation p {
   margin: 0.5rem 0 0;
-  color: #606266;
+  color: var(--app-text-secondary);
   line-height: 1.5;
 }
 
 .script-section-title {
   font-weight: 500;
-  color: #303133;
+  color: var(--app-text);
 }
 
 .script-actions {

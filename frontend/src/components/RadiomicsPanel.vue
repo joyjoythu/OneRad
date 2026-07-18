@@ -138,6 +138,7 @@ async function handleCancel(): Promise<void> {
 
 .radiomics-title {
   font-weight: 500;
+  color: var(--app-text);
 }
 
 .radiomics-body {
@@ -151,10 +152,11 @@ async function handleCancel(): Promise<void> {
   flex-direction: column;
   gap: 0.375rem;
   font-size: 0.875rem;
+  color: var(--app-text);
 }
 
 .radiomics-label {
-  color: #606266;
+  color: var(--app-text-secondary);
   font-size: 0.875rem;
 }
 
@@ -162,9 +164,10 @@ async function handleCancel(): Promise<void> {
   font-family: 'Menlo', 'Monaco', 'Consolas', 'Courier New', monospace;
   font-size: 0.8125rem;
   padding: 0.125rem 0.375rem;
-  background-color: #f5f7fa;
-  border-radius: 4px;
-  border: 1px solid #e4e7ed;
+  background-color: var(--app-bg-hover);
+  border-radius: var(--app-radius-sm);
+  border: 1px solid var(--app-border);
+  color: var(--app-text);
   word-break: break-all;
 }
 
@@ -173,9 +176,10 @@ async function handleCancel(): Promise<void> {
   overflow-y: auto;
   margin-top: 0.375rem;
   padding: 0.5rem 0.75rem;
-  background-color: #f5f7fa;
-  border: 1px solid #e4e7ed;
-  border-radius: 4px;
+  background-color: var(--app-bg-hover);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-md);
+  color: var(--app-text-secondary);
   font-family: 'Menlo', 'Monaco', 'Consolas', 'Courier New', monospace;
   font-size: 0.75rem;
   line-height: 1.6;

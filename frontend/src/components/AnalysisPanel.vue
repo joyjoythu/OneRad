@@ -87,6 +87,7 @@ async function handleCancel(): Promise<void> {
 
 .analysis-title {
   font-weight: 500;
+  color: var(--app-text);
 }
 
 .analysis-body {
@@ -100,10 +101,11 @@ async function handleCancel(): Promise<void> {
   flex-direction: column;
   gap: 0.375rem;
   font-size: 0.875rem;
+  color: var(--app-text);
 }
 
 .analysis-label {
-  color: #606266;
+  color: var(--app-text-secondary);
   font-size: 0.875rem;
 }
 
@@ -111,14 +113,15 @@ async function handleCancel(): Promise<void> {
   font-family: 'Menlo', 'Monaco', 'Consolas', 'Courier New', monospace;
   font-size: 0.8125rem;
   padding: 0.125rem 0.375rem;
-  background-color: #f5f7fa;
-  border-radius: 4px;
-  border: 1px solid #e4e7ed;
+  background-color: var(--app-bg-hover);
+  border-radius: var(--app-radius-sm);
+  border: 1px solid var(--app-border);
+  color: var(--app-text);
   word-break: break-all;
 }
 
 .analysis-placeholder {
-  color: #909399;
+  color: var(--app-text-muted);
 }
 
 .analysis-actions {

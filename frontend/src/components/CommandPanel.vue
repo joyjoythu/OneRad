@@ -70,6 +70,7 @@ async function handleCancel(): Promise<void> {
 
 .command-title {
   font-weight: 500;
+  color: var(--app-text);
 }
 
 .command-body {
@@ -85,7 +86,7 @@ async function handleCancel(): Promise<void> {
 }
 
 .command-label {
-  color: #606266;
+  color: var(--app-text-secondary);
   font-size: 0.875rem;
 }
 
@@ -93,17 +94,19 @@ async function handleCancel(): Promise<void> {
   font-family: 'Menlo', 'Monaco', 'Consolas', 'Courier New', monospace;
   font-size: 0.875rem;
   padding: 0.25rem 0.5rem;
-  background-color: #f5f7fa;
-  border-radius: 4px;
-  border: 1px solid #e4e7ed;
+  background-color: var(--app-bg-hover);
+  border-radius: var(--app-radius-sm);
+  border: 1px solid var(--app-border);
+  color: var(--app-text);
 }
 
 .command-args-pre {
   margin: 0.5rem 0 0;
   padding: 0.75rem 1rem;
-  background-color: #f5f7fa;
-  border: 1px solid #e4e7ed;
-  border-radius: 4px;
+  background-color: var(--app-bg-hover);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-md);
+  color: var(--app-text);
   font-family: 'Menlo', 'Monaco', 'Consolas', 'Courier New', monospace;
   font-size: 0.875rem;
   white-space: pre-wrap;

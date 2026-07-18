@@ -156,6 +156,7 @@ async function handleCancel(): Promise<void> {
 
 .plan-title {
   font-weight: 500;
+  color: var(--app-text);
 }
 
 .plan-dirty-hint {
