@@ -400,6 +400,28 @@ describe('useAgentStore', () => {
     expect(MockEventSource.instances).toHaveLength(1)
   })
 
+  it('loadThread resolves currentThread from the per-project cache when the flat list is empty', async () => {
+    const store = useAgentStore()
+    const thread = {
+      id: 'thread-cached',
+      project_id: 'project-9',
+      title: 'Cached Thread',
+      llm_model: 'deepseek-v4-flash',
+      created_at: '2024-01-01T00:00:00Z',
+      updated_at: '2024-01-01T00:00:00Z',
+    }
+    store.threadsByProject = { 'project-9': [thread] }
+    vi.spyOn(agentApi, 'resumeThread').mockResolvedValueOnce({
+      thread_id: 'thread-cached',
+      ...mockState(),
+    })
+
+    await store.loadThread('thread-cached', 'sk-test', 'deepseek-v4-flash')
+
+    expect(store.currentThread?.project_id).toBe('project-9')
+    expect(store.currentThread?.title).toBe('Cached Thread')
+  })
+
   it('tracks radiomics progress from SSE and clears it on stream end', async () => {
     const store = useAgentStore()
     await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')

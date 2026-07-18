@@ -191,6 +191,8 @@ watch(
     // 当前对话已属于该项目（例如在设置页通过侧边栏打开了当前项目的会话）：
     // 不重置、不重复加载。
     if (newId && agentStore.threadId && agentStore.currentThread?.project_id === newId) {
+      // 不重载对话，但离开页面时 SSE 已断开，恢复事件流与最新状态。
+      void agentStore.reconnect()
       return
     }
     agentStore.resetThread()

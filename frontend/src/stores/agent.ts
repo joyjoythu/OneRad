@@ -200,7 +200,10 @@ export const useAgentStore = defineStore('agent', () => {
     })
     threadId.value = state.thread_id
     currentThread.value =
-      threads.value.find((t) => t.id === threadIdToLoad) || {
+      threads.value.find((t) => t.id === threadIdToLoad) ||
+      Object.values(threadsByProject.value)
+        .flat()
+        .find((t) => t.id === threadIdToLoad) || {
         id: threadIdToLoad,
         project_id: '',
         title: '',

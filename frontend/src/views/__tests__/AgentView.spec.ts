@@ -176,6 +176,7 @@ describe('AgentView', () => {
     const agentStore = useAgentStore()
     const listSpy = vi.spyOn(agentStore, 'listThreads').mockResolvedValue(undefined)
     vi.spyOn(agentStore, 'loadThread').mockResolvedValue(undefined)
+    const reconnectSpy = vi.spyOn(agentStore, 'reconnect').mockResolvedValue(undefined)
 
     agentStore.threadId = 't1'
     agentStore.currentThread = {
@@ -192,5 +193,6 @@ describe('AgentView', () => {
     await flushPromises()
 
     expect(listSpy).not.toHaveBeenCalled()
+    expect(reconnectSpy).toHaveBeenCalled()
   })
 })
