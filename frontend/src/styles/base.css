@@ -1,0 +1,47 @@
+/* 全局基础样式：元素级默认值与少量 EP 组件打磨。
+   所有取值都来自 tokens.css 的令牌，不在此处引入新颜色。 */
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--app-bg);
+  color: var(--app-text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 主按钮：强调色底 + 对比色文字（深主题白按钮黑字，浅主题反之） */
+.el-button--primary {
+  --el-button-text-color: var(--app-accent-text);
+  --el-button-hover-text-color: var(--app-accent-text);
+  --el-button-active-text-color: var(--app-accent-text);
+  --el-button-hover-bg-color: var(--el-color-primary-light-3);
+  --el-button-hover-border-color: var(--el-color-primary-light-3);
+  --el-button-active-bg-color: var(--el-color-primary-dark-2);
+  --el-button-active-border-color: var(--el-color-primary-dark-2);
+  --el-button-disabled-text-color: var(--app-accent-text);
+}
+
+/* plain 主按钮：hover/active 文字跟随强调对比色，避免深主题下白字近白底 */
+.el-button--primary.is-plain {
+  --el-button-hover-text-color: var(--app-accent-text);
+  --el-button-active-text-color: var(--app-accent-text);
+}
+
+/* 卡片统一为令牌边框 / 圆角 / 底色 */
+.el-card {
+  --el-card-border-color: var(--app-border);
+  --el-card-border-radius: var(--app-radius-md);
+  --el-card-bg-color: var(--app-bg-panel);
+}
+
+/* 浅色主题卡片轻微投影；深色主题靠边框分层，不用阴影 */
+html:not(.dark) .el-card {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
