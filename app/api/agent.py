@@ -161,6 +161,9 @@ def _render_messages(values: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
             tool_calls = getattr(msg, "tool_calls", None)
             if tool_calls:
                 entry["tool_calls"] = tool_calls
+            reasoning = msg.additional_kwargs.get("reasoning_content")
+            if reasoning:
+                entry["reasoning_content"] = reasoning
         elif isinstance(msg, ToolMessage):
             entry = {
                 "role": "tool",

@@ -1053,3 +1053,27 @@ def test_thread_title_not_overwritten_after_first_message(client, app, monkeypat
 
     threads = _list_threads(client, project["id"])
     assert threads[0]["title"] == "手动标题"
+
+
+def test_render_messages_passes_through_reasoning_content():
+    """assistant 消息的思考链透传到渲染结果，供历史消息展示。"""
+    from app.api.agent import _render_messages
+
+    ai = AIMessage(
+        content="答案",
+        additional_kwargs={"reasoning_content": "思考过程"},
+    )
+    rendered = _render_messages({"messages": [ai]})
+
+    assert rendered[0]["role"] == "assistant"
+    assert rendered[0]["reasoning_content"] == "思考过程"
+
+
+def test_render_messages_omits_reasoning_when_absent():
+    """无思考链的消息不应携带 reasoning_content 键。"""
+    from app.api.agent import _render_messages
+
+    ai = AIMessage(content="答案")
+    rendered = _render_messages({"messages": [ai]})
+
+    assert "reasoning_content" not in rendered[0]
