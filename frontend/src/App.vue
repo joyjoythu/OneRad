@@ -19,7 +19,7 @@
             @click="handleToggleSidebar"
           />
         </div>
-        <ProjectList v-show="!isSidebarCollapsed" />
+        <ProjectTree v-show="!isSidebarCollapsed" />
       </aside>
       <main class="app-main">
         <router-view />
@@ -31,7 +31,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { Expand, Fold } from '@element-plus/icons-vue'
-import ProjectList from '@/components/ProjectList.vue'
+import ProjectTree from '@/components/ProjectTree.vue'
 
 const SIDEBAR_COLLAPSED_KEY = 'onerad:app:sidebarCollapsed'
 

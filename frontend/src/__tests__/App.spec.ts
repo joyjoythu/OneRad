@@ -11,7 +11,7 @@ function setupWrapper() {
     global: {
       plugins: [ElementPlus],
       stubs: {
-        ProjectList: { template: '<div class="project-list-stub" />' },
+        ProjectTree: { template: '<div class="project-tree-stub" />' },
         'router-link': { template: '<a><slot /></a>' },
         'router-view': true,
       },
@@ -32,7 +32,7 @@ describe('App sidebar collapse', () => {
     expect(
       wrapper.find('[data-testid="sidebar-toggle-collapse"]').attributes('aria-label')
     ).toBe('折叠项目面板')
-    expect(wrapper.find('.project-list-stub').isVisible()).toBe(true)
+    expect(wrapper.find('.project-tree-stub').isVisible()).toBe(true)
   })
 
   it('collapses on toggle click and persists state', async () => {
@@ -43,7 +43,7 @@ describe('App sidebar collapse', () => {
 
     expect(wrapper.find('.app-sidebar').classes()).toContain('app-sidebar--collapsed')
     expect(toggle.attributes('aria-label')).toBe('展开项目面板')
-    expect(wrapper.find('.project-list-stub').isVisible()).toBe(false)
+    expect(wrapper.find('.project-tree-stub').isVisible()).toBe(false)
     expect(localStorage.getItem(SIDEBAR_COLLAPSED_KEY)).toBe('true')
 
     await toggle.trigger('click')
