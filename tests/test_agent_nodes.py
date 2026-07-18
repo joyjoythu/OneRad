@@ -52,7 +52,7 @@ def _patch_openai_stream(chunks):
     mock_cls = mock_openai.start()
     client = MagicMock()
     client.chat.completions.create.return_value = iter(chunks)
-    mock_cls.return_value = client
+    mock_cls.return_value.__enter__.return_value = client
     return mock_openai, client
 
 
@@ -275,3 +275,38 @@ def test_route_after_process_returns_auto_confirm_when_enabled():
 
 def test_auto_confirm_marks_confirmed():
     assert auto_confirm({}) == {"confirmed": True}
+
+
+
+def test_publish_thinking_publishes_partial_payload_without_persist():
+    """_publish_thinking 经 bridge 发布 partial 载荷且不落库（persist=False）。"""
+    import asyncio
+    from unittest.mock import AsyncMock
+    from app.agent import runtime as agent_runtime
+    from app.agent.nodes import _publish_thinking
+
+    loop = asyncio.new_event_loop()
+    bridge = MagicMock()
+    bridge.publish = AsyncMock()
+    agent_runtime.register("t-think", loop=loop, bridge=bridge)
+    try:
+        _publish_thinking("t-think", "想的内容", False)
+        # run_coroutine_threadsafe 已把协程排入 loop；驱动 loop 一次让协程跑到完成
+        loop.run_until_complete(asyncio.sleep(0.05))
+    finally:
+        agent_runtime.unregister("t-think")
+        loop.close()
+
+    bridge.publish.assert_awaited_once_with(
+        "agent",
+        "t-think",
+        {"thinking": {"text": "想的内容", "done": False}, "running": True},
+        persist=False,
+    )
+
+
+def test_publish_thinking_noops_without_runtime_context():
+    """无运行时上下文（线程未在运行）时静默跳过。"""
+    from app.agent.nodes import _publish_thinking
+
+    _publish_thinking("nonexistent-thread", "text", True)  # 不抛异常即通过

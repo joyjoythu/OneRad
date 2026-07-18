@@ -108,69 +108,69 @@ def _stream_chat_completion(
     delta，reasoning 累积全文经 _publish_thinking 旁路推送给前端；思考链最终
     挂在 AIMessage.additional_kwargs["reasoning_content"] 上随快照持久化。
     """
-    client = OpenAI(api_key=api_key or None, base_url=base_url)
-    stream = client.chat.completions.create(
-        model=model,
-        messages=convert_to_openai_messages(messages),
-        tools=[convert_to_openai_tool(t) for t in tools],
-        temperature=0.2,
-        parallel_tool_calls=False,
-        stream=True,
-        stream_options={"include_usage": True},
-    )
+    with OpenAI(api_key=api_key or None, base_url=base_url) as client:
+        stream = client.chat.completions.create(
+            model=model,
+            messages=convert_to_openai_messages(messages),
+            tools=[convert_to_openai_tool(t) for t in tools],
+            temperature=0.2,
+            parallel_tool_calls=False,
+            stream=True,
+            stream_options={"include_usage": True},
+        )
 
-    reasoning_parts: List[str] = []
-    content_parts: List[str] = []
-    tool_slots: Dict[int, Dict[str, str]] = {}
-    usage_metadata = None
+        reasoning_parts: List[str] = []
+        content_parts: List[str] = []
+        tool_slots: Dict[int, Dict[str, str]] = {}
+        usage_metadata = None
 
-    _publish_thinking(thread_id, "", False)
-    for chunk in stream:
-        usage = getattr(chunk, "usage", None)
-        if usage is not None:
-            usage_metadata = {
-                "input_tokens": getattr(usage, "prompt_tokens", 0) or 0,
-                "output_tokens": getattr(usage, "completion_tokens", 0) or 0,
-                "total_tokens": getattr(usage, "total_tokens", 0) or 0,
-            }
-        if not getattr(chunk, "choices", None):
-            continue
-        delta = chunk.choices[0].delta
-        reasoning = getattr(delta, "reasoning_content", None)
-        if reasoning:
-            reasoning_parts.append(reasoning)
-            _publish_thinking(thread_id, "".join(reasoning_parts), False)
-        if getattr(delta, "content", None):
-            content_parts.append(delta.content)
-        for tc in getattr(delta, "tool_calls", None) or []:
-            slot = tool_slots.setdefault(tc.index, {"id": "", "name": "", "arguments": ""})
-            if tc.id:
-                slot["id"] += tc.id
-            function = getattr(tc, "function", None)
-            if function is not None:
-                if getattr(function, "name", None):
-                    slot["name"] += function.name
-                if getattr(function, "arguments", None):
-                    slot["arguments"] += function.arguments
+        _publish_thinking(thread_id, "", False)
+        for chunk in stream:
+            usage = getattr(chunk, "usage", None)
+            if usage is not None:
+                usage_metadata = {
+                    "input_tokens": getattr(usage, "prompt_tokens", 0) or 0,
+                    "output_tokens": getattr(usage, "completion_tokens", 0) or 0,
+                    "total_tokens": getattr(usage, "total_tokens", 0) or 0,
+                }
+            if not getattr(chunk, "choices", None):
+                continue
+            delta = chunk.choices[0].delta
+            reasoning = getattr(delta, "reasoning_content", None)
+            if reasoning:
+                reasoning_parts.append(reasoning)
+                _publish_thinking(thread_id, "".join(reasoning_parts), False)
+            if getattr(delta, "content", None):
+                content_parts.append(delta.content)
+            for tc in getattr(delta, "tool_calls", None) or []:
+                slot = tool_slots.setdefault(tc.index, {"id": "", "name": "", "arguments": ""})
+                if tc.id:
+                    slot["id"] += tc.id
+                function = getattr(tc, "function", None)
+                if function is not None:
+                    if getattr(function, "name", None):
+                        slot["name"] += function.name
+                    if getattr(function, "arguments", None):
+                        slot["arguments"] += function.arguments
 
-    full_reasoning = "".join(reasoning_parts)
-    _publish_thinking(thread_id, full_reasoning, True)
+        full_reasoning = "".join(reasoning_parts)
+        _publish_thinking(thread_id, full_reasoning, True)
 
-    tool_calls = []
-    for index in sorted(tool_slots):
-        slot = tool_slots[index]
-        try:
-            args = json.loads(slot["arguments"]) if slot["arguments"] else {}
-        except json.JSONDecodeError as exc:
-            raise ValueError(
-                f"工具调用参数不是合法 JSON（{slot['name']}）: {slot['arguments']}"
-            ) from exc
-        tool_calls.append({
-            "name": slot["name"],
-            "args": args,
-            "id": slot["id"] or f"call_{index}",
-            "type": "tool_call",
-        })
+        tool_calls = []
+        for index in sorted(tool_slots):
+            slot = tool_slots[index]
+            try:
+                args = json.loads(slot["arguments"]) if slot["arguments"] else {}
+            except json.JSONDecodeError as exc:
+                raise ValueError(
+                    f"工具调用参数不是合法 JSON（{slot['name']}）: {slot['arguments']}"
+                ) from exc
+            tool_calls.append({
+                "name": slot["name"],
+                "args": args,
+                "id": slot["id"] or f"call_{index}",
+                "type": "tool_call",
+            })
 
     additional_kwargs: Dict[str, Any] = {}
     if full_reasoning:
