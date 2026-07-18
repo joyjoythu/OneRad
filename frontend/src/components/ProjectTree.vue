@@ -79,7 +79,10 @@
             class="thread-row"
             :class="{ 'thread-row--active': agentStore.currentThread?.id === thread.id }"
             data-testid="thread-row"
+            tabindex="0"
+            role="button"
             @click="handleThreadClick(project, thread)"
+            @keydown.enter="handleThreadClick(project, thread)"
           >
             <el-icon class="row-icon"><ChatDotRound /></el-icon>
             <span class="row-label">{{ thread.title || '未命名会话' }}</span>
@@ -293,7 +296,7 @@ async function handleDeleteProject(project: Project): Promise<void> {
 
   try {
     await projectStore.deleteProject(project.id)
-    delete agentStore.threadsByProject[project.id]
+    agentStore.clearProjectThreads(project.id)
     expandedIds.value.delete(project.id)
   } catch (err: any) {
     ElMessage.error(err.response?.data?.detail || err.message || '删除项目失败')
@@ -466,7 +469,9 @@ function resetForm(): void {
 }
 
 .project-row:hover .row-actions,
-.thread-row:hover .row-actions {
+.project-row:focus-within .row-actions,
+.thread-row:hover .row-actions,
+.thread-row:focus-within .row-actions {
   opacity: 1;
 }
 
@@ -492,6 +497,11 @@ function resetForm(): void {
 
 .thread-row:hover {
   background-color: var(--app-sidebar-hover);
+}
+
+.thread-row:focus-visible {
+  outline: 2px solid var(--app-accent);
+  outline-offset: -2px;
 }
 
 .thread-row--active {

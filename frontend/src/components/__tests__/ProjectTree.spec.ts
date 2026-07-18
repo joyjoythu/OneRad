@@ -140,7 +140,15 @@ describe('ProjectTree', () => {
   it('loads a thread of the current project directly on click', async () => {
     vi.mocked(projectsApi.listProjects).mockResolvedValue([mockProject('1')])
     vi.mocked(agentApi.listThreads).mockResolvedValue({ threads: [mockThread('t1', '1')] })
-    vi.mocked(agentApi.resumeThread).mockResolvedValue({ thread_id: 't1', messages: [] })
+    vi.mocked(agentApi.resumeThread).mockResolvedValue({
+      thread_id: 't1',
+      messages: [],
+      interrupt_type: null,
+      operation_log: [],
+      pending_plan: null,
+      pending_command: null,
+      pending_script: null,
+    })
 
     const wrapper = setupWrapper()
     await flushPromises()
@@ -203,8 +211,13 @@ describe('ProjectTree', () => {
   it('deletes a project after confirming', async () => {
     vi.mocked(projectsApi.listProjects).mockResolvedValue([mockProject('1')])
     vi.mocked(projectsApi.deleteProject).mockResolvedValue(undefined)
+    vi.mocked(agentApi.listThreads).mockResolvedValue({ threads: [] })
 
     const wrapper = setupWrapper()
+    await flushPromises()
+
+    // 点击删除前先展开项目造出缓存
+    await wrapper.find('[data-testid="project-row"]').trigger('click')
     await flushPromises()
 
     await wrapper.find('[data-testid="project-delete"]').trigger('click')
@@ -212,6 +225,8 @@ describe('ProjectTree', () => {
 
     expect(ElMessageBox.confirm).toHaveBeenCalled()
     expect(projectsApi.deleteProject).toHaveBeenCalledWith('1')
+    const agentStore = useAgentStore()
+    expect(agentStore.threadsByProject['1']).toBeUndefined()
   })
 
   it('renames a thread via prompt', async () => {

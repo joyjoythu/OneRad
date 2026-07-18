@@ -183,6 +183,10 @@ export const useAgentStore = defineStore('agent', () => {
     threadsByProject.value[projectId] = data.threads ?? []
   }
 
+  function clearProjectThreads(projectId: string): void {
+    delete threadsByProject.value[projectId]
+  }
+
   async function loadThread(
     threadIdToLoad: string,
     apiKey: string,
@@ -422,6 +426,7 @@ export const useAgentStore = defineStore('agent', () => {
     resetThread,
     listThreads,
     loadProjectThreads,
+    clearProjectThreads,
     loadThread,
     createThread,
     deleteThread,
