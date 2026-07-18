@@ -238,7 +238,9 @@ watch(
 
 .agent-header h2 {
   margin: 0;
-  font-size: 1.25rem;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--app-text);
 }
 
 .agent-workspace {
@@ -268,9 +270,10 @@ watch(
   max-height: 240px;
   overflow-y: auto;
   padding: 0.75rem 1rem;
-  background-color: #f5f7fa;
-  border: 1px solid #e4e7ed;
-  border-radius: 4px;
+  background-color: var(--app-bg-hover);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-md);
+  color: var(--app-text-secondary);
   font-family: 'Menlo', 'Monaco', 'Consolas', 'Courier New', monospace;
   font-size: 0.875rem;
   line-height: 1.5;
