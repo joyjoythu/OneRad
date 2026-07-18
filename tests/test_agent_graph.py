@@ -1,7 +1,7 @@
 import json
 import pytest
 from unittest.mock import patch, MagicMock
-from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, SystemMessage
+from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
 from langgraph.types import Command
 
 from app.agent import create_agent_graph, build_initial_state
@@ -41,11 +41,8 @@ def test_graph_runs_to_end_without_tools(tmp_path):
     state["messages"] = [HumanMessage(content="hello")]
 
     graph = create_agent_graph()
-    with patch("app.agent.nodes.ChatOpenAI") as mock_llm_class:
-        mock_llm = MagicMock()
-        mock_llm.bind_tools.return_value = mock_llm
-        mock_llm.invoke.return_value = AIMessage(content="Hi there")
-        mock_llm_class.return_value = mock_llm
+    with patch("app.agent.nodes._stream_chat_completion") as mock_stream:
+        mock_stream.return_value = AIMessage(content="Hi there")
 
         final = graph.invoke(state, {"configurable": {"thread_id": "test-thread"}})
         assert final["messages"][-1].content == "Hi there"
@@ -59,17 +56,14 @@ def test_graph_interrupts_on_system_command(tmp_path):
     graph = create_agent_graph()
     config = {"configurable": {"thread_id": "test-system-command"}}
 
-    with patch("app.agent.nodes.ChatOpenAI") as mock_llm_class:
-        mock_llm = MagicMock()
-        mock_llm.bind_tools.return_value = mock_llm
-        mock_llm.invoke.side_effect = [
+    with patch("app.agent.nodes._stream_chat_completion") as mock_stream:
+        mock_stream.side_effect = [
             AIMessage(
                 content="",
                 tool_calls=[{"name": "list_directory", "args": {"path": "."}, "id": "call_list"}],
             ),
             AIMessage(content="Done"),
         ]
-        mock_llm_class.return_value = mock_llm
 
         events = list(graph.stream(state, config))
         assert any("__interrupt__" in e for e in events)
@@ -91,33 +85,26 @@ def test_graph_interrupts_on_file_plan(tmp_path):
     graph = create_agent_graph()
     config = {"configurable": {"thread_id": "test-file-plan"}}
 
-    with patch("app.agent.nodes.ChatOpenAI") as mock_llm_class:
+    with patch("app.agent.nodes.ChatOpenAI") as mock_llm_class, \
+         patch("app.agent.nodes._stream_chat_completion") as mock_stream:
+        # 工具内部规划调用（plan_file_operations 的规划 prompt 经 llm.invoke）。
         mock_llm = MagicMock()
-        mock_llm.bind_tools.return_value = mock_llm
-
-        def side_effect(messages):
-            # plan_file_operations invokes the LLM with a planning prompt.
-            if any(isinstance(m, SystemMessage) for m in messages):
-                return AIMessage(
-                    content='[{"action": "mkdir", "target": "new_folder", "reason": "create folder"}]'
-                )
-            # call_llm invocations: first returns the plan tool call, second ends the loop.
-            if not hasattr(side_effect, "call_count"):
-                side_effect.call_count = 0
-            side_effect.call_count += 1
-            if side_effect.call_count == 1:
-                return AIMessage(
-                    content="",
-                    tool_calls=[{
-                        "name": "plan_file_operations",
-                        "args": {"instruction": "organize files"},
-                        "id": "call_plan",
-                    }],
-                )
-            return AIMessage(content="Done")
-
-        mock_llm.invoke.side_effect = side_effect
+        mock_llm.invoke.return_value = AIMessage(
+            content='[{"action": "mkdir", "target": "new_folder", "reason": "create folder"}]'
+        )
         mock_llm_class.return_value = mock_llm
+        # call_llm 调用：第一次返回 plan 工具调用，第二次结束循环。
+        mock_stream.side_effect = [
+            AIMessage(
+                content="",
+                tool_calls=[{
+                    "name": "plan_file_operations",
+                    "args": {"instruction": "organize files"},
+                    "id": "call_plan",
+                }],
+            ),
+            AIMessage(content="Done"),
+        ]
 
         events = list(graph.stream(state, config))
         assert any("__interrupt__" in e for e in events)
@@ -139,17 +126,14 @@ def test_graph_cancel_operation(tmp_path):
     graph = create_agent_graph()
     config = {"configurable": {"thread_id": "test-cancel"}}
 
-    with patch("app.agent.nodes.ChatOpenAI") as mock_llm_class:
-        mock_llm = MagicMock()
-        mock_llm.bind_tools.return_value = mock_llm
-        mock_llm.invoke.side_effect = [
+    with patch("app.agent.nodes._stream_chat_completion") as mock_stream:
+        mock_stream.side_effect = [
             AIMessage(
                 content="",
                 tool_calls=[{"name": "list_directory", "args": {"path": "."}, "id": "call_cancel"}],
             ),
             AIMessage(content="Done"),
         ]
-        mock_llm_class.return_value = mock_llm
 
         events = list(graph.stream(state, config))
         assert any("__interrupt__" in e for e in events)
@@ -170,31 +154,26 @@ def test_graph_cancel_file_plan_does_not_execute(tmp_path):
     graph = create_agent_graph()
     config = {"configurable": {"thread_id": "test-cancel-file-plan"}}
 
-    with patch("app.agent.nodes.ChatOpenAI") as mock_llm_class:
+    with patch("app.agent.nodes.ChatOpenAI") as mock_llm_class, \
+         patch("app.agent.nodes._stream_chat_completion") as mock_stream:
+        # 工具内部规划调用（plan_file_operations 的规划 prompt 经 llm.invoke）。
         mock_llm = MagicMock()
-        mock_llm.bind_tools.return_value = mock_llm
-
-        def side_effect(messages):
-            if any(isinstance(m, SystemMessage) for m in messages):
-                return AIMessage(
-                    content='[{"action": "mkdir", "target": "should_not_exist", "reason": "create folder"}]'
-                )
-            if not hasattr(side_effect, "call_count"):
-                side_effect.call_count = 0
-            side_effect.call_count += 1
-            if side_effect.call_count == 1:
-                return AIMessage(
-                    content="",
-                    tool_calls=[{
-                        "name": "plan_file_operations",
-                        "args": {"instruction": "organize files"},
-                        "id": "call_cancel_plan",
-                    }],
-                )
-            return AIMessage(content="Done")
-
-        mock_llm.invoke.side_effect = side_effect
+        mock_llm.invoke.return_value = AIMessage(
+            content='[{"action": "mkdir", "target": "should_not_exist", "reason": "create folder"}]'
+        )
         mock_llm_class.return_value = mock_llm
+        # call_llm 调用：第一次返回 plan 工具调用，第二次结束循环。
+        mock_stream.side_effect = [
+            AIMessage(
+                content="",
+                tool_calls=[{
+                    "name": "plan_file_operations",
+                    "args": {"instruction": "organize files"},
+                    "id": "call_cancel_plan",
+                }],
+            ),
+            AIMessage(content="Done"),
+        ]
 
         events = list(graph.stream(state, config))
         assert any("__interrupt__" in e for e in events)
@@ -217,11 +196,9 @@ def test_graph_interrupts_on_python_script(tmp_path):
     graph = create_agent_graph()
     config = {"configurable": {"thread_id": "test-python-script"}}
 
-    with patch("app.agent.nodes.ChatOpenAI") as mock_llm_class, \
+    with patch("app.agent.nodes._stream_chat_completion") as mock_stream, \
          patch("app.agent.nodes.execute_script_if_safe") as mock_execute:
-        mock_llm = MagicMock()
-        mock_llm.bind_tools.return_value = mock_llm
-        mock_llm.invoke.side_effect = [
+        mock_stream.side_effect = [
             AIMessage(
                 content="",
                 tool_calls=[{
@@ -235,7 +212,6 @@ def test_graph_interrupts_on_python_script(tmp_path):
             ),
             AIMessage(content="Done"),
         ]
-        mock_llm_class.return_value = mock_llm
         mock_execute.return_value = {"success": True, "stdout": "hello", "stderr": ""}
 
         events = list(graph.stream(state, config))
@@ -260,10 +236,8 @@ def test_graph_interrupts_on_low_risk_python_script(tmp_path):
     graph = create_agent_graph()
     config = {"configurable": {"thread_id": "test-low-risk-python-script"}}
 
-    with patch("app.agent.nodes.ChatOpenAI") as mock_llm_class:
-        mock_llm = MagicMock()
-        mock_llm.bind_tools.return_value = mock_llm
-        mock_llm.invoke.side_effect = [
+    with patch("app.agent.nodes._stream_chat_completion") as mock_stream:
+        mock_stream.side_effect = [
             AIMessage(
                 content="",
                 tool_calls=[{
@@ -277,7 +251,6 @@ def test_graph_interrupts_on_low_risk_python_script(tmp_path):
             ),
             AIMessage(content="Done"),
         ]
-        mock_llm_class.return_value = mock_llm
 
         events = list(graph.stream(state, config))
         assert any("__interrupt__" in e for e in events)
@@ -300,17 +273,14 @@ def test_graph_non_dict_resume_defaults_to_cancel(tmp_path):
     graph = create_agent_graph()
     config = {"configurable": {"thread_id": "test-non-dict-resume"}}
 
-    with patch("app.agent.nodes.ChatOpenAI") as mock_llm_class:
-        mock_llm = MagicMock()
-        mock_llm.bind_tools.return_value = mock_llm
-        mock_llm.invoke.side_effect = [
+    with patch("app.agent.nodes._stream_chat_completion") as mock_stream:
+        mock_stream.side_effect = [
             AIMessage(
                 content="",
                 tool_calls=[{"name": "list_directory", "args": {"path": "."}, "id": "call_non_dict"}],
             ),
             AIMessage(content="Done"),
         ]
-        mock_llm_class.return_value = mock_llm
 
         events = list(graph.stream(state, config))
         assert any("__interrupt__" in e for e in events)
@@ -359,17 +329,14 @@ def test_graph_auto_approve_skips_interrupt(tmp_path):
     graph = create_agent_graph()
     config = {"configurable": {"thread_id": "test-auto-approve", "auto_approve": True}}
 
-    with patch("app.agent.nodes.ChatOpenAI") as mock_llm_class:
-        mock_llm = MagicMock()
-        mock_llm.bind_tools.return_value = mock_llm
-        mock_llm.invoke.side_effect = [
+    with patch("app.agent.nodes._stream_chat_completion") as mock_stream:
+        mock_stream.side_effect = [
             AIMessage(
                 content="",
                 tool_calls=[{"name": "list_directory", "args": {"path": "."}, "id": "call_list"}],
             ),
             AIMessage(content="Done"),
         ]
-        mock_llm_class.return_value = mock_llm
 
         events = list(graph.stream(state, config))
         assert not any("__interrupt__" in e for e in events)

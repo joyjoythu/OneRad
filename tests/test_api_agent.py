@@ -5,7 +5,7 @@ import uuid
 from contextlib import suppress
 from datetime import datetime
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -827,17 +827,14 @@ async def _run_interrupt_then_resume(tmp_path, action):
         )
     )
 
-    with patch("app.agent.nodes.ChatOpenAI") as mock_llm_class:
-        mock_llm = MagicMock()
-        mock_llm.bind_tools.return_value = mock_llm
-        mock_llm.invoke.side_effect = [
+    with patch("app.agent.nodes._stream_chat_completion") as mock_stream:
+        mock_stream.side_effect = [
             AIMessage(
                 content="",
                 tool_calls=[{"name": "list_directory", "args": {"path": "."}, "id": "call_list"}],
             ),
             AIMessage(content="Done"),
         ]
-        mock_llm_class.return_value = mock_llm
 
         await _stream_agent(thread_id, graph, config, bridge, app, state)
         interrupted = await graph.aget_state(config)
