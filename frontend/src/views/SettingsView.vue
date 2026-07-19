@@ -406,6 +406,7 @@ onBeforeUnmount(() => {
   border: 1px solid var(--app-border);
   border-radius: var(--app-radius-lg);
   background: var(--app-bg-panel);
+  box-shadow: var(--app-shadow-sm);
 }
 
 .settings-card--appearance {

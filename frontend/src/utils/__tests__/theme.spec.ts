@@ -9,13 +9,13 @@ describe('theme', () => {
     document.documentElement.classList.remove('dark')
   })
 
-  it('defaults to dark when nothing is stored', () => {
-    expect(getTheme()).toBe('dark')
+  it('defaults to light when nothing is stored', () => {
+    expect(getTheme()).toBe('light')
   })
 
-  it('initTheme applies the dark class by default', () => {
+  it('initTheme keeps the light class state by default', () => {
     initTheme()
-    expect(document.documentElement.classList.contains('dark')).toBe(true)
+    expect(document.documentElement.classList.contains('dark')).toBe(false)
   })
 
   it('setTheme(light) removes the dark class and persists the choice', () => {
@@ -30,13 +30,13 @@ describe('theme', () => {
     expect(localStorage.getItem(THEME_KEY)).toBe('dark')
   })
 
-  it('initTheme restores a persisted light choice', () => {
-    localStorage.setItem(THEME_KEY, 'light')
+  it('initTheme restores a persisted dark choice', () => {
+    localStorage.setItem(THEME_KEY, 'dark')
     initTheme()
-    expect(document.documentElement.classList.contains('dark')).toBe(false)
+    expect(document.documentElement.classList.contains('dark')).toBe(true)
   })
 
-  it('falls back to dark and still toggles the class when localStorage throws', () => {
+  it('falls back to light and still toggles the class when localStorage throws', () => {
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
       throw new Error('denied')
     })
@@ -44,7 +44,7 @@ describe('theme', () => {
       throw new Error('denied')
     })
 
-    expect(getTheme()).toBe('dark')
+    expect(getTheme()).toBe('light')
     setTheme('light')
     expect(document.documentElement.classList.contains('dark')).toBe(false)
 

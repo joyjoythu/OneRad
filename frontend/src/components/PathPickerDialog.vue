@@ -3,7 +3,8 @@
     v-model="dialogVisible"
     class="path-picker-dialog"
     :title="title"
-    width="min(1040px, calc(100vw - 32px))"
+    width="min(1280px, calc(100vw - 32px))"
+    top="3dvh"
     destroy-on-close
     append-to-body
     @closed="resetTransientState"
@@ -314,7 +315,7 @@ function resetTransientState(): void {
 .path-picker {
   display: grid;
   grid-template-columns: minmax(170px, 220px) minmax(0, 1fr);
-  height: min(68vh, 680px);
+  height: clamp(420px, 68dvh, 720px);
   min-height: 420px;
   overflow: hidden;
   border: 1px solid var(--app-border);
@@ -521,13 +522,16 @@ function resetTransientState(): void {
 
 @media (max-width: 680px) {
   .path-picker {
+    display: flex;
     grid-template-columns: 1fr;
-    height: min(72vh, 720px);
-    min-height: 360px;
+    flex-direction: column;
+    height: 64dvh;
+    min-height: 320px;
   }
 
   .path-picker__roots {
     display: flex;
+    flex: 0 0 auto;
     gap: 0.375rem;
     padding: 0.5rem;
     overflow-x: auto;
@@ -546,6 +550,11 @@ function resetTransientState(): void {
 
   .path-picker__toolbar {
     flex-wrap: wrap;
+  }
+
+  .path-picker__browser {
+    min-height: 0;
+    flex: 1;
   }
 
   .path-picker__toolbar .el-input {

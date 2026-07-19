@@ -510,18 +510,32 @@ function resetForm(): void {
   align-items: center;
   justify-content: center;
   gap: 0.25rem;
-  padding: 0.25rem 0.5rem;
+  min-height: 38px;
+  padding: 0.375rem 0.75rem;
   border: 1px solid var(--app-border-strong);
   border-radius: var(--app-radius-lg);
-  background: transparent;
-  color: var(--app-text);
-  font-size: 0.75rem;
+  background: var(--app-bg-panel);
+  color: var(--app-accent-active);
+  font-size: 0.8125rem;
+  font-weight: 600;
   cursor: pointer;
-  transition: background-color 0.2s;
+  box-shadow: var(--app-shadow-sm);
+  transition: background-color 0.16s ease, border-color 0.16s ease,
+    box-shadow 0.16s ease, transform 0.12s ease;
 }
 
 .new-task-btn:hover {
+  border-color: var(--app-accent);
   background-color: var(--app-sidebar-hover);
+}
+
+.new-task-btn:active {
+  transform: translateY(1px);
+}
+
+.new-task-btn:focus-visible {
+  outline: 3px solid var(--app-focus-ring);
+  outline-offset: 1px;
 }
 
 .project-tree-group {
@@ -557,6 +571,7 @@ function resetForm(): void {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  min-height: 38px;
   padding: 0.4375rem 0.625rem;
   border-radius: var(--app-radius-md);
   cursor: pointer;
@@ -670,6 +685,7 @@ function resetForm(): void {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  min-height: 36px;
   padding: 0.375rem 0.625rem;
   border-radius: var(--app-radius-md);
   cursor: pointer;

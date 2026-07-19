@@ -1,11 +1,12 @@
 export type Theme = 'light' | 'dark'
 
 const THEME_KEY = 'onerad:theme'
-const DEFAULT_THEME: Theme = 'dark'
+const DEFAULT_THEME: Theme = 'light'
 
 export function getTheme(): Theme {
   try {
-    return localStorage.getItem(THEME_KEY) === 'light' ? 'light' : DEFAULT_THEME
+    const stored = localStorage.getItem(THEME_KEY)
+    return stored === 'dark' ? 'dark' : DEFAULT_THEME
   } catch {
     return DEFAULT_THEME
   }
