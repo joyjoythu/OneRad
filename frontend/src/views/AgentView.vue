@@ -1,8 +1,7 @@
 <template>
   <div class="agent-view">
-    <header class="agent-header">
-      <h2>{{ pageTitle }}</h2>
-      <el-tag v-if="interruptTag" :type="interruptTag.type">
+    <header v-if="interruptTag" class="agent-header">
+      <el-tag :type="interruptTag.type">
         {{ interruptTag.label }}
       </el-tag>
     </header>
@@ -131,12 +130,6 @@ const showAnalysis = computed(
   () => !agentStore.busy && agentStore.interrupt === 'radiomics_analysis' && agentStore.pendingRadiomicsAnalysis
 )
 
-const pageTitle = computed(() => {
-  return projectStore.currentProject
-    ? `AI 助手 - ${projectStore.currentProject.name}`
-    : 'AI 助手'
-})
-
 const interruptTag = computed(() => {
   switch (agentStore.interrupt) {
     case 'file_plan':
@@ -225,15 +218,8 @@ watch(
 .agent-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   flex-shrink: 0;
-}
-
-.agent-header h2 {
-  margin: 0;
-  font-size: 1.125rem;
-  font-weight: 600;
-  color: var(--app-text);
 }
 
 .agent-workspace {

@@ -444,9 +444,6 @@ defineExpose({ clearInput })
   min-height: 0;
   overflow-y: auto;
   padding: 1rem;
-  border: 1px solid var(--app-border-strong);
-  border-radius: var(--app-radius-lg);
-  background-color: var(--app-bg-panel);
 }
 
 .message-row {
