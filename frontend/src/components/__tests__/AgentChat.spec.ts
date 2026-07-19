@@ -839,3 +839,96 @@ describe('AgentChat', () => {
     expect(userRow.text()).toContain('**不按 markdown 渲染**')
   })
 })
+
+
+describe('AgentChat subagent panel', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
+  const mockSubagentStatus = (status: 'running' | 'done' | 'failed' | 'cancelled') => ({
+    task: '统计项目根目录下的文件数量',
+    status,
+    entries: [
+      { role: 'assistant', text: '调用工具：list_directory' },
+      { role: 'tool', text: '{"result": "F a.txt"}' },
+    ],
+  })
+
+  it('shows the subagent panel with task and entries while busy', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.threadId = 'thread-1'
+    agentStore.busy = true
+    agentStore.subagentStatus = mockSubagentStatus('running')
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    const panel = wrapper.find('.subagent-panel')
+    expect(panel.exists()).toBe(true)
+    expect(panel.text()).toContain('子任务：统计项目根目录下的文件数量')
+    expect(panel.text()).toContain('运行中')
+    expect(panel.text()).toContain('调用工具：list_directory')
+    expect(panel.text()).toContain('{"result": "F a.txt"}')
+  })
+
+  it('hides the subagent panel when the agent is not busy', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.threadId = 'thread-1'
+    agentStore.busy = false
+    agentStore.subagentStatus = mockSubagentStatus('done')
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    expect(wrapper.find('.subagent-panel').exists()).toBe(false)
+  })
+
+  it('shows terminal status labels on the tag', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.threadId = 'thread-1'
+    agentStore.busy = true
+    agentStore.subagentStatus = mockSubagentStatus('failed')
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+    expect(wrapper.find('.subagent-panel').text()).toContain('失败')
+
+    agentStore.subagentStatus = mockSubagentStatus('cancelled')
+    await flushPromises()
+    expect(wrapper.find('.subagent-panel').text()).toContain('已停止')
+  })
+
+  it('collapses and re-expands the entries list', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.threadId = 'thread-1'
+    agentStore.busy = true
+    agentStore.subagentStatus = mockSubagentStatus('running')
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    const entries = wrapper.find('.subagent-entries')
+    expect(entries.isVisible()).toBe(true)
+
+    await wrapper.find('.subagent-toggle').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.subagent-entries').isVisible()).toBe(false)
+
+    await wrapper.find('.subagent-toggle').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.subagent-entries').isVisible()).toBe(true)
+  })
+})

@@ -243,3 +243,40 @@ describe('ApprovalPanel', () => {
     expect(wrapper.find('.approval-other').exists()).toBe(false)
   })
 })
+
+
+describe('ApprovalPanel subagent_dispatch', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
+  it('shows the task text and confirm/cancel buttons for subagent_dispatch', async () => {
+    const store = useAgentStore()
+    store.interrupt = 'subagent_dispatch'
+    store.pendingSubagent = {
+      tool_call_id: 'tc-sub-1',
+      task: '统计项目根目录下的文件数量',
+    }
+    const confirmSpy = vi.spyOn(store, 'confirm').mockResolvedValue(undefined)
+
+    const wrapper = setupWrapper()
+
+    expect(wrapper.text()).toContain('待确认：分派子任务')
+    expect(wrapper.text()).toContain('统计项目根目录下的文件数量')
+
+    const confirmBtn = wrapper
+      .findAll('button')
+      .find((b) => b.text().includes('确认分派'))
+    await confirmBtn!.trigger('click')
+    expect(confirmSpy).toHaveBeenCalled()
+  })
+
+  it('renders nothing when pending_subagent is missing', () => {
+    const store = useAgentStore()
+    store.interrupt = 'subagent_dispatch'
+    store.pendingSubagent = null
+
+    const wrapper = setupWrapper()
+    expect(wrapper.find('.approval-panel').exists()).toBe(false)
+  })
+})

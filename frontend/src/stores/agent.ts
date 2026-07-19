@@ -13,6 +13,8 @@ import type {
   PendingRadiomicsPlan,
   PendingRadiomicsExecution,
   PendingRadiomicsAnalysis,
+  PendingSubagent,
+  SubagentStatus,
   RadiomicsProgress,
   ThinkingState,
   ThreadSummary,
@@ -29,6 +31,10 @@ export const useAgentStore = defineStore('agent', () => {
   const pendingRadiomicsPlan = ref<PendingRadiomicsPlan | null>(null)
   const pendingRadiomicsExecution = ref<PendingRadiomicsExecution | null>(null)
   const pendingRadiomicsAnalysis = ref<PendingRadiomicsAnalysis | null>(null)
+  const pendingSubagent = ref<PendingSubagent | null>(null)
+  // 子 agent 运行状态：运行中经 SSE 滚动推送（含中间过程条目），
+  // 结束（done/failed/cancelled）后定格，直到下次分派或切换对话。
+  const subagentStatus = ref<SubagentStatus | null>(null)
 
   const threads = ref<ThreadSummary[]>([])
   // 按项目分组的对话列表缓存，供合并侧边栏懒加载展示；
@@ -169,6 +175,12 @@ export const useAgentStore = defineStore('agent', () => {
     if (state.pending_radiomics_analysis !== undefined) {
       pendingRadiomicsAnalysis.value = state.pending_radiomics_analysis
     }
+    if (state.pending_subagent !== undefined) {
+      pendingSubagent.value = state.pending_subagent
+    }
+    if (state.subagent !== undefined) {
+      subagentStatus.value = state.subagent
+    }
     if (state.radiomics_progress !== undefined) {
       radiomicsProgress.value = state.radiomics_progress
     }
@@ -195,6 +207,8 @@ export const useAgentStore = defineStore('agent', () => {
     pendingRadiomicsPlan.value = null
     pendingRadiomicsExecution.value = null
     pendingRadiomicsAnalysis.value = null
+    pendingSubagent.value = null
+    subagentStatus.value = null
     currentThread.value = null
     busy.value = false
     radiomicsProgress.value = null
@@ -533,6 +547,8 @@ export const useAgentStore = defineStore('agent', () => {
     pendingRadiomicsPlan,
     pendingRadiomicsExecution,
     pendingRadiomicsAnalysis,
+    pendingSubagent,
+    subagentStatus,
     radiomicsProgress,
     currentThinking,
     contextUsage,

@@ -61,6 +61,23 @@ export interface ThinkingState {
   done: boolean
 }
 
+export interface PendingSubagent {
+  tool_call_id: string
+  task: string
+}
+
+export interface SubagentEntry {
+  role: string
+  text: string
+}
+
+/** 子 agent 运行状态（运行中经 SSE 滚动推送，结束时定格）。 */
+export interface SubagentStatus {
+  task: string
+  status: 'running' | 'done' | 'failed' | 'cancelled'
+  entries: SubagentEntry[]
+}
+
 export interface RadiomicsPair {
   patient_id: string
   sequence?: string
@@ -118,6 +135,8 @@ export interface AgentState {
   pending_radiomics_plan?: PendingRadiomicsPlan | null
   pending_radiomics_execution?: PendingRadiomicsExecution | null
   pending_radiomics_analysis?: PendingRadiomicsAnalysis | null
+  pending_subagent?: PendingSubagent | null
+  subagent?: SubagentStatus | null
   radiomics_progress?: RadiomicsProgress | null
   thinking?: ThinkingState | null
   context_usage?: ContextUsage | null

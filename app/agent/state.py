@@ -17,6 +17,7 @@ class AgentState(TypedDict):
     pending_radiomics_plan: Optional[Dict[str, Any]] # {"tool_call_id": str, ...radiomics_plan}
     pending_radiomics_execution: Optional[Dict[str, Any]]  # {"tool_call_id": str, ...radiomics_execution}
     pending_radiomics_analysis: Optional[Dict[str, Any]]    # {"tool_call_id": str, ...analysis meta}
+    pending_subagent: Optional[Dict[str, Any]]              # {"tool_call_id": str, "task": str}
 
     context_usage: Optional[Dict[str, Any]]      # 最近一次 LLM 调用的 token 用量
     confirmed: Optional[bool]
