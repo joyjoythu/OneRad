@@ -1,9 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { mount, flushPromises, VueWrapper } from '@vue/test-utils'
+import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import ElementPlus from 'element-plus'
 import AgentChat from '../AgentChat.vue'
-import { DEFAULT_AGENT_MODEL } from '@/api/agent'
 import { useAgentStore } from '@/stores/agent'
 import { useProjectStore } from '@/stores/project'
 import type { Project } from '@/api/projects'
@@ -148,7 +147,7 @@ describe('AgentChat', () => {
     expect(wrapper.emitted('send-message')).toBeUndefined()
   })
 
-  it('enables the input and model selector when a project is selected without a thread', async () => {
+  it('enables the input when a project is selected without a thread', async () => {
     const projectStore = useProjectStore()
     projectStore.currentProject = mockProject()
 
@@ -158,41 +157,7 @@ describe('AgentChat', () => {
     const textarea = wrapper.find('textarea')
     expect(textarea.attributes('disabled')).toBeUndefined()
 
-    const select = wrapper.findComponent('.model-selector') as VueWrapper<any>
-    expect(select.props('disabled')).toBeFalsy()
-  })
-
-  it('defaults the model selector to DEFAULT_AGENT_MODEL', async () => {
-    const projectStore = useProjectStore()
-    projectStore.currentProject = mockProject()
-
-    const agentStore = useAgentStore()
-    agentStore.threadId = 'thread-1'
-
-    const wrapper = setupWrapper()
-    await flushPromises()
-
-    const select = wrapper.findComponent('.model-selector') as VueWrapper<any>
-    expect(select.exists()).toBe(true)
-    expect(select.props('modelValue')).toBe(DEFAULT_AGENT_MODEL)
-  })
-
-  it('emits update:model when the model selector changes', async () => {
-    const projectStore = useProjectStore()
-    projectStore.currentProject = mockProject()
-
-    const agentStore = useAgentStore()
-    agentStore.threadId = 'thread-1'
-
-    const wrapper = setupWrapper()
-    await flushPromises()
-
-    const select = wrapper.findComponent('.model-selector') as VueWrapper<any>
-    select.vm.$emit('update:modelValue', 'deepseek-v4-pro')
-    await flushPromises()
-
-    expect(wrapper.emitted('update:model')).toHaveLength(1)
-    expect(wrapper.emitted('update:model')![0]).toEqual(['deepseek-v4-pro'])
+    expect(wrapper.find('.model-selector').exists()).toBe(false)
   })
 
   it('disables input while the agent is busy', async () => {
@@ -488,7 +453,7 @@ describe('AgentChat', () => {
     expect(wrapper.find('.context-usage').classes()).toContain('context-usage--danger')
   })
 
-  it('renders auto-approve switch above the model selector and toggles the store', async () => {
+  it('renders the auto-approve switch and toggles the store', async () => {
     const projectStore = useProjectStore()
     projectStore.currentProject = mockProject()
     const agentStore = useAgentStore()
@@ -499,10 +464,6 @@ describe('AgentChat', () => {
     const row = wrapper.find('.auto-approve-row')
     expect(row.exists()).toBe(true)
     expect(row.text()).toContain('自动审批')
-
-    // DOM 顺序：开关行必须在输入区（含模型选择器）之前。
-    const html = wrapper.html()
-    expect(html.indexOf('auto-approve-row')).toBeLessThan(html.indexOf('model-selector'))
 
     await wrapper.find('.el-switch').trigger('click')
     expect(agentStore.autoApprove).toBe(true)
@@ -606,7 +567,7 @@ describe('AgentChat', () => {
     const toolbar = container.find('.input-toolbar')
     expect(toolbar.exists()).toBe(true)
     expect(toolbar.find('.auto-approve-row').exists()).toBe(true)
-    expect(toolbar.find('.model-selector').exists()).toBe(true)
+    expect(toolbar.find('.model-selector').exists()).toBe(false)
     expect(toolbar.find('[aria-label="发送"]').exists()).toBe(true)
   })
 

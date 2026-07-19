@@ -36,7 +36,6 @@ def _parse_args(argv=None):
                         help="覆盖 pyradiomics 的 resampledPixelSpacing, e.g. '0.5,0.5,0.5'")
     parser.add_argument("--api-key", default=None)
     parser.add_argument("--base-url", default="https://api.deepseek.com/v1")
-    parser.add_argument("--model", default="deepseek-v4-pro")
     parser.add_argument("--host", default="0.0.0.0", help="FastAPI 服务器地址")
     parser.add_argument("--port", type=int, default=8000, help="FastAPI 服务器端口")
     return parser.parse_args(argv)
@@ -60,7 +59,6 @@ def _run_direct_analysis(args) -> str:
         n_splits=args.n_splits,
         api_key=args.api_key,
         base_url=args.base_url,
-        model=args.model,
     )
 
 
@@ -119,7 +117,6 @@ def main(argv=None):
         resampled_pixel_spacing=parse_float_tuple(args.resampled_pixel_spacing),
         api_key=args.api_key,
         base_url=args.base_url,
-        model=args.model,
     )
     register_default_handlers(orch)
     try:

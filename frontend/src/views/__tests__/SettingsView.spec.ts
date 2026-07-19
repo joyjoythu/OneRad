@@ -140,7 +140,7 @@ describe('SettingsView', () => {
       .mockReturnValueOnce(firstResponse)
       .mockImplementationOnce(async (_id, config) => savedProject(project, config))
     const wrapper = setupWrapper()
-    const input = wrapper.find('input[placeholder="包含影像与分割文件的目录"]')
+    const input = wrapper.find<HTMLInputElement>('input[placeholder="包含影像与分割文件的目录"]')
 
     await input.setValue('C:\\study\\first')
     await vi.advanceTimersByTimeAsync(600)

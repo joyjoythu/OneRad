@@ -10,8 +10,6 @@
       <div class="agent-chat-wrapper">
         <AgentChat
           ref="agentChatRef"
-          :model="selectedModel"
-          @update:model="selectedModel = $event"
           @send-message="handleSendMessage"
           @stop="handleStop"
         />
@@ -80,12 +78,6 @@ import { vAutoHideScrollbar } from '@/directives/autoHideScrollbar'
 const agentStore = useAgentStore()
 const projectStore = useProjectStore()
 
-const selectedModel = computed({
-  get: () => agentStore.selectedModel,
-  set: (value: string) => {
-    agentStore.selectedModel = value
-  },
-})
 const agentChatRef = ref<InstanceType<typeof AgentChat> | null>(null)
 
 const SIDE_PANEL_COLLAPSED_KEY = 'onerad:agent:sidePanelCollapsed'
@@ -157,7 +149,7 @@ async function handleSendMessage(content: string): Promise<void> {
   const config = projectStore.currentConfig
   if (!config) return
   if (!agentStore.threadId) {
-    await agentStore.ensureThread(projectId, config.api_key, selectedModel.value)
+    await agentStore.ensureThread(projectId, config.api_key)
   }
   try {
     await agentStore.sendMessage(content, 'user')
@@ -201,8 +193,7 @@ watch(
     const target =
       agentStore.threads.find((t) => t.id === preferred) ?? agentStore.threads[0]
     if (target) {
-      await agentStore.loadThread(target.id, config.api_key, target.llm_model)
-      agentStore.selectedModel = target.llm_model
+      await agentStore.loadThread(target.id, config.api_key)
     }
   },
   { immediate: true }

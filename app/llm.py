@@ -6,6 +6,8 @@ from typing import Optional, Dict, Any, List, Tuple
 
 from openai import OpenAI
 
+from app.constants import DEEPSEEK_MODEL
+
 
 ID_INFERENCE_TEMPLATE = """你是一个医学影像数据命名规范分析专家。
 请根据提供的文件名样本，推断患者ID的提取规则，返回一个Python正则表达式字符串。
@@ -87,11 +89,10 @@ class LLMClient:
         self,
         api_key: Optional[str] = None,
         base_url: str = "https://api.deepseek.com/v1",
-        model: str = "deepseek-v4-pro",
     ):
         self.api_key = api_key or os.getenv("DEEPSEEK_API_KEY")
         self.base_url = base_url
-        self.model = model
+        self.model = DEEPSEEK_MODEL
         self.client = None
         if self.api_key:
             self.client = OpenAI(api_key=self.api_key, base_url=self.base_url)

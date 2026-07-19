@@ -339,11 +339,9 @@ async function handleThreadClick(project: Project, thread: ThreadSummary): Promi
   if (projectStore.currentProject?.id !== project.id) {
     // 交由 AgentView 的项目切换 watcher 消费 preferredThreadId 完成加载
     agentStore.preferredThreadId = thread.id
-    agentStore.selectedModel = thread.llm_model
     projectStore.selectProject(project.id)
   } else if (thread.id !== agentStore.currentThread?.id) {
-    agentStore.selectedModel = thread.llm_model
-    await agentStore.loadThread(thread.id, project.analysis.api_key, thread.llm_model)
+    await agentStore.loadThread(thread.id, project.analysis.api_key)
   }
   if (route.path !== '/') {
     void router.push('/')
@@ -362,7 +360,7 @@ function handleNewTask(): void {
 async function handleNewThread(project: Project): Promise<void> {
   const isCurrent = projectStore.currentProject?.id === project.id
   try {
-    await agentStore.createThread(project.id, project.analysis.api_key, agentStore.selectedModel)
+    await agentStore.createThread(project.id, project.analysis.api_key)
   } catch {
     // axios 拦截器统一 toast；创建失败不切换项目
     return

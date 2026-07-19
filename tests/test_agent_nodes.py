@@ -113,17 +113,17 @@ def test_build_llm_does_not_override_env_with_empty_string(monkeypatch):
     assert llm.openai_api_key is None
 
 
-def test_build_llm_uses_config_model():
+def test_build_llm_ignores_legacy_config_model():
     state = _make_state()
-    config = {"configurable": {"llm_model": "deepseek-v4-flash"}}
+    config = {"configurable": {"llm_model": "deepseek-v4-pro"}}
     llm = _build_llm("key", state, config)
     assert llm.model_name == "deepseek-v4-flash"
 
 
-def test_build_llm_falls_back_to_state_model():
+def test_build_llm_ignores_legacy_state_model():
     state = _make_state()
     llm = _build_llm("key", state)
-    assert llm.model_name == "deepseek-v4-pro"
+    assert llm.model_name == "deepseek-v4-flash"
 
 
 def test_call_llm_streams_reasoning_and_publishes_thinking(tmp_path):
@@ -237,15 +237,15 @@ def test_call_llm_raises_on_invalid_tool_arguments(tmp_path):
         mock_openai.stop()
 
 
-def test_call_llm_passes_model_and_tools_to_api(tmp_path):
-    """验证请求参数：模型名来自 config、messages 转为 OpenAI 格式、附带 tools。"""
+def test_call_llm_passes_fixed_model_and_tools_to_api(tmp_path):
+    """验证请求参数：固定模型、messages 转为 OpenAI 格式、附带 tools。"""
     state = _make_state(api_key="test-key")
     state["project_path"] = str(tmp_path)
     state["messages"] = [AIMessage(content="之前")]
     mock_openai, client = _patch_openai_stream([_chunk(content="好")])
     try:
         with patch("app.agent.nodes._publish_thinking"):
-            call_llm(state, {"configurable": {"llm_model": "deepseek-v4-flash"}})
+            call_llm(state, {"configurable": {"llm_model": "deepseek-v4-pro"}})
     finally:
         mock_openai.stop()
 

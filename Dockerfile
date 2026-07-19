@@ -59,4 +59,4 @@ USER appuser
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "exec python main.py --host 0.0.0.0 --port 8000 --base-url ${BASE_URL:-https://api.deepseek.com/v1} --model ${MODEL:-deepseek-v4-pro}"]
+CMD ["sh", "-c", "exec python main.py --host 0.0.0.0 --port 8000 --base-url ${BASE_URL:-https://api.deepseek.com/v1}"]
