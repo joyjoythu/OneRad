@@ -632,7 +632,7 @@ def execute_confirmed(state: AgentState, config: Optional[RunnableConfig] = None
     else:
         results = {"error": "unknown interrupt type"}
 
-    content = json.dumps(results)
+    content = json.dumps(results, ensure_ascii=False)
     return _clear_interrupt({"messages": [ToolMessage(content=content, tool_call_id=tool_call_id)]})
 
 
