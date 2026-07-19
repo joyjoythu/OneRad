@@ -242,7 +242,20 @@ def process_tool_calls(state: AgentState, config: Optional[RunnableConfig] = Non
             ))
             continue
 
-        tool_result = tools[name].invoke(args)
+        try:
+            tool_result = tools[name].invoke(args)
+        except Exception as exc:
+            # 参数校验或工具自身执行失败不应中断整张图：回复错误 ToolMessage，
+            # 保证 assistant 的 tool_calls 后每个 id 都有 tool 消息（否则历史
+            # 残缺，之后每轮 LLM 调用都会 400），模型看到错误后可换参数重试。
+            updates["messages"].append(ToolMessage(
+                content=json.dumps(
+                    {"error": f"Tool {name} 调用失败: {exc}"},
+                    ensure_ascii=False,
+                ),
+                tool_call_id=tool_call_id or "",
+            ))
+            continue
         try:
             parsed = json.loads(tool_result)
         except json.JSONDecodeError:

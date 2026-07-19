@@ -216,7 +216,7 @@ def test_dispatch_multiple_subagents_in_parallel(tmp_path):
     """一次分派多个子任务：并行运行，结果按任务逐个汇总。"""
     state = _make_state(tmp_path)
     graph = create_agent_graph()
-    config = {"configurable": {"thread_id": "test-subagent-parallel"}}
+    config = {"configurable": {"thread_id": "test-subagent-parallel", "api_key": "fake"}}
 
     def route_response(*args, **kwargs):
         messages = kwargs["messages"]
@@ -258,6 +258,65 @@ def test_dispatch_multiple_subagents_in_parallel(tmp_path):
     assert final["messages"][-1].content == "主 agent 总结"
     # 主 agent 2 次（分派 + 收尾）+ 每个子任务各 1 次
     assert mock_stream.call_count == 4
+
+
+def test_dispatch_subagent_object_form_tasks_normalized(tmp_path):
+    """模型常把 tasks 写成对象数组（{"task": ..., "task_id": ...}）：
+    应归一化为字符串任务列表并照常进入审批，而不是参数校验崩掉整张图。"""
+    state = _make_state(tmp_path)
+    graph = create_agent_graph()
+    config = {"configurable": {"thread_id": "test-subagent-objargs", "api_key": "fake"}}
+
+    with patch("app.agent.nodes._stream_chat_completion") as mock_stream:
+        mock_stream.return_value = AIMessage(
+            content="",
+            tool_calls=[{
+                "name": "dispatch_subagent",
+                "args": {"tasks": [
+                    {"task": "统计数据文件", "task_id": "a"},
+                    "检查掩膜目录",
+                ]},
+                "id": "call_sub",
+            }],
+        )
+        events = list(graph.stream(state, config))
+
+    assert any("__interrupt__" in e for e in events)
+    snapshot = graph.get_state(config)
+    assert snapshot.values["pending_subagent"]["tasks"] == ["统计数据文件", "检查掩膜目录"]
+
+
+def test_dispatch_subagent_invalid_args_does_not_crash_graph(tmp_path):
+    """工具参数完全无法解析时（如 tasks 不是数组）：回复错误 ToolMessage
+    让模型重试，而不是让图在 process_tool_calls 崩溃——崩溃会把没有
+    ToolMessage 的 tool_calls 留在历史里，之后每轮 LLM 调用都会 400。"""
+    state = _make_state(tmp_path)
+    graph = create_agent_graph()
+    config = {"configurable": {"thread_id": "test-subagent-badargs", "api_key": "fake"}}
+
+    with patch("app.agent.nodes._stream_chat_completion") as mock_stream:
+        first = {"done": False}
+
+        def side_effect(*args, **kwargs):
+            if not first["done"]:
+                first["done"] = True
+                return AIMessage(
+                    content="",
+                    tool_calls=[{
+                        "name": "dispatch_subagent",
+                        "args": {"tasks": 42},
+                        "id": "call_sub",
+                    }],
+                )
+            return AIMessage(content="好的，我换用正确的格式重新调用")
+
+        mock_stream.side_effect = side_effect
+        final = graph.invoke(state, config)
+
+    tool_msg = _find_tool_message(final["messages"], "call_sub")
+    assert tool_msg is not None
+    assert "error" in json.loads(tool_msg.content)
+    assert final["messages"][-1].content == "好的，我换用正确的格式重新调用"
 
 
 def test_dispatch_subagent_under_async_parent_with_sqlite_saver(tmp_path):

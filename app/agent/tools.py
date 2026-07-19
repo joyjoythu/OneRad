@@ -155,18 +155,28 @@ def build_tools(project_path: str, llm, allow_subagent: bool = False):
 
     if allow_subagent:
         @tool
-        def dispatch_subagent(tasks: List[str]) -> str:
+        def dispatch_subagent(tasks: List[Any]) -> str:
             """把一个或多个独立任务分派给子 agent 执行。每个子任务在与本对话隔离的
             上下文中自主运行（可使用文件探查、Python 脚本、影像组学等全部工具，
             无需逐步确认），多个任务会并行执行，结束后只把各任务的最终结论带回来。
             适合耗时的探查/分析任务：中间过程不占用本对话上下文。
-            tasks 中每项应是完整的任务描述（包含路径、目标、期望输出），
-            执行前需要用户确认。"""
-            tasks = [t.strip() for t in tasks if isinstance(t, str) and t.strip()]
-            if not tasks:
-                return json.dumps({"error": "tasks 不能为空"}, ensure_ascii=False)
+            tasks 是任务描述字符串数组，每项应是完整的任务描述（包含路径、目标、
+            期望输出），执行前需要用户确认。"""
+            # 模型常把每项写成 {"task": ..., "task_id": ...} 对象：归一化为字符串，
+            # 避免 schema 校验直接拒绝（校验异常会把图弄崩，见 process_tool_calls）。
+            normalized = []
+            for t in tasks if isinstance(tasks, list) else []:
+                if isinstance(t, str) and t.strip():
+                    normalized.append(t.strip())
+                elif isinstance(t, dict) and isinstance(t.get("task"), str) and t["task"].strip():
+                    normalized.append(t["task"].strip())
+            if not normalized:
+                return json.dumps(
+                    {"error": "tasks 不能为空，应为任务描述字符串数组"},
+                    ensure_ascii=False,
+                )
             return json.dumps(
-                {"_pending_tool": "dispatch_subagent", "tasks": tasks},
+                {"_pending_tool": "dispatch_subagent", "tasks": normalized},
                 ensure_ascii=False,
             )
 
