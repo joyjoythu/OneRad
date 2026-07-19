@@ -1,4 +1,6 @@
 <template>
+  <!-- MarkdownIt has raw HTML disabled, so v-html receives escaped output. -->
+  <!-- eslint-disable vue/no-v-html -->
   <div class="agent-chat">
     <div
       v-if="!projectStore.currentProject"
@@ -64,7 +66,7 @@
                 class="message-tool-call"
               >
                 <el-tag size="small" type="info" effect="plain">
-                  工具调用
+                  工具结果
                 </el-tag>
               </div>
               <div
@@ -81,21 +83,32 @@
                 v-html="renderMarkdown(message.content)"
               />
               <div
+                v-else-if="message.content && message.role === 'tool'"
+                class="message-content message-content--tool"
+                :class="{
+                  'is-collapsed': isToolCollapsed(
+                    index,
+                    toolMessageDisplay(index).text
+                  ),
+                }"
+              >
+                <div
+                  v-if="toolMessageDisplay(index).format === 'markdown'"
+                  class="message-content--markdown"
+                  v-html="renderMarkdown(toolMessageDisplay(index).text)"
+                />
+                <div v-else>{{ toolMessageDisplay(index).text }}</div>
+              </div>
+              <div
                 v-else-if="message.content"
                 class="message-content"
-                :class="{
-                  'message-content--tool': message.role === 'tool',
-                  'is-collapsed':
-                    message.role === 'tool' &&
-                    isToolCollapsed(index, message.content),
-                }"
               >
                 {{ message.content }}
               </div>
               <div
                 v-if="
                   message.role === 'tool' &&
-                  shouldCollapseTool(message.content)
+                  shouldCollapseTool(toolMessageDisplay(index).text)
                 "
                 class="tool-toggle"
               >
@@ -103,13 +116,17 @@
                   link
                   size="small"
                   :aria-label="
-                    isToolCollapsed(index, message.content)
+                    isToolCollapsed(index, toolMessageDisplay(index).text)
                       ? '展开工具输出'
                       : '收起工具输出'
                   "
-                  @click="toggleTool(index, message.content)"
+                  @click="toggleTool(index, toolMessageDisplay(index).text)"
                 >
-                  {{ isToolCollapsed(index, message.content) ? '展开' : '收起' }}
+                  {{
+                    isToolCollapsed(index, toolMessageDisplay(index).text)
+                      ? '展开'
+                      : '收起'
+                  }}
                 </el-button>
               </div>
             </div>
@@ -135,52 +152,59 @@
         </div>
         <div
           v-if="showSubagentPanel"
-          class="message-row message-row--assistant"
+          class="subagent-stage"
+          :class="`subagent-stage--${agentStore.subagentStatus?.status}`"
+          data-testid="subagent-stage"
+          role="status"
         >
-          <AgentAvatar class="message-avatar" />
-          <div class="message-main message-main--assistant">
-            <div class="message-bubble message-bubble--assistant subagent-panel">
-              <div class="subagent-header">
-                <el-icon
-                  v-if="subagentRunning"
-                  class="is-loading"
-                ><Loading /></el-icon>
-                <span class="subagent-title">子任务：{{ agentStore.subagentStatus?.task }}</span>
-                <el-tag
-                  size="small"
-                  :type="subagentTagType"
-                  effect="plain"
-                >
-                  {{ subagentStatusLabel }}
-                </el-tag>
-                <el-button
-                  link
-                  size="small"
-                  class="subagent-toggle"
-                  :aria-label="subagentExpanded ? '收起子任务过程' : '展开子任务过程'"
-                  @click="subagentExpanded = !subagentExpanded"
-                >
-                  {{ subagentExpanded ? '收起' : '展开' }}过程
-                </el-button>
+          <span class="subagent-stage__marker" aria-hidden="true" />
+          <div class="subagent-panel">
+            <div class="subagent-header">
+              <div class="subagent-heading">
+                <span class="subagent-eyebrow">内部执行阶段</span>
+                <span class="subagent-title">{{ agentStore.subagentStatus?.task }}</span>
+              </div>
+              <el-icon
+                v-if="subagentRunning"
+                class="is-loading subagent-spinner"
+              ><Loading /></el-icon>
+              <el-tag
+                size="small"
+                :type="subagentTagType"
+                effect="plain"
+              >
+                {{ subagentStatusLabel }}
+              </el-tag>
+              <el-button
+                link
+                size="small"
+                class="subagent-toggle"
+                :aria-label="subagentExpanded ? '收起子任务过程' : '展开子任务过程'"
+                @click="subagentExpanded = !subagentExpanded"
+              >
+                {{ subagentExpanded ? '收起' : '展开' }}过程
+              </el-button>
+            </div>
+            <p v-if="subagentStatusHint" class="subagent-status-hint">
+              {{ subagentStatusHint }}
+            </p>
+            <div
+              v-show="subagentExpanded"
+              class="subagent-entries"
+            >
+              <div
+                v-for="(entry, i) in agentStore.subagentStatus?.entries ?? []"
+                :key="i"
+                class="subagent-entry"
+                :class="`subagent-entry--${entry.role}`"
+              >
+                {{ entry.text }}
               </div>
               <div
-                v-show="subagentExpanded"
-                class="subagent-entries"
+                v-if="!(agentStore.subagentStatus?.entries.length)"
+                class="subagent-entry subagent-entry--muted"
               >
-                <div
-                  v-for="(entry, i) in agentStore.subagentStatus?.entries ?? []"
-                  :key="i"
-                  class="subagent-entry"
-                  :class="`subagent-entry--${entry.role}`"
-                >
-                  {{ entry.text }}
-                </div>
-                <div
-                  v-if="!(agentStore.subagentStatus?.entries.length)"
-                  class="subagent-entry subagent-entry--muted"
-                >
-                  等待子任务输出…
-                </div>
+                等待子任务输出…
               </div>
             </div>
           </div>
@@ -294,6 +318,7 @@
       </div>
     </template>
   </div>
+  <!-- eslint-enable vue/no-v-html -->
 </template>
 
 <script setup lang="ts">
@@ -322,6 +347,7 @@ import AgentAvatar from './AgentAvatar.vue'
 import ApprovalPanel from './ApprovalPanel.vue'
 import { formatMessageTime } from '@/utils/time'
 import { renderMarkdown } from '@/utils/markdown'
+import { formatToolMessage, type ToolMessageDisplay } from '@/utils/toolMessage'
 import { vAutoHideScrollbar } from '@/directives/autoHideScrollbar'
 
 const agentStore = useAgentStore()
@@ -373,6 +399,19 @@ const currentConversationTitle = computed(() => {
   if (title) return title
   return agentStore.threadId ? '未命名会话' : '新对话'
 })
+
+const emptyToolMessageDisplay: ToolMessageDisplay = { text: '', format: 'plain' }
+const toolMessageDisplays = computed(() =>
+  agentStore.messages.map((message) =>
+    message.role === 'tool'
+      ? formatToolMessage(message.content || '')
+      : emptyToolMessageDisplay
+  )
+)
+
+function toolMessageDisplay(index: number): ToolMessageDisplay {
+  return toolMessageDisplays.value[index] ?? emptyToolMessageDisplay
+}
 
 const QUICK_ACTIONS = [
   {
@@ -475,9 +514,9 @@ const subagentStatusLabel = computed(() => {
     case 'running':
       return '运行中'
     case 'done':
-      return '完成'
+      return '结果已返回'
     case 'failed':
-      return '失败'
+      return '执行失败'
     case 'cancelled':
       return '已停止'
     default:
@@ -485,10 +524,21 @@ const subagentStatusLabel = computed(() => {
   }
 })
 
-const subagentTagType = computed(() => {
+const subagentStatusHint = computed(() => {
   switch (agentStore.subagentStatus?.status) {
     case 'done':
-      return 'success' as const
+      return '该内部子任务已经返回结果，主任务仍在整理结果或继续执行。'
+    case 'failed':
+      return '该内部子任务执行失败，主任务仍在评估后续处理方式。'
+    case 'cancelled':
+      return '该内部子任务已停止，主任务仍在处理中。'
+    default:
+      return ''
+  }
+})
+
+const subagentTagType = computed(() => {
+  switch (agentStore.subagentStatus?.status) {
     case 'failed':
       return 'danger' as const
     case 'cancelled':
@@ -1021,11 +1071,58 @@ defineExpose({ clearInput })
   padding-left: 0.5rem;
 }
 
+.subagent-stage {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.625rem;
+  margin: 0.25rem 0 1rem;
+  padding: 0 0.25rem;
+}
+
+.subagent-stage__marker {
+  width: 0.625rem;
+  height: 0.625rem;
+  margin-top: 0.875rem;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--app-border-strong);
+  box-shadow: 0 0 0 4px var(--app-bg-hover);
+}
+
+.subagent-stage--running .subagent-stage__marker {
+  background: var(--app-accent);
+  animation: subagent-pulse 1.6s ease-in-out infinite;
+}
+
+.subagent-stage--failed .subagent-stage__marker {
+  background: var(--app-danger);
+}
+
+.subagent-stage--cancelled .subagent-stage__marker {
+  background: var(--app-warning);
+}
+
 .subagent-panel {
-  width: 100%;
+  width: auto;
+  min-width: 0;
+  flex: 1;
   border: 1px solid var(--app-border);
+  border-left: 3px solid var(--app-border-strong);
   border-radius: var(--app-radius-md);
-  padding: 0.5rem 0.75rem;
+  padding: 0.625rem 0.75rem;
+  background: var(--app-bg-hover);
+}
+
+.subagent-stage--running .subagent-panel {
+  border-left-color: var(--app-accent);
+}
+
+.subagent-stage--failed .subagent-panel {
+  border-left-color: var(--app-danger);
+}
+
+.subagent-stage--cancelled .subagent-panel {
+  border-left-color: var(--app-warning);
 }
 
 .subagent-header {
@@ -1036,15 +1133,45 @@ defineExpose({ clearInput })
   font-size: 0.875rem;
 }
 
+.subagent-heading {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.subagent-eyebrow {
+  color: var(--app-text-muted);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
 .subagent-title {
   overflow: hidden;
+  color: var(--app-text);
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .subagent-toggle {
-  margin-left: auto;
   flex-shrink: 0;
+}
+
+.subagent-spinner {
+  flex-shrink: 0;
+  color: var(--app-accent);
+}
+
+.subagent-status-hint {
+  margin: 0.375rem 0 0;
+  color: var(--app-text-muted);
+  font-size: 0.8125rem;
+  line-height: 1.5;
 }
 
 .subagent-entries {
@@ -1073,6 +1200,18 @@ defineExpose({ clearInput })
 .subagent-entry--muted {
   color: var(--app-text-muted);
   font-style: italic;
+}
+
+@keyframes subagent-pulse {
+  0%,
+  100% {
+    opacity: 0.6;
+    transform: scale(0.9);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .chat-status {

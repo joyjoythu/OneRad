@@ -48,6 +48,7 @@ function setupWrapper() {
 describe('AgentChat', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
+    localStorage.clear()
     vi.mocked(listProjectEntries).mockReset()
     vi.mocked(listProjectEntries).mockResolvedValue(['data/', 'data/image.nii.gz'])
   })
@@ -530,6 +531,62 @@ describe('AgentChat', () => {
     expect(wrapper.find('.tool-toggle button').exists()).toBe(true)
   })
 
+  it('renders a serialized textual tool result as decoded Markdown', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.threadId = 'thread-1'
+    agentStore.messages = [
+      {
+        role: 'tool',
+        content:
+          '{"success":true,"result":"\\u4ee5\\u4e0b\\u662f\\u9879\\u76ee\\u62a5\\u544a\\n\\n## \\u9879\\u76ee\\u76ee\\u5f55"}',
+        tool_call_id: 'call-1',
+      },
+    ]
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    const content = wrapper.find('.message-content--tool')
+    expect(content.text()).toContain('以下是项目报告')
+    expect(content.text()).not.toContain('{"success"')
+    expect(content.text()).not.toContain('\\u4ee5')
+    expect(content.find('h2').text()).toBe('项目目录')
+  })
+
+  it('renders file search results as a readable list instead of JSON', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.threadId = 'thread-1'
+    agentStore.messages = [
+      {
+        role: 'tool',
+        content: JSON.stringify({
+          tool: 'find_files',
+          result: ['project.yaml', 'outputs\\radiomics_report.docx'],
+        }),
+        tool_call_id: 'call-1',
+      },
+    ]
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    const content = wrapper.find('.message-content--tool')
+    expect(content.text()).toContain('找到 2 个文件或目录')
+    expect(content.findAll('li')).toHaveLength(2)
+    expect(content.findAll('code').map((item) => item.text())).toEqual([
+      'project.yaml',
+      'outputs\\radiomics_report.docx',
+    ])
+    expect(content.text()).not.toContain('"tool"')
+    expect(content.text()).not.toContain('{')
+  })
+
   it('does not show collapse toggle for short tool output', async () => {
     const projectStore = useProjectStore()
     projectStore.currentProject = mockProject()
@@ -901,7 +958,8 @@ describe('AgentChat subagent panel', () => {
 
     const panel = wrapper.find('.subagent-panel')
     expect(panel.exists()).toBe(true)
-    expect(panel.text()).toContain('子任务：统计项目根目录下的文件数量')
+    expect(panel.text()).toContain('内部执行阶段')
+    expect(panel.text()).toContain('统计项目根目录下的文件数量')
     expect(panel.text()).toContain('运行中')
     expect(panel.text()).toContain('调用工具：list_directory')
     expect(panel.text()).toContain('{"result": "F a.txt"}')
@@ -938,6 +996,27 @@ describe('AgentChat subagent panel', () => {
     agentStore.subagentStatus = mockSubagentStatus('cancelled')
     await flushPromises()
     expect(wrapper.find('.subagent-panel').text()).toContain('已停止')
+  })
+
+  it('presents a completed subagent as an internal stage, not a final reply', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.threadId = 'thread-1'
+    agentStore.busy = true
+    agentStore.subagentStatus = mockSubagentStatus('done')
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    const stage = wrapper.find('[data-testid="subagent-stage"]')
+    expect(stage.exists()).toBe(true)
+    expect(stage.text()).toContain('结果已返回')
+    expect(stage.text()).toContain('主任务仍在整理结果或继续执行')
+    expect(stage.find('.message-bubble--assistant').exists()).toBe(false)
+    expect(stage.find('.message-avatar').exists()).toBe(false)
+    expect(stage.find('.el-tag').classes()).toContain('el-tag--info')
   })
 
   it('collapses and re-expands the entries list', async () => {

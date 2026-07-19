@@ -78,6 +78,8 @@ def test_dispatch_subagent_runs_nested_graph(tmp_path):
     # 结论经 ToolMessage 回到主对话，主 agent 继续完成回复
     tool_msg = _find_tool_message(final["messages"], "call_sub")
     assert tool_msg is not None
+    assert "\\u5b50" not in tool_msg.content
+    assert "子任务结论" in tool_msg.content
     parsed = json.loads(tool_msg.content)
     assert parsed["success"] is True
     assert "子任务结论" in parsed["result"]

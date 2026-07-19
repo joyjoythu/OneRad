@@ -19,6 +19,24 @@ import type {
   ThreadSummary,
 } from '@/api/agent'
 
+export const AUTO_APPROVE_STORAGE_KEY = 'onerad:agent:autoApprove'
+
+function loadAutoApprovePreference(): boolean {
+  try {
+    return localStorage.getItem(AUTO_APPROVE_STORAGE_KEY) === 'true'
+  } catch {
+    return false
+  }
+}
+
+function saveAutoApprovePreference(enabled: boolean): void {
+  try {
+    localStorage.setItem(AUTO_APPROVE_STORAGE_KEY, String(enabled))
+  } catch {
+    // 浏览器禁用本地存储时仍允许当前会话切换该选项。
+  }
+}
+
 export const useAgentStore = defineStore('agent', () => {
   const threadId = ref<string | null>(null)
   const messages = ref<AgentMessage[]>([])
@@ -31,8 +49,9 @@ export const useAgentStore = defineStore('agent', () => {
   const pendingRadiomicsExecution = ref<PendingRadiomicsExecution | null>(null)
   const pendingRadiomicsAnalysis = ref<PendingRadiomicsAnalysis | null>(null)
   const pendingSubagent = ref<PendingSubagent | null>(null)
-  // 子 agent 运行状态：运行中经 SSE 滚动推送（含中间过程条目），
-  // 结束（done/failed/cancelled）后定格，直到下次分派或切换对话。
+  // 子 agent 运行状态：运行中经 SSE 滚动推送（含中间过程条目）。
+  // 终态只用于说明父 agent 当前所处的内部阶段；父流程结束后立即清空，
+  // 避免它看起来像一条独立的最终回复。
   const subagentStatus = ref<SubagentStatus | null>(null)
 
   const threads = ref<ThreadSummary[]>([])
@@ -53,8 +72,8 @@ export const useAgentStore = defineStore('agent', () => {
   // 运行已结束但用户尚未点进去看的对话 id 集合：侧边栏据此显示提示点，
   // 点进对话（loadThread）即清除。内存态，刷新即清。
   const finishedThreadIds = ref<Set<string>>(new Set())
-  // 自动审批：开启后后端跳过全部人工确认中断，直接执行挂起操作。
-  const autoApprove = ref(false)
+  // 自动审批：应用初始化时恢复上次选择；创建或恢复线程时同步给后端。
+  const autoApprove = ref(loadAutoApprovePreference())
   // 自动审批同步请求进行中：用于禁用开关，防止快速连点导致前后端状态乱序。
   const autoApproveSyncing = ref(false)
   // 影像组学特征提取的实时进度（由后端节点线程推送，null 表示无提取在进行）。
@@ -214,6 +233,11 @@ export const useAgentStore = defineStore('agent', () => {
     contextWindow.value = null
   }
 
+  /** 新一轮父流程开始时清除上一轮残留的子任务阶段。 */
+  function clearSubagentStatus(): void {
+    subagentStatus.value = null
+  }
+
   async function ensureThread(projectId: string): Promise<string> {
     if (threadId.value) {
       if (!currentThread.value) {
@@ -356,6 +380,7 @@ export const useAgentStore = defineStore('agent', () => {
       onEnd: () => {
         // 本轮流式运行结束（正常完成或在中断处暂停）。
         busy.value = false
+        subagentStatus.value = null
         radiomicsProgress.value = null
         currentThinking.value = null
         // 当前线程的结束由用户实时看着，转入完成提示点集合无意义。
@@ -389,6 +414,7 @@ export const useAgentStore = defineStore('agent', () => {
     if (!threadId.value) {
       throw new Error('No active agent thread')
     }
+    clearSubagentStatus()
     busy.value = true
     messages.value.push({ role, content })
     // 先订阅再发起运行，避免漏掉运行初期发布的事件。
@@ -418,6 +444,7 @@ export const useAgentStore = defineStore('agent', () => {
     if (!threadId.value) {
       throw new Error('No active agent thread')
     }
+    clearSubagentStatus()
     busy.value = true
     connect()
     try {
@@ -434,6 +461,7 @@ export const useAgentStore = defineStore('agent', () => {
     if (!threadId.value) {
       throw new Error('No active agent thread')
     }
+    clearSubagentStatus()
     busy.value = true
     connect()
     try {
@@ -450,6 +478,7 @@ export const useAgentStore = defineStore('agent', () => {
     if (!threadId.value) {
       throw new Error('No active agent thread')
     }
+    clearSubagentStatus()
     busy.value = true
     connect()
     try {
@@ -465,6 +494,7 @@ export const useAgentStore = defineStore('agent', () => {
   async function setAutoApprove(enabled: boolean): Promise<void> {
     const previous = autoApprove.value
     autoApprove.value = enabled
+    saveAutoApprovePreference(enabled)
     if (!threadId.value) return
     autoApproveSyncing.value = true
     try {
@@ -472,6 +502,7 @@ export const useAgentStore = defineStore('agent', () => {
     } catch (err) {
       // 回滚乐观更新；错误提示由 axios 拦截器统一 toast。
       autoApprove.value = previous
+      saveAutoApprovePreference(previous)
       throw err
     } finally {
       autoApproveSyncing.value = false
@@ -488,6 +519,7 @@ export const useAgentStore = defineStore('agent', () => {
       // 无论成功与否都复位忙碌；失败原因由 axios 拦截器 toast，
       // 若后端仍在运行，后续发送会被 409 兜底，状态自愈。
       busy.value = false
+      subagentStatus.value = null
       radiomicsProgress.value = null
       currentThinking.value = null
     }

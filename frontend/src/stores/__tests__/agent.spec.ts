@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import { useAgentStore } from '../agent'
+import { AUTO_APPROVE_STORAGE_KEY, useAgentStore } from '../agent'
 import client from '@/api/client'
 import * as agentApi from '@/api/agent'
 import type { AgentState, PendingRadiomicsAnalysis } from '@/api/agent'
@@ -67,6 +67,7 @@ class MockEventSource {
 describe('useAgentStore', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
+    localStorage.clear()
     vi.stubGlobal('EventSource', MockEventSource)
     MockEventSource.instances = []
     vi.mocked(client.post).mockResolvedValue({ data: { thread_id: 'thread-1' } })
@@ -102,6 +103,42 @@ describe('useAgentStore', () => {
     const es = MockEventSource.instances[0]
     es.emit('agent_end', {})
     expect(store.busy).toBe(false)
+  })
+
+  it('clears the subagent stage when the parent stream ends', async () => {
+    const store = useAgentStore()
+    await store.ensureThread('project-1')
+    await store.sendMessage('Hello')
+
+    const es = MockEventSource.instances[0]
+    es.emit('agent', mockState({
+      running: true,
+      subagent: {
+        task: '检查文件',
+        status: 'done',
+        entries: [{ role: 'assistant', text: '检查完成' }],
+      },
+    }))
+    expect(store.subagentStatus?.status).toBe('done')
+
+    es.emit('agent_end', {})
+
+    expect(store.busy).toBe(false)
+    expect(store.subagentStatus).toBeNull()
+  })
+
+  it('does not show a previous subagent stage in a new run', async () => {
+    const store = useAgentStore()
+    await store.ensureThread('project-1')
+    store.subagentStatus = {
+      task: '上一轮任务',
+      status: 'running',
+      entries: [],
+    }
+
+    await store.sendMessage('开始下一轮')
+
+    expect(store.subagentStatus).toBeNull()
   })
 
   it('syncs the final state from the server when the stream ends', async () => {
@@ -763,12 +800,21 @@ describe('useAgentStore', () => {
   })
 
   describe('setAutoApprove', () => {
+    it('restores the saved preference during store initialization', () => {
+      localStorage.setItem(AUTO_APPROVE_STORAGE_KEY, 'true')
+
+      const store = useAgentStore()
+
+      expect(store.autoApprove).toBe(true)
+    })
+
     it('updates locally without an active thread', async () => {
       const store = useAgentStore()
 
       await store.setAutoApprove(true)
 
       expect(store.autoApprove).toBe(true)
+      expect(localStorage.getItem(AUTO_APPROVE_STORAGE_KEY)).toBe('true')
       expect(vi.mocked(client.put)).not.toHaveBeenCalled()
     })
 
@@ -783,6 +829,7 @@ describe('useAgentStore', () => {
         enabled: true,
       })
       expect(store.autoApprove).toBe(true)
+      expect(localStorage.getItem(AUTO_APPROVE_STORAGE_KEY)).toBe('true')
     })
 
     it('rolls back on API failure', async () => {
@@ -793,6 +840,7 @@ describe('useAgentStore', () => {
       await expect(store.setAutoApprove(true)).rejects.toThrow('boom')
 
       expect(store.autoApprove).toBe(false)
+      expect(localStorage.getItem(AUTO_APPROVE_STORAGE_KEY)).toBe('false')
     })
 
     it('includes auto_approve when creating a thread', async () => {
