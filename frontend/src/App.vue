@@ -8,7 +8,11 @@
       </nav>
     </header>
     <div class="app-body">
-      <aside class="app-sidebar" :class="{ 'app-sidebar--collapsed': isSidebarCollapsed }">
+      <aside
+        v-auto-hide-scrollbar
+        class="app-sidebar auto-hide-scrollbar"
+        :class="{ 'app-sidebar--collapsed': isSidebarCollapsed }"
+      >
         <div class="sidebar-toggle-bar">
           <el-button
             link
@@ -32,6 +36,7 @@
 import { ref } from 'vue'
 import { Expand, Fold } from '@element-plus/icons-vue'
 import ProjectTree from '@/components/ProjectTree.vue'
+import { vAutoHideScrollbar } from '@/directives/autoHideScrollbar'
 
 const SIDEBAR_COLLAPSED_KEY = 'onerad:app:sidebarCollapsed'
 

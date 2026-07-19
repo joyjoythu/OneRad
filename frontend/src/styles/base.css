@@ -46,10 +46,31 @@ html:not(.dark) .el-card {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 }
 
-/* 浅色主题聊天面板同样给轻微投影：面板底 #fff 与页面底 #fafafa 过于接近，
-   仅靠边框轮廓不够清晰 */
-html:not(.dark) .message-list {
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+/* 隐形滚动条：默认透明，仅在滚动中（.is-scrolling，由 v-auto-hide-scrollbar
+   指令维护）或光标悬停在滑块上时显现。
+   Firefox 用 scrollbar-color，WebKit/Blink 用 ::-webkit-scrollbar。 */
+.auto-hide-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.auto-hide-scrollbar.is-scrolling {
+  scrollbar-color: var(--app-border-strong) transparent;
+}
+
+.auto-hide-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.auto-hide-scrollbar::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border-radius: 3px;
+}
+
+.auto-hide-scrollbar::-webkit-scrollbar-thumb:hover,
+.auto-hide-scrollbar.is-scrolling::-webkit-scrollbar-thumb {
+  background-color: var(--app-border-strong);
 }
 
 /* 深色主题下开关开启态：轨道为近白强调色，滑块改用对比色 */

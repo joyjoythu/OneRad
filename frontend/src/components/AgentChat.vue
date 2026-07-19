@@ -10,7 +10,8 @@
     <template v-else>
       <div
         ref="messageContainer"
-        class="message-list"
+        v-auto-hide-scrollbar
+        class="message-list auto-hide-scrollbar"
         role="log"
         aria-live="polite"
         aria-atomic="false"
@@ -208,6 +209,7 @@ import type { AgentMessage } from '@/api/agent'
 import AgentAvatar from './AgentAvatar.vue'
 import ApprovalPanel from './ApprovalPanel.vue'
 import { formatMessageTime } from '@/utils/time'
+import { vAutoHideScrollbar } from '@/directives/autoHideScrollbar'
 
 const agentStore = useAgentStore()
 const projectStore = useProjectStore()

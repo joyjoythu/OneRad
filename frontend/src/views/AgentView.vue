@@ -18,7 +18,8 @@
       </div>
 
       <div
-        class="agent-side-panel"
+        v-auto-hide-scrollbar
+        class="agent-side-panel auto-hide-scrollbar"
         :class="{ 'agent-side-panel--collapsed': isSidePanelCollapsed }"
       >
         <div class="side-panel-header">
@@ -74,6 +75,7 @@ import CommandPanel from '@/components/CommandPanel.vue'
 import ScriptPanel from '@/components/ScriptPanel.vue'
 import RadiomicsPanel from '@/components/RadiomicsPanel.vue'
 import AnalysisPanel from '@/components/AnalysisPanel.vue'
+import { vAutoHideScrollbar } from '@/directives/autoHideScrollbar'
 
 const agentStore = useAgentStore()
 const projectStore = useProjectStore()

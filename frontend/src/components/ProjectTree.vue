@@ -27,7 +27,7 @@
     />
     <el-empty v-else-if="!projectStore.projects.length" description="暂无项目" :image-size="60" />
 
-    <ul v-else class="project-tree-items">
+    <ul v-else v-auto-hide-scrollbar class="project-tree-items auto-hide-scrollbar">
       <li v-for="project in projectStore.projects" :key="project.id">
         <div
           class="project-row"
@@ -166,6 +166,7 @@ import { useProjectStore } from '@/stores/project'
 import { useAgentStore } from '@/stores/agent'
 import type { Project } from '@/api/projects'
 import type { ThreadSummary } from '@/api/agent'
+import { vAutoHideScrollbar } from '@/directives/autoHideScrollbar'
 
 const projectStore = useProjectStore()
 const agentStore = useAgentStore()
