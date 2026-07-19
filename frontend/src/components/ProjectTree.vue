@@ -43,7 +43,7 @@
             <Folder v-else />
           </el-icon>
           <span class="row-label">{{ project.name }}</span>
-          <span class="row-actions">
+          <span class="row-actions" @click.stop>
             <el-button
               link
               size="small"
@@ -52,23 +52,38 @@
               data-testid="project-new-thread"
               @click.stop="handleNewThread(project)"
             />
-            <el-button
-              link
-              size="small"
-              :icon="Edit"
-              title="重命名项目"
-              data-testid="project-rename"
-              @click.stop="handleRenameProject(project)"
-            />
-            <el-button
-              link
-              size="small"
-              type="danger"
-              :icon="Delete"
-              title="删除项目"
-              data-testid="project-delete"
-              @click.stop="handleDeleteProject(project)"
-            />
+            <el-dropdown
+              trigger="click"
+              @command="(command: string) => handleProjectCommand(command, project)"
+            >
+              <el-button
+                link
+                size="small"
+                :icon="More"
+                title="更多操作"
+                data-testid="project-more"
+                @click.stop
+              />
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item
+                    :icon="Edit"
+                    command="rename"
+                    data-testid="project-menu-rename"
+                  >
+                    重命名
+                  </el-dropdown-item>
+                  <el-dropdown-item
+                    :icon="Delete"
+                    command="delete"
+                    class="dropdown-item--danger"
+                    data-testid="project-menu-delete"
+                  >
+                    删除
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </span>
         </div>
 
@@ -86,38 +101,62 @@
           >
             <el-icon class="row-icon"><ChatDotRound /></el-icon>
             <span class="row-label">{{ thread.title || '未命名会话' }}</span>
-            <span class="thread-status">
-              <el-icon
-                v-if="agentStore.runningThreadIds.has(thread.id)"
-                class="is-loading"
-                data-testid="thread-running"
-              >
-                <Loading />
-              </el-icon>
-              <span
-                v-else-if="agentStore.finishedThreadIds.has(thread.id)"
-                class="thread-dot"
-                data-testid="thread-finished-dot"
-              />
-            </span>
-            <span class="row-actions">
-              <el-button
-                link
-                size="small"
-                :icon="Edit"
-                title="重命名会话"
-                data-testid="thread-rename"
-                @click.stop="handleRenameThread(project, thread)"
-              />
-              <el-button
-                link
-                size="small"
-                type="danger"
-                :icon="Delete"
-                title="删除会话"
-                data-testid="thread-delete"
-                @click.stop="handleDeleteThread(project, thread)"
-              />
+            <span
+              class="row-actions"
+              :class="{
+                'row-actions--indicator':
+                  agentStore.runningThreadIds.has(thread.id) ||
+                  agentStore.finishedThreadIds.has(thread.id),
+              }"
+              @click.stop
+            >
+              <span class="more-wrap">
+                <el-icon
+                  v-if="agentStore.runningThreadIds.has(thread.id)"
+                  class="is-loading more-indicator more-indicator--spinner"
+                  data-testid="thread-running"
+                >
+                  <Loading />
+                </el-icon>
+                <span
+                  v-else-if="agentStore.finishedThreadIds.has(thread.id)"
+                  class="more-indicator more-indicator--dot"
+                  data-testid="thread-finished-dot"
+                />
+                <el-dropdown
+                  trigger="click"
+                  class="more-dropdown"
+                  @command="(command: string) => handleThreadCommand(command, project, thread)"
+                >
+                  <el-button
+                    link
+                    size="small"
+                    :icon="More"
+                    title="更多操作"
+                    data-testid="thread-more"
+                    @click.stop
+                  />
+                  <template #dropdown>
+                    <el-dropdown-menu>
+                      <el-dropdown-item
+                        :icon="Edit"
+                        command="rename"
+                        data-testid="thread-menu-rename"
+                      >
+                        重命名
+                      </el-dropdown-item>
+                      <el-dropdown-item
+                        :icon="Delete"
+                        command="delete"
+                        class="dropdown-item--danger"
+                        data-testid="thread-menu-delete"
+                      >
+                        删除
+                      </el-dropdown-item>
+                    </el-dropdown-menu>
+                  </template>
+                </el-dropdown>
+              </span>
             </span>
           </li>
           <li
@@ -174,6 +213,7 @@ import {
   FolderAdd,
   ChatDotRound,
   Loading,
+  More,
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
@@ -313,8 +353,23 @@ async function handleNewThread(project: Project): Promise<void> {
   }
 }
 
-async function handleRenameProject(project: Project): Promise<void> {
-  try {
+function handleProjectCommand(command: string, project: Project): void {
+  if (command === 'rename') {
+    void handleRenameProject(project)
+  } else if (command === 'delete') {
+    void handleDeleteProject(project)
+  }
+}
+
+function handleThreadCommand(command: string, project: Project, thread: ThreadSummary): void {
+  if (command === 'rename') {
+    void handleRenameThread(project, thread)
+  } else if (command === 'delete') {
+    void handleDeleteThread(project, thread)
+  }
+}
+
+async function handleRenameProject(project: Project): Promise<void> {  try {
     const { value } = await ElMessageBox.prompt('请输入新名称', '重命名项目', {
       confirmButtonText: '确定',
       cancelButtonText: '取消',
@@ -522,6 +577,7 @@ function resetForm(): void {
 
 .row-actions {
   display: flex;
+  align-items: center;
   gap: 0.125rem;
   opacity: 0;
   transition: opacity 0.2s;
@@ -529,36 +585,64 @@ function resetForm(): void {
 
 .project-row:hover .row-actions,
 .project-row:focus-within .row-actions,
+.project-row--active .row-actions,
 .thread-row:hover .row-actions,
-.thread-row:focus-within .row-actions {
+.thread-row:focus-within .row-actions,
+.thread-row--active .row-actions,
+.thread-row .row-actions--indicator {
   opacity: 1;
 }
 
-.row-actions .el-button + .el-button {
+.row-actions .el-button,
+.row-actions .el-dropdown .el-button {
   margin-left: 0;
+}
+
+/* 运行中/完成未读：转圈或提示点占据「更多操作」按钮的位置
+   （按钮保留占位但隐藏），光标移到指示符上时才换出按钮供操作 */
+.more-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.more-indicator {
+  position: absolute;
+  inset: 0;
+}
+
+.more-indicator--spinner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--app-text-muted);
+}
+
+/* 8px 圆点：absolute + inset + margin auto 使固定尺寸在按钮盒内居中 */
+.more-indicator--dot {
+  width: 8px;
+  height: 8px;
+  margin: auto;
+  border-radius: 50%;
+  background-color: var(--app-accent);
+}
+
+.row-actions--indicator .more-dropdown {
+  visibility: hidden;
+}
+
+.row-actions--indicator .more-wrap:hover .more-dropdown {
+  visibility: visible;
+}
+
+.row-actions--indicator .more-wrap:hover .more-indicator {
+  display: none;
 }
 
 .thread-items {
   list-style: none;
   margin: 0;
   padding: 0 0 0.25rem 1.25rem;
-}
-
-/* 运行状态位：固定宽度避免转圈/提示点出现时行布局抖动 */
-.thread-status {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  flex-shrink: 0;
-  color: var(--app-text-muted);
-}
-
-.thread-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background-color: var(--app-accent);
 }
 
 .thread-row {

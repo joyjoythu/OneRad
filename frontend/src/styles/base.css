@@ -73,6 +73,12 @@ html:not(.dark) .el-card {
   background-color: var(--app-border-strong);
 }
 
+/* 下拉菜单中的危险操作（删除）固定为错误色 */
+.el-dropdown-menu__item.dropdown-item--danger,
+.el-dropdown-menu__item.dropdown-item--danger:hover {
+  color: var(--app-danger);
+}
+
 /* 深色主题下开关开启态：轨道为近白强调色，滑块改用对比色 */
 html.dark .el-switch.is-checked .el-switch__action {
   background-color: var(--app-accent-text);

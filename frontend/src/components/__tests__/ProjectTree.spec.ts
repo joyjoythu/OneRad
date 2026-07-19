@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import ElementPlus, { ElMessageBox, ElMessage, MessageBoxData, MessageHandler } from 'element-plus'
@@ -72,14 +72,36 @@ const mockThread = (id: string, projectId: string): ThreadSummary => ({
   updated_at: '2026-01-02',
 })
 
+const mountedWrappers: Array<{ unmount: () => void }> = []
+
 function setupWrapper() {
   const pinia = createPinia()
   setActivePinia(pinia)
-  return mount(ProjectTree, {
+  // 挂载到 document：el-dropdown 的触发与 teleport 菜单依赖真实文档
+  const wrapper = mount(ProjectTree, {
+    attachTo: document.body,
     global: {
       plugins: [pinia, ElementPlus],
     },
   })
+  mountedWrappers.push(wrapper)
+  return wrapper
+}
+
+/** 点击行内「更多操作」按钮，再点弹出菜单中指定 testid 的菜单项。
+ * 注意：VTU 的 transition stub 会让所有 dropdown 菜单提早出现在 DOM 中
+ * （含未展开的行），因此菜单项必须按 data-testid 精确定位。 */
+async function clickRowMenuItem(
+  wrapper: ReturnType<typeof setupWrapper>,
+  triggerTestId: string,
+  itemTestId: string
+): Promise<void> {
+  await wrapper.find(`[data-testid="${triggerTestId}"]`).trigger('click')
+  await flushPromises()
+  const item = document.querySelector<HTMLElement>(`[data-testid="${itemTestId}"]`)
+  expect(item, `未找到菜单项：${itemTestId}`).toBeTruthy()
+  item!.click()
+  await flushPromises()
 }
 
 describe('ProjectTree', () => {
@@ -89,6 +111,13 @@ describe('ProjectTree', () => {
     vi.spyOn(ElMessageBox, 'prompt').mockResolvedValue({ value: '新名称', action: 'confirm' } as any)
     vi.spyOn(ElMessage, 'error').mockImplementation(() => ({ close: () => {} }) as MessageHandler)
     vi.spyOn(ElMessage, 'warning').mockImplementation(() => ({ close: () => {} }) as MessageHandler)
+  })
+
+  afterEach(() => {
+    mountedWrappers.forEach((wrapper) => wrapper.unmount())
+    mountedWrappers.length = 0
+    // 注意：不要清空 document.body。el-dropdown 的 teleport 容器由 EP 在
+    // body 上维护，整体清空会导致后续用例的菜单浮层不再渲染。
   })
 
   it('renders empty state when there are no projects', async () => {
@@ -143,6 +172,14 @@ describe('ProjectTree', () => {
     expect(rows[0].find('[data-testid="thread-finished-dot"]').exists()).toBe(false)
     expect(rows[1].find('[data-testid="thread-running"]').exists()).toBe(false)
     expect(rows[1].find('[data-testid="thread-finished-dot"]').exists()).toBe(true)
+
+    // 转圈与提示点都位于「更多操作」按钮区（悬停时换出 ... 按钮）
+    const runningActions = rows[0].find('.row-actions')
+    expect(runningActions.classes()).toContain('row-actions--indicator')
+    expect(runningActions.find('[data-testid="thread-running"]').exists()).toBe(true)
+    const finishedActions = rows[1].find('.row-actions')
+    expect(finishedActions.classes()).toContain('row-actions--indicator')
+    expect(finishedActions.find('[data-testid="thread-finished-dot"]').exists()).toBe(true)
   })
 
   it('collapses when clicking the current expanded project', async () => {
@@ -226,8 +263,7 @@ describe('ProjectTree', () => {
     const wrapper = setupWrapper()
     await flushPromises()
 
-    await wrapper.find('[data-testid="project-rename"]').trigger('click')
-    await flushPromises()
+    await clickRowMenuItem(wrapper, 'project-more', 'project-menu-rename')
 
     expect(ElMessageBox.prompt).toHaveBeenCalled()
     expect(projectsApi.renameProject).toHaveBeenCalledWith('1', '新名称')
@@ -245,8 +281,7 @@ describe('ProjectTree', () => {
     await wrapper.find('[data-testid="project-row"]').trigger('click')
     await flushPromises()
 
-    await wrapper.find('[data-testid="project-delete"]').trigger('click')
-    await flushPromises()
+    await clickRowMenuItem(wrapper, 'project-more', 'project-menu-delete')
 
     expect(ElMessageBox.confirm).toHaveBeenCalled()
     expect(projectsApi.deleteProject).toHaveBeenCalledWith('1')
@@ -264,8 +299,7 @@ describe('ProjectTree', () => {
     await wrapper.find('[data-testid="project-row"]').trigger('click')
     await flushPromises()
 
-    await wrapper.find('[data-testid="thread-rename"]').trigger('click')
-    await flushPromises()
+    await clickRowMenuItem(wrapper, 'thread-more', 'thread-menu-rename')
 
     expect(agentApi.renameThread).toHaveBeenCalledWith('t1', '新名称')
   })
@@ -280,8 +314,7 @@ describe('ProjectTree', () => {
     await wrapper.find('[data-testid="project-row"]').trigger('click')
     await flushPromises()
 
-    await wrapper.find('[data-testid="thread-delete"]').trigger('click')
-    await flushPromises()
+    await clickRowMenuItem(wrapper, 'thread-more', 'thread-menu-delete')
 
     expect(agentApi.deleteThread).toHaveBeenCalledWith('t1')
   })
