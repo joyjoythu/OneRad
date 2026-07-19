@@ -892,4 +892,98 @@ describe('useAgentStore', () => {
       expect(store.autoApprove).toBe(true)
     })
   })
+
+  describe('thread running status', () => {
+    const threadSummary = (overrides: Record<string, unknown> = {}) => ({
+      id: 't-1',
+      project_id: 'p-1',
+      title: '',
+      llm_model: 'deepseek-v4-flash',
+      created_at: '',
+      updated_at: '',
+      ...overrides,
+    })
+
+    it('tracks running threads from list responses', async () => {
+      const store = useAgentStore()
+      vi.mocked(client.get).mockResolvedValue({
+        data: { threads: [threadSummary({ running: true })] },
+      })
+
+      await store.loadProjectThreads('p-1')
+
+      expect(store.runningThreadIds.has('t-1')).toBe(true)
+      expect(store.finishedThreadIds.has('t-1')).toBe(false)
+    })
+
+    it('moves a finished background thread into finishedThreadIds', async () => {
+      const store = useAgentStore()
+      vi.mocked(client.get).mockResolvedValue({
+        data: { threads: [threadSummary({ running: true })] },
+      })
+      await store.loadProjectThreads('p-1')
+
+      vi.mocked(client.get).mockResolvedValue({
+        data: { threads: [threadSummary({ running: false })] },
+      })
+      await store.loadProjectThreads('p-1')
+
+      expect(store.runningThreadIds.has('t-1')).toBe(false)
+      expect(store.finishedThreadIds.has('t-1')).toBe(true)
+    })
+
+    it('does not flag completion for the currently open thread', async () => {
+      const store = useAgentStore()
+      store.threadId = 't-1'
+      vi.mocked(client.get).mockResolvedValue({
+        data: { threads: [threadSummary({ running: true })] },
+      })
+      await store.loadProjectThreads('p-1')
+
+      vi.mocked(client.get).mockResolvedValue({
+        data: { threads: [threadSummary({ running: false })] },
+      })
+      await store.loadProjectThreads('p-1')
+
+      expect(store.runningThreadIds.has('t-1')).toBe(false)
+      expect(store.finishedThreadIds.has('t-1')).toBe(false)
+    })
+
+    it('clears the finished dot when the thread is opened', async () => {
+      const store = useAgentStore()
+      store.finishedThreadIds.add('t-1')
+      vi.spyOn(agentApi, 'resumeThread').mockResolvedValueOnce({
+        thread_id: 't-1',
+        ...mockState(),
+      })
+
+      await store.loadThread('t-1', 'sk-test', 'deepseek-v4-flash')
+
+      expect(store.finishedThreadIds.has('t-1')).toBe(false)
+    })
+
+    it('marks the current thread running on sendMessage and clears it on stream end', async () => {
+      const store = useAgentStore()
+      await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')
+      await store.sendMessage('Hello')
+
+      expect(store.runningThreadIds.has('thread-1')).toBe(true)
+
+      MockEventSource.instances[0].emit('agent_end', {})
+      expect(store.runningThreadIds.has('thread-1')).toBe(false)
+      expect(store.finishedThreadIds.has('thread-1')).toBe(false)
+    })
+
+    it('removes deleted threads from the status sets', async () => {
+      const store = useAgentStore()
+      store.runningThreadIds.add('t-9')
+      store.finishedThreadIds.add('t-9')
+      vi.mocked(client.get).mockResolvedValue({ data: { threads: [] } })
+
+      await store.deleteThread('t-9', 'p-1')
+
+      expect(store.runningThreadIds.has('t-9')).toBe(false)
+      expect(store.finishedThreadIds.has('t-9')).toBe(false)
+    })
+  })
 })

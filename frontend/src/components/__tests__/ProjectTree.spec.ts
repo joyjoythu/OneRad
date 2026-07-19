@@ -120,6 +120,31 @@ describe('ProjectTree', () => {
     expect(wrapper.text()).toContain('Thread t1')
   })
 
+  it('shows a spinner for running threads and a dot for finished ones', async () => {
+    vi.mocked(projectsApi.listProjects).mockResolvedValue([mockProject('1')])
+    vi.mocked(agentApi.listThreads).mockResolvedValue({
+      threads: [mockThread('t1', '1'), mockThread('t2', '1')],
+    })
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    await wrapper.find('[data-testid="project-row"]').trigger('click')
+    await flushPromises()
+
+    const agentStore = useAgentStore()
+    agentStore.runningThreadIds.add('t1')
+    agentStore.finishedThreadIds.add('t2')
+    await flushPromises()
+
+    const rows = wrapper.findAll('[data-testid="thread-row"]')
+    expect(rows).toHaveLength(2)
+    expect(rows[0].find('[data-testid="thread-running"]').exists()).toBe(true)
+    expect(rows[0].find('[data-testid="thread-finished-dot"]').exists()).toBe(false)
+    expect(rows[1].find('[data-testid="thread-running"]').exists()).toBe(false)
+    expect(rows[1].find('[data-testid="thread-finished-dot"]').exists()).toBe(true)
+  })
+
   it('collapses when clicking the current expanded project', async () => {
     vi.mocked(projectsApi.listProjects).mockResolvedValue([mockProject('1')])
     vi.mocked(agentApi.listThreads).mockResolvedValue({ threads: [mockThread('t1', '1')] })

@@ -44,6 +44,12 @@ export const useAgentStore = defineStore('agent', () => {
   const currentThread = ref<ThreadSummary | null>(null)
   // 智能体是否正在处理中（流式运行期间为 true），用于禁用输入并展示状态。
   const busy = ref(false)
+  // 正在运行的对话 id 集合：侧边栏据此显示转圈。来源：本地发起运行时即时
+  // 标记 + 对话列表响应里的 running 标志（后端内存态，轮询收敛）。
+  const runningThreadIds = ref<Set<string>>(new Set())
+  // 运行已结束但用户尚未点进去看的对话 id 集合：侧边栏据此显示提示点，
+  // 点进对话（loadThread）即清除。内存态，刷新即清。
+  const finishedThreadIds = ref<Set<string>>(new Set())
   // 自动审批：开启后后端跳过全部人工确认中断，直接执行挂起操作。
   const autoApprove = ref(false)
   // 自动审批同步请求进行中：用于禁用开关，防止快速连点导致前后端状态乱序。
@@ -58,6 +64,70 @@ export const useAgentStore = defineStore('agent', () => {
   const contextWindow = ref<number | null>(null)
 
   let es: EventSource | null = null
+
+  const RUNNING_POLL_INTERVAL_MS = 3000
+  let runningPollTimer: ReturnType<typeof setInterval> | null = null
+
+  /** 仅在有对话运行时轮询其所在项目的列表，让运行状态随响应收敛。 */
+  function updateRunningPolling(): void {
+    if (runningThreadIds.value.size > 0 && runningPollTimer === null) {
+      runningPollTimer = setInterval(() => {
+        void pollRunningProjects()
+      }, RUNNING_POLL_INTERVAL_MS)
+    } else if (runningThreadIds.value.size === 0 && runningPollTimer !== null) {
+      clearInterval(runningPollTimer)
+      runningPollTimer = null
+    }
+  }
+
+  function stopRunningPolling(): void {
+    if (runningPollTimer !== null) {
+      clearInterval(runningPollTimer)
+      runningPollTimer = null
+    }
+  }
+
+  async function pollRunningProjects(): Promise<void> {
+    // 只刷新「缓存中且含运行中对话」的项目；运行中对话必然已被标记，
+    // 其项目未缓存时等用户展开该项目后再由首次加载带上 running 标志。
+    const projectIds = new Set<string>()
+    for (const [pid, list] of Object.entries(threadsByProject.value)) {
+      if (list.some((t) => runningThreadIds.value.has(t.id))) {
+        projectIds.add(pid)
+      }
+    }
+    for (const pid of projectIds) {
+      try {
+        if (pid === threadsProjectId.value) {
+          await listThreads(pid)
+        } else {
+          await loadProjectThreads(pid)
+        }
+      } catch {
+        // 轮询失败（如后端不可达）：停掉轮询避免反复打扰，
+        // 下次用户操作触发的列表拉取会经 updateRunningPolling 重启。
+        stopRunningPolling()
+        return
+      }
+    }
+  }
+
+  /** 把列表响应里的 running 标志合并进 runningThreadIds/finishedThreadIds。 */
+  function syncRunningFromList(list: ThreadSummary[]): void {
+    for (const t of list) {
+      const wasRunning = runningThreadIds.value.has(t.id)
+      if (t.running) {
+        runningThreadIds.value.add(t.id)
+      } else if (wasRunning) {
+        runningThreadIds.value.delete(t.id)
+        // 刚结束的对话：用户正看着当前线程则不加提示点。
+        if (t.id !== threadId.value) {
+          finishedThreadIds.value.add(t.id)
+        }
+      }
+    }
+    updateRunningPolling()
+  }
 
   function applyState(state: Partial<AgentState>): void {
     if (state.error) {
@@ -185,11 +255,13 @@ export const useAgentStore = defineStore('agent', () => {
     threads.value = data.threads ?? []
     threadsByProject.value[projectId] = threads.value
     threadsProjectId.value = projectId
+    syncRunningFromList(threads.value)
   }
 
   async function loadProjectThreads(projectId: string): Promise<void> {
     const data = await api.listThreads(projectId)
     threadsByProject.value[projectId] = data.threads ?? []
+    syncRunningFromList(threadsByProject.value[projectId])
   }
 
   function clearProjectThreads(projectId: string): void {
@@ -202,6 +274,8 @@ export const useAgentStore = defineStore('agent', () => {
     llmModel: string
   ): Promise<void> {
     resetInternalState()
+    // 点进对话即视为已读：清除完成提示点。
+    finishedThreadIds.value.delete(threadIdToLoad)
     const state = await api.resumeThread(threadIdToLoad, {
       api_key: apiKey,
       llm_model: llmModel,
@@ -256,6 +330,9 @@ export const useAgentStore = defineStore('agent', () => {
     projectId: string
   ): Promise<void> {
     await api.deleteThread(threadIdToDelete)
+    runningThreadIds.value.delete(threadIdToDelete)
+    finishedThreadIds.value.delete(threadIdToDelete)
+    updateRunningPolling()
     if (currentThread.value?.id === threadIdToDelete) {
       resetInternalState()
     }
@@ -292,6 +369,11 @@ export const useAgentStore = defineStore('agent', () => {
         busy.value = false
         radiomicsProgress.value = null
         currentThinking.value = null
+        // 当前线程的结束由用户实时看着，转入完成提示点集合无意义。
+        if (threadId.value) {
+          runningThreadIds.value.delete(threadId.value)
+          updateRunningPolling()
+        }
         // SSE 只推订阅后的新事件；订阅空窗内漏掉的事件没有回放兜底，
         // 流结束时同步一次最终状态保证收敛。
         void syncThread()
@@ -324,6 +406,9 @@ export const useAgentStore = defineStore('agent', () => {
     connect()
     try {
       await api.sendMessage(threadId.value, role, content)
+      // 发起成功即标记运行中：侧边栏转圈即时出现，不等待下次列表拉取。
+      runningThreadIds.value.add(threadId.value)
+      updateRunningPolling()
     } catch (err) {
       // 后端拒绝（如 409 忙碌/待确认）：回滚乐观追加的消息。
       messages.value.pop()
@@ -348,6 +433,8 @@ export const useAgentStore = defineStore('agent', () => {
     connect()
     try {
       await api.confirm(threadId.value)
+      runningThreadIds.value.add(threadId.value)
+      updateRunningPolling()
     } catch (err) {
       busy.value = false
       throw err
@@ -362,6 +449,8 @@ export const useAgentStore = defineStore('agent', () => {
     connect()
     try {
       await api.cancel(threadId.value)
+      runningThreadIds.value.add(threadId.value)
+      updateRunningPolling()
     } catch (err) {
       busy.value = false
       throw err
@@ -439,6 +528,8 @@ export const useAgentStore = defineStore('agent', () => {
     selectedModel,
     currentThread,
     busy,
+    runningThreadIds,
+    finishedThreadIds,
     autoApprove,
     autoApproveSyncing,
     ensureThread,

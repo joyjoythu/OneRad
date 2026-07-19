@@ -456,11 +456,20 @@ async def get_thread(
 
 @router.get("/threads", response_model=Dict[str, Any])
 async def list_threads(
+    request: Request,
     project_id: str = Query(..., description="Project to list threads for"),
     store: ProjectStore = Depends(get_project_store),
 ) -> Dict[str, Any]:
-    """Return all threads belonging to a project."""
-    return {"threads": await _run_store_sync(store.list_threads, project_id)}
+    """Return all threads belonging to a project.
+
+    每个线程附带 running 标志：该线程当前是否有正在运行的流式任务，
+    供侧边栏展示运行状态（来源为内存集合，重启即清，与任务生命周期一致）。
+    """
+    threads = await _run_store_sync(store.list_threads, project_id)
+    active = request.app.state.active_agent_streams
+    for thread in threads:
+        thread["running"] = thread["id"] in active
+    return {"threads": threads}
 
 
 @router.delete(

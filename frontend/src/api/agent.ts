@@ -152,6 +152,8 @@ export interface ThreadSummary {
   llm_model: string
   created_at: string
   updated_at: string
+  /** 该线程当前是否有正在运行的流式任务（后端内存态）。 */
+  running?: boolean
 }
 
 export interface LoadThreadRequest {

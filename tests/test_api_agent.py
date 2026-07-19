@@ -107,6 +107,21 @@ def test_list_threads_by_project(client):
     assert threads_b[0]["id"] == t_b
 
 
+def test_list_threads_marks_running(client, app):
+    project = _create_project(client)
+    thread_id = _create_thread(client, project["id"])["thread_id"]
+
+    threads = _list_threads(client, project["id"])
+    assert threads[0]["running"] is False
+
+    app.state.active_agent_streams.add(thread_id)
+    try:
+        threads = _list_threads(client, project["id"])
+        assert threads[0]["running"] is True
+    finally:
+        app.state.active_agent_streams.discard(thread_id)
+
+
 def test_delete_thread(client, app):
     project = _create_project(client)
     thread_id = _create_thread(client, project["id"])["thread_id"]

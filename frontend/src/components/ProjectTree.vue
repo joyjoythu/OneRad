@@ -86,6 +86,20 @@
           >
             <el-icon class="row-icon"><ChatDotRound /></el-icon>
             <span class="row-label">{{ thread.title || '未命名会话' }}</span>
+            <span class="thread-status">
+              <el-icon
+                v-if="agentStore.runningThreadIds.has(thread.id)"
+                class="is-loading"
+                data-testid="thread-running"
+              >
+                <Loading />
+              </el-icon>
+              <span
+                v-else-if="agentStore.finishedThreadIds.has(thread.id)"
+                class="thread-dot"
+                data-testid="thread-finished-dot"
+              />
+            </span>
             <span class="row-actions">
               <el-button
                 link
@@ -159,6 +173,7 @@ import {
   FolderOpened,
   FolderAdd,
   ChatDotRound,
+  Loading,
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
@@ -527,6 +542,23 @@ function resetForm(): void {
   list-style: none;
   margin: 0;
   padding: 0 0 0.25rem 1.25rem;
+}
+
+/* 运行状态位：固定宽度避免转圈/提示点出现时行布局抖动 */
+.thread-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  flex-shrink: 0;
+  color: var(--app-text-muted);
+}
+
+.thread-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--app-accent);
 }
 
 .thread-row {
