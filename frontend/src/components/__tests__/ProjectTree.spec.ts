@@ -286,7 +286,11 @@ describe('ProjectTree', () => {
 
     await clickRowMenuItem(wrapper, 'project-more', 'project-menu-delete')
 
-    expect(ElMessageBox.confirm).toHaveBeenCalled()
+    expect(ElMessageBox.confirm).toHaveBeenCalledWith(
+      '删除项目及其全部对话？此操作无法恢复。',
+      '删除项目',
+      expect.objectContaining({ customClass: 'compact-confirm-box' })
+    )
     expect(projectsApi.deleteProject).toHaveBeenCalledWith('1')
     const agentStore = useAgentStore()
     expect(agentStore.threadsByProject['1']).toBeUndefined()
@@ -319,6 +323,11 @@ describe('ProjectTree', () => {
 
     await clickRowMenuItem(wrapper, 'thread-more', 'thread-menu-delete')
 
+    expect(ElMessageBox.confirm).toHaveBeenCalledWith(
+      '删除会话“Thread t1”？此操作无法恢复。',
+      '删除会话',
+      expect.objectContaining({ customClass: 'compact-confirm-box' })
+    )
     expect(agentApi.deleteThread).toHaveBeenCalledWith('t1')
   })
 
@@ -390,16 +399,21 @@ describe('ProjectTree', () => {
     expect(useProjectStore().currentProject?.id).toBe('1')
   })
 
-  it('warns on 新建任务 when no project is selected', async () => {
+  it('uses one primary 新建项目 entry and removes the legacy task action', async () => {
     vi.mocked(projectsApi.listProjects).mockResolvedValue([mockProject('1')])
 
     const wrapper = setupWrapper()
     await flushPromises()
 
-    await wrapper.find('[data-testid="new-task"]').trigger('click')
+    const entries = wrapper.findAll('[data-testid="new-project"]')
+    expect(entries).toHaveLength(1)
+    expect(entries[0].text()).toContain('新建项目')
+    expect(wrapper.find('[data-testid="new-task"]').exists()).toBe(false)
+
+    await entries[0].trigger('click')
     await flushPromises()
 
-    expect(ElMessage.warning).toHaveBeenCalled()
+    expect(wrapper.find('.project-create-dialog').exists()).toBe(true)
     expect(agentApi.createThread).not.toHaveBeenCalled()
   })
 

@@ -1,22 +1,14 @@
 <template>
   <div class="project-tree">
     <div class="project-tree-top">
-      <button class="new-task-btn" data-testid="new-task" @click="handleNewTask">
+      <button class="new-project-btn" data-testid="new-project" @click="dialogVisible = true">
         <el-icon><Plus /></el-icon>
-        <span>新建任务</span>
+        <span>新建项目</span>
       </button>
     </div>
 
     <div class="project-tree-group">
       <span>项目</span>
-      <el-button
-        link
-        size="small"
-        :icon="FolderAdd"
-        data-testid="new-project"
-        title="新建项目"
-        @click="dialogVisible = true"
-      />
     </div>
 
     <el-skeleton
@@ -230,7 +222,6 @@ import {
   Delete,
   Folder,
   FolderOpened,
-  FolderAdd,
   ChatDotRound,
   Loading,
   More,
@@ -348,15 +339,6 @@ async function handleThreadClick(project: Project, thread: ThreadSummary): Promi
   }
 }
 
-function handleNewTask(): void {
-  const project = projectStore.currentProject
-  if (!project) {
-    ElMessage.warning('请先选择项目')
-    return
-  }
-  void handleNewThread(project)
-}
-
 async function handleNewThread(project: Project): Promise<void> {
   const isCurrent = projectStore.currentProject?.id === project.id
   try {
@@ -404,10 +386,11 @@ async function handleRenameProject(project: Project): Promise<void> {  try {
 
 async function handleDeleteProject(project: Project): Promise<void> {
   try {
-    await ElMessageBox.confirm('确定要删除该项目吗？其下的会话将一并删除。', '提示', {
+    await ElMessageBox.confirm('删除项目及其全部对话？此操作无法恢复。', '删除项目', {
       type: 'warning',
       confirmButtonText: '删除',
       cancelButtonText: '取消',
+      customClass: 'compact-confirm-box',
     })
   } catch {
     return
@@ -443,12 +426,13 @@ async function handleRenameThread(project: Project, thread: ThreadSummary): Prom
 async function handleDeleteThread(project: Project, thread: ThreadSummary): Promise<void> {
   try {
     await ElMessageBox.confirm(
-      `确定要删除会话 "${thread.title || '未命名会话'}" 吗？删除后无法恢复。`,
+      `删除会话“${thread.title || '未命名会话'}”？此操作无法恢复。`,
       '删除会话',
       {
         confirmButtonText: '删除',
         cancelButtonText: '取消',
         type: 'warning',
+        customClass: 'compact-confirm-box',
       }
     )
     await agentStore.deleteThread(thread.id, project.id)
@@ -504,7 +488,7 @@ function resetForm(): void {
   padding: 0.75rem 0.75rem 0.25rem;
 }
 
-.new-task-btn {
+.new-project-btn {
   flex: 1;
   display: flex;
   align-items: center;
@@ -524,16 +508,16 @@ function resetForm(): void {
     box-shadow 0.16s ease, transform 0.12s ease;
 }
 
-.new-task-btn:hover {
+.new-project-btn:hover {
   border-color: var(--app-accent);
   background-color: var(--app-sidebar-hover);
 }
 
-.new-task-btn:active {
+.new-project-btn:active {
   transform: translateY(1px);
 }
 
-.new-task-btn:focus-visible {
+.new-project-btn:focus-visible {
   outline: 3px solid var(--app-focus-ring);
   outline-offset: 1px;
 }
@@ -541,18 +525,9 @@ function resetForm(): void {
 .project-tree-group {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   padding: 0.75rem 1rem 0.375rem;
   font-size: 0.75rem;
   color: var(--app-text-muted);
-}
-
-.project-tree-group .el-button {
-  color: var(--app-text-muted);
-}
-
-.project-tree-group .el-button:hover {
-  color: var(--app-text);
 }
 
 .tree-skeleton {

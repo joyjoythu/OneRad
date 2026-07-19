@@ -1,5 +1,5 @@
 /* OneRad medical-research design tokens.
-   Light is the default; html.dark supplies the retained deep-blue theme. */
+   Light is the default; html.dark uses a restrained Dracula palette. */
 
 :root {
   color-scheme: light;
@@ -75,40 +75,40 @@
 html.dark {
   color-scheme: dark;
 
-  --app-bg: #071321;
-  --app-bg-panel: #0c1d2f;
-  --app-bg-hover: #122b45;
-  --app-bg-bubble: #12365a;
-  --app-sidebar-bg: #091827;
-  --app-sidebar-hover: #102a43;
-  --app-sidebar-active: #153b61;
+  --app-bg: #282a36;
+  --app-bg-panel: #30323f;
+  --app-bg-hover: #3a3d4d;
+  --app-bg-bubble: #44475a;
+  --app-sidebar-bg: #21222c;
+  --app-sidebar-hover: #343746;
+  --app-sidebar-active: #44475a;
 
-  --app-border: #1a3855;
-  --app-border-strong: #2b5276;
+  --app-border: #44475a;
+  --app-border-strong: #6272a4;
 
-  --app-text: #e8f3ff;
-  --app-text-secondary: #acc1d5;
-  --app-text-muted: #718ba4;
+  --app-text: #f8f8f2;
+  --app-text-secondary: #c9c9c2;
+  --app-text-muted: #8a8da0;
 
-  --app-accent: #4d9fff;
-  --app-accent-hover: #75b5ff;
-  --app-accent-active: #2f83e5;
-  --app-accent-text: #06111d;
+  --app-accent: #ff79c6;
+  --app-accent-hover: #ff92d0;
+  --app-accent-active: #e85fac;
+  --app-accent-text: #282a36;
 
-  --app-success: #45c978;
-  --app-warning: #f3ad4d;
-  --app-danger: #ff7278;
+  --app-success: #50fa7b;
+  --app-warning: #ffb86c;
+  --app-danger: #ff5555;
 
   --app-shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.22);
   --app-shadow-md: 0 16px 40px rgba(0, 0, 0, 0.38);
-  --app-focus-ring: rgba(77, 159, 255, 0.28);
+  --app-focus-ring: rgba(255, 121, 198, 0.28);
 
   --el-color-primary: var(--app-accent);
-  --el-color-primary-light-3: #72b4ff;
-  --el-color-primary-light-5: #8fc3ff;
-  --el-color-primary-light-7: #315f89;
-  --el-color-primary-light-8: #244b70;
-  --el-color-primary-light-9: #163452;
+  --el-color-primary-light-3: #ff9bd3;
+  --el-color-primary-light-5: #ffb3dd;
+  --el-color-primary-light-7: #8b5579;
+  --el-color-primary-light-8: #6c4661;
+  --el-color-primary-light-9: #493746;
   --el-color-primary-dark-2: var(--app-accent-active);
   --el-color-success: var(--app-success);
   --el-color-warning: var(--app-warning);
@@ -135,5 +135,5 @@ html.dark {
   --el-border-radius-base: var(--app-radius-md);
   --el-border-radius-small: var(--app-radius-sm);
   --el-border-radius-round: 999px;
-  --el-mask-color: rgba(0, 5, 12, 0.72);
+  --el-mask-color: rgba(20, 20, 27, 0.76);
 }
