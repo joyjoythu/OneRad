@@ -145,6 +145,16 @@ html:not(.dark) .el-card {
   box-shadow: var(--app-shadow-md);
 }
 
+.el-message-box.compact-confirm-box {
+  width: min(380px, calc(100vw - 2rem));
+}
+
+.compact-confirm-box .el-message-box__message {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.55;
+}
+
 /* 隐形滚动条：默认透明，仅在滚动中（.is-scrolling，由 v-auto-hide-scrollbar
    指令维护）或光标悬停在滑块上时显现。
    Firefox 用 scrollbar-color，WebKit/Blink 用 ::-webkit-scrollbar。 */
