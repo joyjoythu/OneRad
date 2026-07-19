@@ -25,6 +25,7 @@ from app.api.deps import get_project_store
 from app.api.runner import get_bridge
 from app.llm import LLMClient, build_thread_title_prompt
 from app.projects import ProjectStore
+from app.skills import SkillLoadError
 
 router = APIRouter()
 
@@ -82,19 +83,23 @@ async def _run_store_sync(fn, *args):
 
 def _schedule_title_generation(app, thread_id: str, content: str) -> None:
     """后台为首次对话生成摘要标题，不阻塞消息响应。"""
-    task = asyncio.create_task(_generate_thread_title(app, thread_id, content))
+    system, user = build_thread_title_prompt(content)
+    task = asyncio.create_task(
+        _generate_thread_title(app, thread_id, content, system, user)
+    )
     app.state.agent_title_tasks.add(task)
     task.add_done_callback(app.state.agent_title_tasks.discard)
 
 
-async def _generate_thread_title(app, thread_id: str, content: str) -> None:
+async def _generate_thread_title(
+    app, thread_id: str, content: str, system: str, user: str
+) -> None:
     """用 LLM 概括首条消息作为会话标题；失败时回退为首句截断。"""
     store: ProjectStore = app.state.project_store
     api_key = app.state.agent_api_keys.get(thread_id, "")
     title = ""
     try:
         client = LLMClient(api_key=api_key)
-        system, user = build_thread_title_prompt(content)
         # max_tokens 需要余量：推理模型（如 deepseek-v4-flash）会先消耗
         # reasoning tokens，额度太小会导致 content 为空、静默落入截断兜底。
         raw = await asyncio.to_thread(client.call, system, user, 0.3, 200)
@@ -584,9 +589,15 @@ async def send_message(
         meta = await _run_store_sync(store.get_thread_meta, thread_id)
         if meta and not meta.get("title"):
             if request.app.state.agent_api_keys.get(thread_id):
-                _schedule_title_generation(
-                    request.app, thread_id, payload.content or ""
-                )
+                try:
+                    _schedule_title_generation(
+                        request.app, thread_id, payload.content or ""
+                    )
+                except SkillLoadError as exc:
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail=str(exc),
+                    ) from exc
             else:
                 # 无 API key 时回退为首句截断命名
                 title = payload.content[:30] if payload.content else ""

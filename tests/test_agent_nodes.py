@@ -253,7 +253,9 @@ def test_call_llm_passes_fixed_model_and_tools_to_api(tmp_path):
     assert kwargs["model"] == "deepseek-v4-flash"
     assert kwargs["stream"] is True
     assert kwargs["parallel_tool_calls"] is False
-    assert kwargs["messages"] == [{"role": "assistant", "content": "之前"}]
+    assert kwargs["messages"][0]["role"] == "system"
+    assert "OneRad Research Agent" in kwargs["messages"][0]["content"]
+    assert kwargs["messages"][1] == {"role": "assistant", "content": "之前"}
     assert any(t["function"]["name"] == "list_directory" for t in kwargs["tools"])
 
 

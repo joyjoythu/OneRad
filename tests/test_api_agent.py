@@ -1033,6 +1033,23 @@ def test_thread_title_generated_via_llm(client, app, monkeypatch):
     assert threads[0]["title"] == "影像组学特征提取"
 
 
+def test_missing_thread_title_skill_returns_explicit_error(
+    client, app, monkeypatch, tmp_path
+):
+    project = _create_project(client)
+    thread_id = _create_thread(client, project["id"], api_key="sk-test")["thread_id"]
+    monkeypatch.setattr("app.skills.SKILLS_DIR", tmp_path / "missing-skills")
+
+    response = client.post(
+        f"/api/agent/threads/{thread_id}/messages",
+        json={"role": "user", "content": "分析这批病例"},
+    )
+
+    assert response.status_code == 500
+    assert "thread-title" in response.json()["detail"]
+    assert "SKILL.md" in response.json()["detail"]
+
+
 def test_thread_title_falls_back_to_truncation_on_llm_failure(client, app, monkeypatch):
     """LLM 调用失败时回退为首句截断命名。"""
     project = _create_project(client)

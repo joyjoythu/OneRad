@@ -7,6 +7,8 @@ from docx.shared import Pt, Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 import logging
+from app.skills import load_skill
+
 logger = logging.getLogger(__name__)
 
 
@@ -210,8 +212,8 @@ class ReportAgent:
             Polished text, or ``raw`` if the call fails or returns an empty
             response.
         """
+        system = load_skill("report-writing")
         try:
-            system = "You are an academic writing assistant. Polish the methodology paragraph. Keep all numbers exact. Output only the polished paragraph."
             polished = llm_client.call(system, raw, temperature=0.3, max_tokens=800)
             return polished or raw
         except Exception:
