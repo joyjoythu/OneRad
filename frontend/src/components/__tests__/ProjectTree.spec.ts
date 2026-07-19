@@ -8,6 +8,8 @@ import { useAgentStore } from '@/stores/agent'
 import type { Project } from '@/api/projects'
 import type { ThreadSummary } from '@/api/agent'
 
+const routerPush = vi.hoisted(() => vi.fn())
+
 vi.mock('@/api/projects', () => ({
   listProjects: vi.fn(),
   getProject: vi.fn(),
@@ -40,14 +42,14 @@ vi.mock('@/api/filesystem', () => ({
 
 vi.mock('vue-router', () => ({
   useRoute: () => ({ path: '/' }),
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: routerPush }),
 }))
 
 import * as projectsApi from '@/api/projects'
 import * as agentApi from '@/api/agent'
 import * as filesystemApi from '@/api/filesystem'
 
-const mockAnalysis = () => ({
+const mockAnalysis = (overrides: Record<string, string> = {}) => ({
   image_dir: '',
   clinical_path: '',
   output_dir: './outputs',
@@ -56,16 +58,17 @@ const mockAnalysis = () => ({
   model: 'logistic',
   analysis_model: 'logistic',
   api_key: '',
+  ...overrides,
 })
 
-const mockProject = (id: string): Project => ({
+const mockProject = (id: string, analysisOverrides: Record<string, string> = {}): Project => ({
   id,
   name: `Project ${id}`,
   path: `/tmp/${id}`,
   description: '',
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString(),
-  analysis: mockAnalysis(),
+  analysis: mockAnalysis(analysisOverrides),
 })
 
 const mockThread = (id: string, projectId: string): ThreadSummary => ({
@@ -111,6 +114,7 @@ async function clickRowMenuItem(
 describe('ProjectTree', () => {
   beforeEach(() => {
     vi.resetAllMocks()
+    localStorage.clear()
     vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm' as MessageBoxData)
     vi.spyOn(ElMessageBox, 'prompt').mockResolvedValue({ value: '新名称', action: 'confirm' } as any)
     vi.spyOn(ElMessage, 'error').mockImplementation(() => ({ close: () => {} }) as MessageHandler)
@@ -383,7 +387,9 @@ describe('ProjectTree', () => {
   })
 
   it('creates a thread in the clicked project via its plus action', async () => {
-    vi.mocked(projectsApi.listProjects).mockResolvedValue([mockProject('1')])
+    vi.mocked(projectsApi.listProjects).mockResolvedValue([
+      mockProject('1', { api_key: 'sk-test' }),
+    ])
     vi.mocked(agentApi.createThread).mockResolvedValue({ thread_id: 't-new' })
     vi.mocked(agentApi.listThreads).mockResolvedValue({ threads: [] })
 
@@ -394,9 +400,25 @@ describe('ProjectTree', () => {
     await flushPromises()
 
     expect(agentApi.createThread).toHaveBeenCalledWith('1', expect.objectContaining({
-      api_key: '',
+      api_key: 'sk-test',
     }))
     expect(useProjectStore().currentProject?.id).toBe('1')
+  })
+
+  it('redirects to settings and requests an API key instead of silently failing', async () => {
+    vi.mocked(projectsApi.listProjects).mockResolvedValue([mockProject('1')])
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    await wrapper.find('[data-testid="project-new-thread"]').trigger('click')
+    await flushPromises()
+
+    const projectStore = useProjectStore()
+    expect(projectStore.currentProject?.id).toBe('1')
+    expect(projectStore.apiKeyRequiredProjectId).toBe('1')
+    expect(routerPush).toHaveBeenCalledWith('/settings')
+    expect(agentApi.createThread).not.toHaveBeenCalled()
   })
 
   it('uses one primary 新建项目 entry and removes the legacy task action', async () => {
@@ -418,7 +440,10 @@ describe('ProjectTree', () => {
   })
 
   it('creates the thread before switching project via another project\'s plus action', async () => {
-    vi.mocked(projectsApi.listProjects).mockResolvedValue([mockProject('1'), mockProject('2')])
+    vi.mocked(projectsApi.listProjects).mockResolvedValue([
+      mockProject('1', { api_key: 'sk-one' }),
+      mockProject('2', { api_key: 'sk-two' }),
+    ])
     let resolveCreate: (v: { thread_id: string }) => void = () => {}
     vi.mocked(agentApi.createThread).mockImplementation(
       () => new Promise((resolve) => { resolveCreate = resolve })
@@ -442,9 +467,42 @@ describe('ProjectTree', () => {
     await flushPromises()
 
     expect(agentApi.createThread).toHaveBeenCalledWith('2', expect.objectContaining({
-      api_key: '',
+      api_key: 'sk-two',
     }))
     expect(projectStore.currentProject?.id).toBe('2')
+  })
+
+  it('persists project pins and sorts pinned projects first', async () => {
+    localStorage.setItem('onerad:sidebar:pinnedProjects', JSON.stringify(['2']))
+    vi.mocked(projectsApi.listProjects).mockResolvedValue([mockProject('1'), mockProject('2')])
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    const rows = wrapper.findAll('[data-testid="project-row"]')
+    expect(rows[0].text()).toContain('Project 2')
+    expect(rows[0].find('[data-testid="project-pinned"]').exists()).toBe(true)
+
+    await clickRowMenuItem(wrapper, 'project-more', 'project-menu-pin')
+    expect(JSON.parse(localStorage.getItem('onerad:sidebar:pinnedProjects') || '[]'))
+      .not.toContain('2')
+  })
+
+  it('persists thread pins and sorts pinned threads first inside a project', async () => {
+    localStorage.setItem('onerad:sidebar:pinnedThreads', JSON.stringify(['t2']))
+    vi.mocked(projectsApi.listProjects).mockResolvedValue([mockProject('1')])
+    vi.mocked(agentApi.listThreads).mockResolvedValue({
+      threads: [mockThread('t1', '1'), mockThread('t2', '1')],
+    })
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+    await wrapper.find('[data-testid="project-row"]').trigger('click')
+    await flushPromises()
+
+    const rows = wrapper.findAll('[data-testid="thread-row"]')
+    expect(rows[0].text()).toContain('Thread t2')
+    expect(rows[0].find('[data-testid="thread-pinned"]').exists()).toBe(true)
   })
 
   it('shows an inline retry when loading threads fails and recovers on click', async () => {

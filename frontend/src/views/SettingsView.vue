@@ -62,46 +62,58 @@
 
       <div class="settings-grid">
         <el-form-item label="影像目录" class="settings-grid__wide">
-          <el-input
-            v-model="draft.image_dir"
-            placeholder="包含影像与分割文件的目录"
-            data-testid="settings-image-dir"
-          >
-            <template #append>
-              <el-button data-testid="browse-image-dir" @click="openPicker('image_dir')">
-                浏览
-              </el-button>
-            </template>
-          </el-input>
+          <div class="path-input-row">
+            <el-input
+              v-model="draft.image_dir"
+              class="path-input-row__field"
+              placeholder="包含影像与分割文件的目录"
+              data-testid="settings-image-dir"
+            />
+            <el-button
+              class="path-input-row__browse"
+              data-testid="browse-image-dir"
+              @click="openPicker('image_dir')"
+            >
+              浏览
+            </el-button>
+          </div>
         </el-form-item>
 
         <el-form-item label="临床数据文件" class="settings-grid__wide">
-          <el-input
-            v-model="draft.clinical_path"
-            placeholder="CSV 或 Excel 临床数据文件"
-            data-testid="settings-clinical-path"
-          >
-            <template #append>
-              <el-button data-testid="browse-clinical-path" @click="openPicker('clinical_path')">
-                浏览
-              </el-button>
-            </template>
-          </el-input>
+          <div class="path-input-row">
+            <el-input
+              v-model="draft.clinical_path"
+              class="path-input-row__field"
+              placeholder="CSV 或 Excel 临床数据文件"
+              data-testid="settings-clinical-path"
+            />
+            <el-button
+              class="path-input-row__browse"
+              data-testid="browse-clinical-path"
+              @click="openPicker('clinical_path')"
+            >
+              浏览
+            </el-button>
+          </div>
           <p class="field-hint">支持 .csv、.xlsx、.xls</p>
         </el-form-item>
 
         <el-form-item label="输出目录" class="settings-grid__wide">
-          <el-input
-            v-model="draft.output_dir"
-            placeholder="可手动填写尚未创建的目录"
-            data-testid="settings-output-dir"
-          >
-            <template #append>
-              <el-button data-testid="browse-output-dir" @click="openPicker('output_dir')">
-                浏览
-              </el-button>
-            </template>
-          </el-input>
+          <div class="path-input-row">
+            <el-input
+              v-model="draft.output_dir"
+              class="path-input-row__field"
+              placeholder="可手动填写尚未创建的目录"
+              data-testid="settings-output-dir"
+            />
+            <el-button
+              class="path-input-row__browse"
+              data-testid="browse-output-dir"
+              @click="openPicker('output_dir')"
+            >
+              浏览
+            </el-button>
+          </div>
         </el-form-item>
 
         <el-form-item label="影像模态">
@@ -129,14 +141,26 @@
           />
         </el-form-item>
 
-        <el-form-item label="DeepSeek API 密钥" class="settings-grid__wide">
+        <el-form-item
+          label="DeepSeek API 密钥"
+          class="settings-grid__wide api-key-field"
+          :class="{ 'api-key-field--required': showMissingApiKey }"
+        >
           <el-input
+            ref="apiKeyInputRef"
             v-model="draft.api_key"
             show-password
             autocomplete="off"
             placeholder="请输入 DeepSeek API 密钥"
             data-testid="settings-api-key"
           />
+          <p
+            v-if="showMissingApiKey"
+            class="field-hint field-hint--danger"
+            data-testid="missing-api-key-hint"
+          >
+            尚未填写 DeepSeek API 密钥，填写并自动保存后即可新建对话。
+          </p>
           <p class="field-hint field-hint--warning">
             密钥会以明文写入当前项目的 project.yaml，请勿将含密钥的配置提交或分享。
           </p>
@@ -156,7 +180,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import type { InputInstance } from 'element-plus'
 import { useProjectStore } from '@/stores/project'
 import { getTheme, setTheme, type Theme } from '@/utils/theme'
 import type { AnalysisConfig } from '@/api/projects'
@@ -191,6 +216,7 @@ const saveStatus = ref<SaveStatus>('idle')
 const savedAt = ref<Date | null>(null)
 const pickerVisible = ref(false)
 const pickerField = ref<PathField>('image_dir')
+const apiKeyInputRef = ref<InputInstance>()
 
 let activeProjectId: string | null = null
 let lastSavedSerialized = ''
@@ -201,6 +227,16 @@ let suppressDraftWatch = false
 
 const pageTitle = computed(() =>
   projectStore.currentProject ? `设置 · ${projectStore.currentProject.name}` : '设置'
+)
+const showMissingApiKey = computed(
+  () => {
+    const projectId = projectStore.currentProject?.id
+    return (
+      !!projectId &&
+      projectStore.apiKeyRequiredProjectId === projectId &&
+      !draft.api_key.trim()
+    )
+  }
 )
 const savedTimeLabel = computed(() =>
   savedAt.value
@@ -287,6 +323,9 @@ async function drainSaveQueue(): Promise<void> {
     if (request.projectId === activeProjectId) saveStatus.value = 'saving'
     try {
       await projectStore.saveConfig(request.projectId, request.config)
+      if (request.config.api_key.trim()) {
+        projectStore.clearApiKeyRequest(request.projectId)
+      }
       if (request.projectId === activeProjectId) {
         lastSavedSerialized = request.serialized
         savedAt.value = new Date()
@@ -357,6 +396,16 @@ watch(
     if (!suppressDraftWatch && activeProjectId) scheduleSave()
   },
   { deep: true }
+)
+
+watch(
+  showMissingApiKey,
+  async (required) => {
+    if (!required) return
+    await nextTick()
+    apiKeyInputRef.value?.focus()
+  },
+  { immediate: true, flush: 'post' }
 )
 
 onBeforeUnmount(() => {
@@ -453,6 +502,23 @@ onBeforeUnmount(() => {
   width: 100%;
 }
 
+.path-input-row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.path-input-row__field {
+  min-width: 0;
+  flex: 1;
+}
+
+.path-input-row__browse {
+  min-width: 72px;
+  flex: 0 0 auto;
+}
+
 .field-hint {
   width: 100%;
   margin: 0.375rem 0 0;
@@ -463,6 +529,15 @@ onBeforeUnmount(() => {
 
 .field-hint--warning {
   color: var(--app-warning);
+}
+
+.field-hint--danger {
+  color: var(--app-danger);
+  font-weight: 600;
+}
+
+.api-key-field--required :deep(.el-input__wrapper) {
+  box-shadow: 0 0 0 1px var(--app-danger) inset;
 }
 
 .save-status {
@@ -525,6 +600,11 @@ onBeforeUnmount(() => {
 
   .settings-grid__wide {
     grid-column: auto;
+  }
+
+  .path-input-row {
+    align-items: stretch;
+    flex-direction: column;
   }
 }
 </style>

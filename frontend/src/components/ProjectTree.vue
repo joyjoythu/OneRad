@@ -20,7 +20,7 @@
     <el-empty v-else-if="!projectStore.projects.length" description="暂无项目" :image-size="60" />
 
     <ul v-else v-auto-hide-scrollbar class="project-tree-items auto-hide-scrollbar">
-      <li v-for="project in projectStore.projects" :key="project.id">
+      <li v-for="project in sortedProjects" :key="project.id">
         <div
           class="project-row"
           :class="{ 'project-row--active': projectStore.currentProject?.id === project.id }"
@@ -35,6 +35,14 @@
             <Folder v-else />
           </el-icon>
           <span class="row-label">{{ project.name }}</span>
+          <el-icon
+            v-if="isProjectPinned(project.id)"
+            class="pin-indicator"
+            title="已置顶"
+            data-testid="project-pinned"
+          >
+            <Top />
+          </el-icon>
           <span class="row-actions" @click.stop>
             <el-button
               link
@@ -58,6 +66,13 @@
               />
               <template #dropdown>
                 <el-dropdown-menu>
+                  <el-dropdown-item
+                    :icon="Top"
+                    command="pin"
+                    data-testid="project-menu-pin"
+                  >
+                    {{ isProjectPinned(project.id) ? '取消置顶' : '置顶' }}
+                  </el-dropdown-item>
                   <el-dropdown-item
                     :icon="Edit"
                     command="rename"
@@ -93,6 +108,14 @@
           >
             <el-icon class="row-icon"><ChatDotRound /></el-icon>
             <span class="row-label">{{ thread.title || '未命名会话' }}</span>
+            <el-icon
+              v-if="isThreadPinned(thread.id)"
+              class="pin-indicator"
+              title="已置顶"
+              data-testid="thread-pinned"
+            >
+              <Top />
+            </el-icon>
             <span
               class="row-actions"
               :class="{
@@ -130,6 +153,13 @@
                   />
                   <template #dropdown>
                     <el-dropdown-menu>
+                      <el-dropdown-item
+                        :icon="Top"
+                        command="pin"
+                        data-testid="thread-menu-pin"
+                      >
+                        {{ isThreadPinned(thread.id) ? '取消置顶' : '置顶' }}
+                      </el-dropdown-item>
                       <el-dropdown-item
                         :icon="Edit"
                         command="rename"
@@ -176,16 +206,20 @@
           <el-input v-model="form.name" placeholder="请输入项目名称" />
         </el-form-item>
         <el-form-item label="路径" prop="path">
-          <el-input
-            v-model="form.path"
-            placeholder="相对路径（如 demo）或本机绝对路径（如 D:\project）"
-          >
-            <template #append>
-              <el-button data-testid="browse-project-path" @click="pathPickerVisible = true">
-                浏览
-              </el-button>
-            </template>
-          </el-input>
+          <div class="path-input-row">
+            <el-input
+              v-model="form.path"
+              class="path-input-row__field"
+              placeholder="相对路径（如 demo）或本机绝对路径（如 D:\project）"
+            />
+            <el-button
+              class="path-input-row__browse"
+              data-testid="browse-project-path"
+              @click="pathPickerVisible = true"
+            >
+              浏览
+            </el-button>
+          </div>
         </el-form-item>
         <el-form-item label="描述" prop="description">
           <el-input
@@ -214,7 +248,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, watch, onMounted } from 'vue'
+import { computed, reactive, ref, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   Plus,
@@ -225,6 +259,7 @@ import {
   ChatDotRound,
   Loading,
   More,
+  Top,
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
@@ -254,6 +289,40 @@ const rules = reactive<FormRules>({
   path: [{ required: true, message: '请输入项目路径', trigger: 'blur' }],
 })
 
+const PINNED_PROJECTS_KEY = 'onerad:sidebar:pinnedProjects'
+const PINNED_THREADS_KEY = 'onerad:sidebar:pinnedThreads'
+
+function loadPinnedIds(key: string): Set<string> {
+  try {
+    const value = JSON.parse(localStorage.getItem(key) || '[]')
+    return new Set(Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string') : [])
+  } catch {
+    return new Set()
+  }
+}
+
+function savePinnedIds(key: string, ids: Set<string>): void {
+  try {
+    localStorage.setItem(key, JSON.stringify([...ids]))
+  } catch {
+    // 浏览器禁用本地存储时，置顶仍在当前页面内生效。
+  }
+}
+
+function sortPinned<T extends { id: string }>(items: T[], pinnedIds: Set<string>): T[] {
+  return items
+    .map((item, index) => ({ item, index }))
+    .sort((left, right) => {
+      const pinOrder = Number(pinnedIds.has(right.item.id)) - Number(pinnedIds.has(left.item.id))
+      return pinOrder || left.index - right.index
+    })
+    .map(({ item }) => item)
+}
+
+const pinnedProjectIds = ref(loadPinnedIds(PINNED_PROJECTS_KEY))
+const pinnedThreadIds = ref(loadPinnedIds(PINNED_THREADS_KEY))
+const sortedProjects = computed(() => sortPinned(projectStore.projects, pinnedProjectIds.value))
+
 // 展开状态：会话内存即可，刷新后默认只展开当前项目。
 const expandedIds = ref<Set<string>>(new Set())
 
@@ -265,7 +334,32 @@ function isExpanded(projectId: string): boolean {
 }
 
 function threadsOf(projectId: string): ThreadSummary[] {
-  return agentStore.threadsByProject[projectId] ?? []
+  return sortPinned(agentStore.threadsByProject[projectId] ?? [], pinnedThreadIds.value)
+}
+
+function isProjectPinned(projectId: string): boolean {
+  return pinnedProjectIds.value.has(projectId)
+}
+
+function isThreadPinned(threadId: string): boolean {
+  return pinnedThreadIds.value.has(threadId)
+}
+
+function togglePinnedId(ids: Set<string>, id: string): Set<string> {
+  const next = new Set(ids)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  return next
+}
+
+function toggleProjectPin(projectId: string): void {
+  pinnedProjectIds.value = togglePinnedId(pinnedProjectIds.value, projectId)
+  savePinnedIds(PINNED_PROJECTS_KEY, pinnedProjectIds.value)
+}
+
+function toggleThreadPin(threadId: string): void {
+  pinnedThreadIds.value = togglePinnedId(pinnedThreadIds.value, threadId)
+  savePinnedIds(PINNED_THREADS_KEY, pinnedThreadIds.value)
 }
 
 onMounted(() => {
@@ -340,6 +434,15 @@ async function handleThreadClick(project: Project, thread: ThreadSummary): Promi
 }
 
 async function handleNewThread(project: Project): Promise<void> {
+  if (!project.analysis.api_key.trim()) {
+    projectStore.selectProject(project.id)
+    projectStore.requestApiKey(project.id)
+    if (route.path !== '/settings') {
+      await router.push('/settings')
+    }
+    return
+  }
+
   const isCurrent = projectStore.currentProject?.id === project.id
   try {
     await agentStore.createThread(project.id, project.analysis.api_key)
@@ -356,7 +459,9 @@ async function handleNewThread(project: Project): Promise<void> {
 }
 
 function handleProjectCommand(command: string, project: Project): void {
-  if (command === 'rename') {
+  if (command === 'pin') {
+    toggleProjectPin(project.id)
+  } else if (command === 'rename') {
     void handleRenameProject(project)
   } else if (command === 'delete') {
     void handleDeleteProject(project)
@@ -364,7 +469,9 @@ function handleProjectCommand(command: string, project: Project): void {
 }
 
 function handleThreadCommand(command: string, project: Project, thread: ThreadSummary): void {
-  if (command === 'rename') {
+  if (command === 'pin') {
+    toggleThreadPin(thread.id)
+  } else if (command === 'rename') {
     void handleRenameThread(project, thread)
   } else if (command === 'delete') {
     void handleDeleteThread(project, thread)
@@ -401,6 +508,10 @@ async function handleDeleteProject(project: Project): Promise<void> {
     await projectStore.deleteProject(project.id)
     agentStore.clearProjectThreads(project.id)
     expandedIds.value.delete(project.id)
+    if (pinnedProjectIds.value.delete(project.id)) {
+      pinnedProjectIds.value = new Set(pinnedProjectIds.value)
+      savePinnedIds(PINNED_PROJECTS_KEY, pinnedProjectIds.value)
+    }
     if (wasCurrent) {
       agentStore.resetThread()
     }
@@ -436,6 +547,10 @@ async function handleDeleteThread(project: Project, thread: ThreadSummary): Prom
       }
     )
     await agentStore.deleteThread(thread.id, project.id)
+    if (pinnedThreadIds.value.delete(thread.id)) {
+      pinnedThreadIds.value = new Set(pinnedThreadIds.value)
+      savePinnedIds(PINNED_THREADS_KEY, pinnedThreadIds.value)
+    }
   } catch {
     // 用户取消；API 失败由 axios 拦截器统一 toast
   }
@@ -576,6 +691,12 @@ function resetForm(): void {
   color: var(--app-text-muted);
 }
 
+.pin-indicator {
+  flex: 0 0 auto;
+  color: var(--app-accent-active);
+  font-size: 0.75rem;
+}
+
 .row-label {
   flex: 1;
   min-width: 0;
@@ -652,7 +773,7 @@ function resetForm(): void {
 
 .thread-items {
   list-style: none;
-  margin: 0;
+  margin: 0.25rem 0 0;
   padding: 0 0 0.25rem 1.25rem;
 }
 
@@ -702,6 +823,23 @@ function resetForm(): void {
   background-color: var(--app-sidebar-hover);
 }
 
+.path-input-row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.path-input-row__field {
+  min-width: 0;
+  flex: 1;
+}
+
+.path-input-row__browse {
+  min-width: 72px;
+  flex: 0 0 auto;
+}
+
 :global(.project-create-dialog) {
   max-width: calc(100vw - 2rem);
   border-radius: 16px;
@@ -718,6 +856,11 @@ function resetForm(): void {
 
   :global(.project-create-dialog .el-form-item__label) {
     width: auto !important;
+  }
+
+  .path-input-row {
+    align-items: stretch;
+    flex-direction: column;
   }
 }
 </style>

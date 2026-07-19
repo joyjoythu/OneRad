@@ -87,8 +87,40 @@ describe('SettingsView', () => {
     expect(wrapper.text()).toContain('DeepSeek API 密钥')
     expect(wrapper.text()).toContain('明文写入')
     expect(wrapper.find('[data-testid="settings-save"]').exists()).toBe(false)
+    expect(wrapper.findAll('.path-input-row')).toHaveLength(3)
     expect(wrapper.find<HTMLInputElement>('input[placeholder="请输入 DeepSeek API 密钥"]').element.value)
       .toBe('sk-old')
+  })
+
+  it('shows a red API key prompt requested by the project new-thread action', async () => {
+    const project = mockProject('proj-1', { api_key: '' })
+    const store = selectProject(project)
+    vi.spyOn(store, 'saveConfig').mockImplementation(async (_id, config) =>
+      savedProject(project, config)
+    )
+    store.requestApiKey('proj-1')
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    const hint = wrapper.find('[data-testid="missing-api-key-hint"]')
+    expect(hint.exists()).toBe(true)
+    expect(hint.classes()).toContain('field-hint--danger')
+    expect(hint.text()).toContain('尚未填写 DeepSeek API 密钥')
+    expect(document.activeElement).toBe(
+      wrapper.find<HTMLInputElement>('input[placeholder="请输入 DeepSeek API 密钥"]').element
+    )
+
+    await wrapper.find('input[placeholder="请输入 DeepSeek API 密钥"]').setValue('sk-new')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="missing-api-key-hint"]').exists()).toBe(false)
+    expect(store.apiKeyRequiredProjectId).toBe('proj-1')
+
+    await vi.advanceTimersByTimeAsync(600)
+    await flushPromises()
+
+    expect(store.apiKeyRequiredProjectId).toBeNull()
   })
 
   it('debounces changes for 600ms and saves the full configuration', async () => {

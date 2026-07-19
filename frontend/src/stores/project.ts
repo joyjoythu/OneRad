@@ -7,6 +7,7 @@ export const useProjectStore = defineStore('project', () => {
   const projects = ref<Project[]>([])
   const currentProject = ref<Project | null>(null)
   const currentConfig = ref<AnalysisConfig | null>(null)
+  const apiKeyRequiredProjectId = ref<string | null>(null)
   const loading = ref(false)
 
   async function loadProjects(): Promise<void> {
@@ -22,6 +23,16 @@ export const useProjectStore = defineStore('project', () => {
     const project = projects.value.find((p) => p.id === projectId) || null
     currentProject.value = project
     currentConfig.value = project ? { ...project.analysis } : null
+  }
+
+  function requestApiKey(projectId: string): void {
+    apiKeyRequiredProjectId.value = projectId
+  }
+
+  function clearApiKeyRequest(projectId?: string): void {
+    if (!projectId || apiKeyRequiredProjectId.value === projectId) {
+      apiKeyRequiredProjectId.value = null
+    }
   }
 
   async function createProject(payload: api.CreateProjectRequest): Promise<Project> {
@@ -45,6 +56,7 @@ export const useProjectStore = defineStore('project', () => {
         currentProject.value = null
         currentConfig.value = null
       }
+      clearApiKeyRequest(projectId)
     } finally {
       loading.value = false
     }
@@ -89,9 +101,12 @@ export const useProjectStore = defineStore('project', () => {
     projects,
     currentProject,
     currentConfig,
+    apiKeyRequiredProjectId,
     loading,
     loadProjects,
     selectProject,
+    requestApiKey,
+    clearApiKeyRequest,
     createProject,
     deleteProject,
     saveConfig,
