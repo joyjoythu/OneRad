@@ -20,16 +20,14 @@ from app.actions import execute_plan
 from app.code_runner import execute_script_if_safe
 from app.feature import FeatureAgent
 from app.radiomics_analysis import run_radiomics_cv_analysis
+from app.constants import DEEPSEEK_MODEL
 
 logger = logging.getLogger(__name__)
 
 
 def _resolve_model(state: AgentState, config: Optional[RunnableConfig] = None) -> str:
-    """解析本次调用使用的模型名：config 覆盖优先于 state。"""
-    model = state["model"]
-    if config is not None:
-        model = config.get("configurable", {}).get("llm_model") or model
-    return model
+    """Return OneRad's fixed model, ignoring legacy checkpoint values."""
+    return DEEPSEEK_MODEL
 
 
 def _build_llm(

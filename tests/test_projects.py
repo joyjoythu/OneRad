@@ -125,7 +125,7 @@ def test_thread_meta_update_and_timestamp(tmp_path):
     meta = store.get_thread_meta("t1")
     assert meta is not None
     assert meta["title"] == "Chat"
-    assert meta["llm_model"] == "deepseek-v4-pro"
+    assert meta["llm_model"] == "deepseek-v4-flash"
     assert store.get_thread_meta("missing") is None
 
     old_updated_at = meta["updated_at"]

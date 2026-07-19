@@ -122,9 +122,10 @@ python main.py
 - `--host`：服务器绑定地址，默认 `0.0.0.0`。
 - `--port`：服务器端口，默认 `8000`。
 - `--base-url`：LLM API Base URL，默认 `https://api.deepseek.com/v1`。
-- `--model`：模型名称，默认 `deepseek-v4-pro`。
 - `--api-key`：LLM API Key；也可通过 `DEEPSEEK_API_KEY` 环境变量设置。
 - `--feature-csv`：已提取好的影像组学特征 CSV 路径，提供后直接进入 LASSO + Logistic Regression 分析。
+
+OneRad 固定使用 `deepseek-v4-flash`，前端、线程 API、命令行和 Docker 均不提供模型切换参数。旧数据库中的 `threads.llm_model` 列会继续保留以兼容已有数据，但运行时忽略旧值。
 
 ### 前端独立开发
 
@@ -171,4 +172,3 @@ npm run test:unit
 
 - `DEEPSEEK_API_KEY`：DeepSeek API Key。
 - `BASE_URL`：LLM API Base URL，默认 `https://api.deepseek.com/v1`。
-- `MODEL`：模型名称，默认 `deepseek-v4-pro`。

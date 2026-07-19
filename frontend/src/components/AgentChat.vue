@@ -172,14 +172,6 @@
                 <span>{{ contextUsageText }}</span>
               </span>
             </el-tooltip>
-            <el-select
-              v-model="selectedModel"
-              class="model-selector"
-              placeholder="模型（仅新会话）"
-            >
-              <el-option label="DeepSeek-V4 Flash" value="deepseek-v4-flash" />
-              <el-option label="DeepSeek-V4 Pro" value="deepseek-v4-pro" />
-            </el-select>
             <el-button
               v-if="agentStore.busy"
               circle
@@ -209,7 +201,6 @@ import { ref, computed, watchEffect, nextTick } from 'vue'
 import { Loading, CircleClose, Promotion, Odometer } from '@element-plus/icons-vue'
 import { useAgentStore } from '@/stores/agent'
 import { useProjectStore } from '@/stores/project'
-import { DEFAULT_AGENT_MODEL } from '@/api/agent'
 import type { AgentMessage } from '@/api/agent'
 import AgentAvatar from './AgentAvatar.vue'
 import ApprovalPanel from './ApprovalPanel.vue'
@@ -221,21 +212,12 @@ const agentStore = useAgentStore()
 const projectStore = useProjectStore()
 
 const emit = defineEmits<{
-  'update:model': [model: string]
   'send-message': [content: string]
   'stop': []
 }>()
 
-const props = defineProps<{
-  model?: string
-}>()
-
 const input = ref('')
 const messageContainer = ref<HTMLDivElement | null>(null)
-const selectedModel = computed({
-  get: () => props.model ?? DEFAULT_AGENT_MODEL,
-  set: (value) => emit('update:model', value),
-})
 
 /** 工具输出超过该阈值（行数）后自动折叠。 */
 const TOOL_COLLAPSE_LINE_THRESHOLD = 10
@@ -769,10 +751,6 @@ defineExpose({ clearInput })
   align-items: center;
   gap: 0.5rem;
   margin-left: auto;
-}
-
-.model-selector {
-  width: 150px;
 }
 
 .context-usage {

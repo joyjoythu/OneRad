@@ -31,7 +31,6 @@ vi.mock('@/api/agent', () => ({
   setAutoApprove: vi.fn(),
   updatePlan: vi.fn(),
   connectAgentEvents: vi.fn(),
-  DEFAULT_AGENT_MODEL: 'deepseek-v4-flash',
 }))
 
 vi.mock('@/api/filesystem', () => ({
@@ -73,7 +72,6 @@ const mockThread = (id: string, projectId: string): ThreadSummary => ({
   id,
   project_id: projectId,
   title: `Thread ${id}`,
-  llm_model: 'deepseek-v4-flash',
   created_at: '2026-01-01',
   updated_at: '2026-01-02',
 })
@@ -228,7 +226,6 @@ describe('ProjectTree', () => {
 
     expect(agentApi.resumeThread).toHaveBeenCalledWith('t1', expect.objectContaining({
       api_key: '',
-      llm_model: 'deepseek-v4-flash',
     }))
     const agentStore = useAgentStore()
     expect(agentStore.preferredThreadId).toBeNull()
@@ -388,7 +385,7 @@ describe('ProjectTree', () => {
     await flushPromises()
 
     expect(agentApi.createThread).toHaveBeenCalledWith('1', expect.objectContaining({
-      llm_model: 'deepseek-v4-flash',
+      api_key: '',
     }))
     expect(useProjectStore().currentProject?.id).toBe('1')
   })
@@ -431,7 +428,7 @@ describe('ProjectTree', () => {
     await flushPromises()
 
     expect(agentApi.createThread).toHaveBeenCalledWith('2', expect.objectContaining({
-      llm_model: 'deepseek-v4-flash',
+      api_key: '',
     }))
     expect(projectStore.currentProject?.id).toBe('2')
   })

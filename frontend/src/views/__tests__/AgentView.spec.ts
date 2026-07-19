@@ -147,7 +147,6 @@ describe('AgentView', () => {
       id: 't1',
       project_id: '2',
       title: 'Latest',
-      llm_model: 'deepseek-v4-flash',
       created_at: '2026-01-01',
       updated_at: '2026-01-03',
     }
@@ -167,7 +166,7 @@ describe('AgentView', () => {
     projectStore.selectProject('2')
     await flushPromises()
 
-    expect(loadSpy).toHaveBeenCalledWith('t2', expect.any(String), 'deepseek-v4-flash')
+    expect(loadSpy).toHaveBeenCalledWith('t2', expect.any(String))
     expect(agentStore.preferredThreadId).toBeNull()
   })
 
@@ -183,7 +182,6 @@ describe('AgentView', () => {
       id: 't1',
       project_id: '1',
       title: 'Open',
-      llm_model: 'deepseek-v4-flash',
       created_at: '2026-01-01',
       updated_at: '2026-01-02',
     }

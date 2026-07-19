@@ -68,7 +68,8 @@ describe('PathPickerDialog', () => {
     await flushPromises()
 
     expect(filesystemApi.listFilesystemEntries).toHaveBeenNthCalledWith(2, 'C:\\study')
-    expect(wrapper.emitted('select')?.at(-1)).toEqual(['C:\\study'])
+    const directorySelections = wrapper.emitted('select') ?? []
+    expect(directorySelections[directorySelections.length - 1]).toEqual(['C:\\study'])
   })
 
   it('only allows configured clinical file extensions', async () => {
@@ -101,7 +102,8 @@ describe('PathPickerDialog', () => {
     document.querySelector<HTMLElement>('[data-testid="path-picker-confirm"]')!.click()
     await flushPromises()
 
-    expect(wrapper.emitted('select')?.at(-1)).toEqual(['C:\\data\\clinical.xlsx'])
+    const fileSelections = wrapper.emitted('select') ?? []
+    expect(fileSelections[fileSelections.length - 1]).toEqual(['C:\\data\\clinical.xlsx'])
   })
 
   it('keeps the browser usable after a listing failure and retries', async () => {

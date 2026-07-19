@@ -9,6 +9,8 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
+from app.constants import DEEPSEEK_MODEL
+
 
 DEFAULT_DB_DIR = Path.home() / ".onerad"
 DEFAULT_DB_PATH = DEFAULT_DB_DIR / "projects.db"
@@ -254,7 +256,11 @@ class ProjectStore:
             conn.close()
 
     def record_thread(
-        self, project_id: str, thread_id: str, title: Optional[str], llm_model: str
+        self,
+        project_id: str,
+        thread_id: str,
+        title: Optional[str],
+        _legacy_model: Optional[str] = None,
     ) -> Dict[str, Any]:
         now = self._now()
         conn = self._connect()
@@ -264,7 +270,7 @@ class ProjectStore:
                 INSERT INTO threads (id, project_id, title, llm_model, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (thread_id, project_id, title or "", llm_model, now, now),
+                (thread_id, project_id, title or "", DEEPSEEK_MODEL, now, now),
             )
             conn.commit()
         finally:

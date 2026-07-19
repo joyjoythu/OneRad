@@ -109,7 +109,7 @@ def _build_llm(state: Dict[str, Any]) -> Optional["LLMClient"]:
     if not cfg.get("api_key"):
         return None
     from app.llm import LLMClient
-    return LLMClient(api_key=cfg["api_key"], base_url=cfg["base_url"], model=cfg["model"])
+    return LLMClient(api_key=cfg["api_key"], base_url=cfg["base_url"])
 
 
 class Orchestrator:
@@ -131,7 +131,6 @@ class Orchestrator:
         api_key: Optional[str] = None,
         base_url: str = "https://api.deepseek.com/v1",
         model: str = "logistic",
-        llm_model: str = "deepseek-v4-pro",
         max_lasso_features: int = 100,
         n_splits: int = 5,
     ):
@@ -157,7 +156,6 @@ class Orchestrator:
                 "llm": {
                     "api_key": api_key,
                     "base_url": base_url,
-                    "model": llm_model,
                 },
             },
             "discovery": None,

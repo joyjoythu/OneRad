@@ -23,6 +23,7 @@ from app.api.agent import (
     _ensure_message_timestamps,
     _stream_agent,
 )
+from app.constants import DEEPSEEK_MODEL
 
 
 @pytest.fixture
@@ -49,22 +50,24 @@ def _create_project(client):
     return response.json()
 
 
-def _create_thread(client, project_id, api_key="", llm_model="deepseek-v4-pro"):
+def _create_thread(client, project_id, api_key=""):
     response = client.post(
         f"/api/agent/threads?project_id={project_id}",
-        json={"api_key": api_key, "llm_model": llm_model},
+        json={"api_key": api_key},
     )
     assert response.status_code == 201, response.text
     return response.json()
 
 
-def test_create_thread(client):
+def test_create_thread(client, app):
     project = _create_project(client)
     data = _create_thread(client, project['id'])
     assert "thread_id" in data
+    meta = app.state.project_store.get_thread_meta(data["thread_id"])
+    assert meta["llm_model"] == DEEPSEEK_MODEL
 
 
-def test_create_thread_rejects_invalid_llm_model(client):
+def test_create_thread_rejects_llm_model_parameter(client):
     project = _create_project(client)
     response = client.post(
         f"/api/agent/threads?project_id={project['id']}",
@@ -103,6 +106,7 @@ def test_list_threads_by_project(client):
 
     assert len(threads_a) == 1
     assert threads_a[0]["id"] == t_a
+    assert "llm_model" not in threads_a[0]
     assert len(threads_b) == 1
     assert threads_b[0]["id"] == t_b
 
@@ -158,6 +162,7 @@ def test_rename_thread(client):
     )
     assert response.status_code == 200, response.text
     assert response.json()["thread"]["title"] == "Renamed chat"
+    assert "llm_model" not in response.json()["thread"]
 
 
 def test_resume_thread(client):
@@ -166,12 +171,23 @@ def test_resume_thread(client):
 
     response = client.post(
         f"/api/agent/threads/{thread_id}/resume",
-        json={"api_key": "key123", "llm_model": "deepseek-v4-flash"},
+        json={"api_key": "key123"},
     )
     assert response.status_code == 200, response.text
     data = response.json()
     assert data["thread_id"] == thread_id
     assert data["messages"] == []
+
+
+def test_resume_thread_rejects_llm_model_parameter(client):
+    project = _create_project(client)
+    thread_id = _create_thread(client, project["id"])["thread_id"]
+
+    response = client.post(
+        f"/api/agent/threads/{thread_id}/resume",
+        json={"api_key": "", "llm_model": "deepseek-v4-pro"},
+    )
+    assert response.status_code == 422, response.text
 
 
 def test_thread_title_set_on_first_message(client, app):
@@ -714,7 +730,7 @@ def test_create_thread_with_auto_approve(client, app):
     project = _create_project(client)
     response = client.post(
         f"/api/agent/threads?project_id={project['id']}",
-        json={"api_key": "", "llm_model": "deepseek-v4-pro", "auto_approve": True},
+        json={"api_key": "", "auto_approve": True},
     )
     assert response.status_code == 201, response.text
     thread_id = response.json()["thread_id"]
@@ -733,7 +749,7 @@ def test_resume_thread_updates_auto_approve(client, app):
 
     response = client.post(
         f"/api/agent/threads/{thread_id}/resume",
-        json={"api_key": "", "llm_model": "deepseek-v4-pro", "auto_approve": True},
+        json={"api_key": "", "auto_approve": True},
     )
     assert response.status_code == 200, response.text
     assert app.state.agent_auto_approve[thread_id] is True
@@ -772,6 +788,7 @@ def test_agent_config_carries_auto_approve(client, app):
     config = asyncio.run(_agent_config(thread_id, app))
 
     assert config["configurable"]["auto_approve"] is True
+    assert "llm_model" not in config["configurable"]
 
 
 def test_make_message_stamps_timestamp():

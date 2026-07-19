@@ -88,8 +88,7 @@ def test_get_run_returns_record(client, temp_db):
     data = response.json()
     assert data["id"] == run_id
     assert data["project_id"] == project["id"]
-    if "llm_model" in data:
-        assert data["llm_model"] == "deepseek-v4-pro"
+    assert "llm_model" not in data
 
     response = client.get("/api/runs/non-existent-id")
     assert response.status_code == 404
