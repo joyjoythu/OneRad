@@ -680,4 +680,48 @@ describe('AgentChat', () => {
 
     expect(wrapper.find('.reasoning-toggle').exists()).toBe(false)
   })
+
+  it('renders assistant message content as markdown', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.threadId = 'thread-1'
+    agentStore.messages = [
+      { role: 'assistant', content: '**加粗** 和 `代码`\n\n- 第一项\n- 第二项' },
+    ]
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    const content = wrapper.find('.message-content--markdown')
+    expect(content.exists()).toBe(true)
+    expect(content.find('strong').text()).toBe('加粗')
+    expect(content.find('code').text()).toBe('代码')
+    expect(content.findAll('li')).toHaveLength(2)
+  })
+
+  it('escapes raw html in assistant markdown and keeps user messages plain', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.threadId = 'thread-1'
+    agentStore.messages = [
+      { role: 'assistant', content: '<script>alert(1)</script>正常文本' },
+      { role: 'user', content: '**不按 markdown 渲染**' },
+    ]
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    const rendered = wrapper.find('.message-content--markdown')
+    expect(rendered.find('script').exists()).toBe(false)
+    expect(rendered.text()).toContain('正常文本')
+
+    const userRow = wrapper.find('.message-row--user')
+    expect(userRow.find('.message-content--markdown').exists()).toBe(false)
+    expect(userRow.find('strong').exists()).toBe(false)
+    expect(userRow.text()).toContain('**不按 markdown 渲染**')
+  })
 })

@@ -71,7 +71,12 @@
                 </el-tag>
               </div>
               <div
-                v-if="message.content"
+                v-if="message.content && message.role === 'assistant'"
+                class="message-content message-content--markdown"
+                v-html="renderMarkdown(message.content)"
+              />
+              <div
+                v-else-if="message.content"
                 class="message-content"
                 :class="{
                   'message-content--tool': message.role === 'tool',
@@ -209,6 +214,7 @@ import type { AgentMessage } from '@/api/agent'
 import AgentAvatar from './AgentAvatar.vue'
 import ApprovalPanel from './ApprovalPanel.vue'
 import { formatMessageTime } from '@/utils/time'
+import { renderMarkdown } from '@/utils/markdown'
 import { vAutoHideScrollbar } from '@/directives/autoHideScrollbar'
 
 const agentStore = useAgentStore()
@@ -537,6 +543,115 @@ defineExpose({ clearInput })
 .message-content--tool.is-collapsed {
   max-height: calc(1.5 * 0.875rem * 10);
   overflow: hidden;
+}
+
+/* Markdown 排版：只作用于助手消息的 v-html 渲染结果，
+   所有取值来自设计令牌。 */
+.message-content--markdown {
+  white-space: normal;
+}
+
+.message-content--markdown > :deep(*:first-child) {
+  margin-top: 0;
+}
+
+.message-content--markdown > :deep(*:last-child) {
+  margin-bottom: 0;
+}
+
+.message-content--markdown :deep(p) {
+  margin: 0.5em 0;
+}
+
+.message-content--markdown :deep(h1),
+.message-content--markdown :deep(h2),
+.message-content--markdown :deep(h3),
+.message-content--markdown :deep(h4) {
+  margin: 0.75em 0 0.375em;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.message-content--markdown :deep(h1) {
+  font-size: 1.25em;
+}
+
+.message-content--markdown :deep(h2) {
+  font-size: 1.125em;
+}
+
+.message-content--markdown :deep(h3),
+.message-content--markdown :deep(h4) {
+  font-size: 1em;
+}
+
+.message-content--markdown :deep(ul),
+.message-content--markdown :deep(ol) {
+  margin: 0.5em 0;
+  padding-left: 1.375em;
+}
+
+.message-content--markdown :deep(li + li) {
+  margin-top: 0.25em;
+}
+
+.message-content--markdown :deep(code) {
+  padding: 0.1em 0.35em;
+  border-radius: var(--app-radius-sm);
+  background-color: var(--app-bg-hover);
+  font-family: 'Menlo', 'Monaco', 'Consolas', 'Courier New', monospace;
+  font-size: 0.875em;
+}
+
+.message-content--markdown :deep(pre) {
+  margin: 0.5em 0;
+  padding: 0.75rem 1rem;
+  border-radius: var(--app-radius-md);
+  background-color: var(--app-bg-hover);
+  overflow-x: auto;
+}
+
+.message-content--markdown :deep(pre code) {
+  padding: 0;
+  background-color: transparent;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.message-content--markdown :deep(blockquote) {
+  margin: 0.5em 0;
+  padding-left: 0.75em;
+  border-left: 3px solid var(--app-border-strong);
+  color: var(--app-text-secondary);
+}
+
+.message-content--markdown :deep(table) {
+  margin: 0.5em 0;
+  border-collapse: collapse;
+  font-size: 0.875em;
+}
+
+.message-content--markdown :deep(th),
+.message-content--markdown :deep(td) {
+  padding: 0.375em 0.75em;
+  border: 1px solid var(--app-border-strong);
+}
+
+.message-content--markdown :deep(th) {
+  background-color: var(--app-bg-hover);
+  font-weight: 600;
+}
+
+.message-content--markdown :deep(a) {
+  color: var(--app-text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.message-content--markdown :deep(hr) {
+  margin: 0.75em 0;
+  border: none;
+  border-top: 1px solid var(--app-border-strong);
 }
 
 .tool-toggle {
