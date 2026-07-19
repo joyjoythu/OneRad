@@ -41,6 +41,7 @@ RUN sed -i '/^pyradiomics==/d' requirements.lock && \
 COPY main.py .
 COPY app/ ./app/
 COPY config/ ./config/
+COPY skills/ ./skills/
 
 # Copy built frontend artifacts from the build stage
 COPY --from=frontend-builder /app/dist ./frontend/dist

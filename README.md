@@ -127,6 +127,19 @@ python main.py
 
 OneRad 固定使用 `deepseek-v4-flash`，前端、线程 API、命令行和 Docker 均不提供模型切换参数。旧数据库中的 `threads.llm_model` 列会继续保留以兼容已有数据，但运行时忽略旧值。
 
+### 运行时 Markdown Skills
+
+模型行为提示词位于仓库根目录的 `skills/<name>/SKILL.md`：
+
+- `agent-core` 与 `radiomics-workflow`：主 Agent 的通用行为和影像组学流程。
+- `file-operations`：文件整理计划。
+- `clinical-columns`：临床表列识别。
+- `filename-id`：文件名患者 ID 规则推断。
+- `report-writing`：报告方法学润色。
+- `thread-title`：对话标题生成。
+
+后端在每次对应模型调用前以 UTF-8 重新读取 Markdown，不做缓存；保存 skill 后，下一次调用即使用新内容，无需重启服务。skill 缺失、为空或不是有效 UTF-8 时会返回包含具体 `SKILL.md` 路径的错误。工具参数 schema、沙箱、安全校验和审批流程仍由 Python 代码强制执行，不能通过修改 Markdown 绕过。Docker 镜像也会复制完整的 `skills/` 目录。
+
 ### 前端独立开发
 
 如需热重载开发前端，可在另一个终端执行：
