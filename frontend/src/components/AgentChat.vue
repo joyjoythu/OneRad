@@ -843,7 +843,8 @@ defineExpose({ clearInput })
 }
 
 .message-row--tool {
-  justify-content: center;
+  /* 与助手消息一致靠左：工具结果不再随内容宽度居中漂移 */
+  justify-content: flex-start;
 }
 
 .message-main {
