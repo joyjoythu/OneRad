@@ -210,6 +210,7 @@
             <el-input
               v-model="form.path"
               class="path-input-row__field"
+              data-testid="project-path-input"
               placeholder="相对路径（如 demo）或本机绝对路径（如 D:\project）"
             />
             <el-button
@@ -242,7 +243,7 @@
       :model-value="form.path"
       mode="directory"
       title="选择项目目录"
-      @select="form.path = $event"
+      @select="handleProjectPathSelected"
     />
   </div>
 </template>
@@ -594,6 +595,15 @@ function resetForm(): void {
   formRef.value?.resetFields()
   pathPickerVisible.value = false
 }
+
+function handleProjectPathSelected(path: string): void {
+  form.path = path
+  // 保留原项目目录选择器的便利行为：名称为空时使用文件夹名。
+  if (!form.name.trim()) {
+    form.name =
+      path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? ''
+  }
+}
 </script>
 
 <style scoped>
@@ -655,6 +665,17 @@ function resetForm(): void {
 
 .tree-skeleton {
   padding: 1rem;
+}
+
+/* 创建项目对话框：路径输入与「选择文件夹」按钮同行 */
+.path-input-row {
+  display: flex;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.path-input-row .el-input {
+  flex: 1;
 }
 
 .project-tree-items {

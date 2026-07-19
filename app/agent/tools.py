@@ -14,7 +14,7 @@ from app.radiomics_discovery import discover_pairs
 from app.skills import load_skill
 
 
-def build_tools(project_path: str, llm):
+def build_tools(project_path: str, llm, allow_subagent: bool = False):
     sandbox = Sandbox(project_path)
     tools: Dict[str, Any] = {}
 
@@ -152,6 +152,17 @@ def build_tools(project_path: str, llm):
     tools["discover_radiomics_pairs"] = discover_radiomics_pairs
     tools["extract_radiomics_features"] = extract_radiomics_features
     tools["run_radiomics_analysis"] = run_radiomics_analysis
+
+    if allow_subagent:
+        @tool
+        def dispatch_subagent(task: str) -> str:
+            """把一个独立任务分派给子 agent 执行。子 agent 在与本对话隔离的上下文中
+            自主运行（可使用文件探查、Python 脚本、影像组学等全部工具，无需逐步确认），
+            结束后只把最终结论带回来。适合耗时的探查/分析任务：中间过程不占用本对话上下文。
+            task 应是完整的任务描述（包含路径、目标、期望输出），执行前需要用户确认。"""
+            return json.dumps({"_pending_tool": "dispatch_subagent", "task": task})
+
+        tools["dispatch_subagent"] = dispatch_subagent
     return tools
 
 

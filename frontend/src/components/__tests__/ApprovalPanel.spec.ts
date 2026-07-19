@@ -177,4 +177,106 @@ describe('ApprovalPanel', () => {
     expect(wrapper.text()).toContain('匹配 95 例')
     expect(wrapper.text()).toContain('确认分析')
   })
+
+  it('expands the custom instruction input when clicking the other button', async () => {
+    const store = useAgentStore()
+    store.interrupt = 'system_command'
+    store.pendingCommand = mockCommand
+
+    const wrapper = setupWrapper()
+    expect(wrapper.find('.approval-other').exists()).toBe(false)
+
+    const otherBtn = wrapper
+      .findAll('button')
+      .find((b) => b.text().trim() === '其他')
+    await otherBtn!.trigger('click')
+    expect(wrapper.find('.approval-other').exists()).toBe(true)
+    expect(wrapper.find('textarea').exists()).toBe(true)
+
+    // 再次点击收起
+    await otherBtn!.trigger('click')
+    expect(wrapper.find('.approval-other').exists()).toBe(false)
+  })
+
+  it('disables the other submit button for empty or whitespace input', async () => {
+    const store = useAgentStore()
+    store.interrupt = 'system_command'
+    store.pendingCommand = mockCommand
+
+    const wrapper = setupWrapper()
+    const otherBtn = wrapper
+      .findAll('button')
+      .find((b) => b.text().trim() === '其他')
+    await otherBtn!.trigger('click')
+
+    const submitBtn = () =>
+      wrapper.findAll('button').find((b) => b.text().trim() === '提交')!
+    expect(submitBtn().attributes('disabled')).toBeDefined()
+
+    await wrapper.find('textarea').setValue('   ')
+    expect(submitBtn().attributes('disabled')).toBeDefined()
+
+    await wrapper.find('textarea').setValue('换个目录')
+    expect(submitBtn().attributes('disabled')).toBeUndefined()
+  })
+
+  it('submits the custom instruction via store.other', async () => {
+    const store = useAgentStore()
+    store.interrupt = 'system_command'
+    store.pendingCommand = mockCommand
+    const otherSpy = vi.spyOn(store, 'other').mockResolvedValue(undefined)
+
+    const wrapper = setupWrapper()
+    const otherBtn = wrapper
+      .findAll('button')
+      .find((b) => b.text().trim() === '其他')
+    await otherBtn!.trigger('click')
+
+    await wrapper.find('textarea').setValue('  改用 bash 执行  ')
+    const submitBtn = wrapper
+      .findAll('button')
+      .find((b) => b.text().trim() === '提交')
+    await submitBtn!.trigger('click')
+
+    expect(otherSpy).toHaveBeenCalledWith('改用 bash 执行')
+    // 提交后收起输入区
+    expect(wrapper.find('.approval-other').exists()).toBe(false)
+  })
+})
+
+
+describe('ApprovalPanel subagent_dispatch', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
+  it('shows the task text and confirm/cancel buttons for subagent_dispatch', async () => {
+    const store = useAgentStore()
+    store.interrupt = 'subagent_dispatch'
+    store.pendingSubagent = {
+      tool_call_id: 'tc-sub-1',
+      task: '统计项目根目录下的文件数量',
+    }
+    const confirmSpy = vi.spyOn(store, 'confirm').mockResolvedValue(undefined)
+
+    const wrapper = setupWrapper()
+
+    expect(wrapper.text()).toContain('待确认：分派子任务')
+    expect(wrapper.text()).toContain('统计项目根目录下的文件数量')
+
+    const confirmBtn = wrapper
+      .findAll('button')
+      .find((b) => b.text().includes('确认分派'))
+    await confirmBtn!.trigger('click')
+    expect(confirmSpy).toHaveBeenCalled()
+  })
+
+  it('renders nothing when pending_subagent is missing', () => {
+    const store = useAgentStore()
+    store.interrupt = 'subagent_dispatch'
+    store.pendingSubagent = null
+
+    const wrapper = setupWrapper()
+    expect(wrapper.find('.approval-panel').exists()).toBe(false)
+  })
 })

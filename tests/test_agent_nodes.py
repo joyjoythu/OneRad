@@ -1,11 +1,20 @@
+import json
 import os
 from types import SimpleNamespace
 from unittest.mock import patch, MagicMock
 
 import pytest
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
-from app.agent.nodes import _build_llm, _resolve_api_key, auto_confirm, call_llm, route_after_process
+from app.agent.nodes import (
+    _build_llm,
+    _resolve_api_key,
+    auto_confirm,
+    call_llm,
+    execute_confirmed,
+    human_review,
+    route_after_process,
+)
 from app.agent.state import AgentState
 
 
@@ -277,6 +286,87 @@ def test_route_after_process_returns_auto_confirm_when_enabled():
 
 def test_auto_confirm_marks_confirmed():
     assert auto_confirm({}) == {"confirmed": True}
+
+
+def test_human_review_other_passes_instruction():
+    """resume {"action": "other", "instruction": ...} 时按取消处理并传递指令。"""
+    state = _make_state()
+    state.update({
+        "interrupt_type": "system_command",
+        "pending_command": {"tool_call_id": "tc1", "command": "ls"},
+    })
+
+    with patch(
+        "app.agent.nodes.interrupt",
+        return_value={"action": "other", "instruction": "改成只列出 txt 文件"},
+    ):
+        updates = human_review(state)
+
+    assert updates["confirmed"] is False
+    assert updates["other_instruction"] == "改成只列出 txt 文件"
+
+
+def test_human_review_confirm_clears_other_instruction():
+    """非 other 动作不应携带替代指令。"""
+    state = _make_state()
+    state.update({
+        "interrupt_type": "system_command",
+        "pending_command": {"tool_call_id": "tc1", "command": "ls"},
+    })
+
+    with patch("app.agent.nodes.interrupt", return_value={"action": "cancel"}):
+        updates = human_review(state)
+
+    assert updates["confirmed"] is False
+    assert updates["other_instruction"] is None
+
+
+def test_execute_confirmed_other_cancels_and_appends_instruction():
+    """other 走取消路径：补取消 ToolMessage、追加 HumanMessage、清空中断状态。"""
+    state = _make_state()
+    state.update({
+        "interrupt_type": "system_command",
+        "confirmed": False,
+        "other_instruction": "改成只列出 txt 文件",
+        "pending_command": {"tool_call_id": "tc1", "command": "ls"},
+    })
+
+    result = execute_confirmed(state)
+
+    msgs = result["messages"]
+    assert len(msgs) == 2
+    assert isinstance(msgs[0], ToolMessage)
+    assert msgs[0].tool_call_id == "tc1"
+    content = json.loads(msgs[0].content)
+    assert content["cancelled"] is True
+    assert content["reason"] == "用户取消了操作并提供了替代指令"
+    assert isinstance(msgs[1], HumanMessage)
+    assert msgs[1].content == "改成只列出 txt 文件"
+
+    assert result["interrupt_type"] is None
+    assert result["pending_command"] is None
+    assert result["confirmed"] is None
+    assert result["other_instruction"] is None
+
+
+def test_execute_confirmed_cancel_without_instruction_keeps_plain_reason():
+    """普通取消（无替代指令）保持原有 reason，且不追加 HumanMessage。"""
+    state = _make_state()
+    state.update({
+        "interrupt_type": "system_command",
+        "confirmed": False,
+        "other_instruction": None,
+        "pending_command": {"tool_call_id": "tc1", "command": "ls"},
+    })
+
+    result = execute_confirmed(state)
+
+    msgs = result["messages"]
+    assert len(msgs) == 1
+    assert isinstance(msgs[0], ToolMessage)
+    content = json.loads(msgs[0].content)
+    assert content["cancelled"] is True
+    assert content["reason"] == "用户取消了操作"
 
 
 

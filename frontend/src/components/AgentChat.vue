@@ -133,6 +133,58 @@
             </div>
           </div>
         </div>
+        <div
+          v-if="showSubagentPanel"
+          class="message-row message-row--assistant"
+        >
+          <AgentAvatar class="message-avatar" />
+          <div class="message-main message-main--assistant">
+            <div class="message-bubble message-bubble--assistant subagent-panel">
+              <div class="subagent-header">
+                <el-icon
+                  v-if="subagentRunning"
+                  class="is-loading"
+                ><Loading /></el-icon>
+                <span class="subagent-title">子任务：{{ agentStore.subagentStatus?.task }}</span>
+                <el-tag
+                  size="small"
+                  :type="subagentTagType"
+                  effect="plain"
+                >
+                  {{ subagentStatusLabel }}
+                </el-tag>
+                <el-button
+                  link
+                  size="small"
+                  class="subagent-toggle"
+                  :aria-label="subagentExpanded ? '收起子任务过程' : '展开子任务过程'"
+                  @click="subagentExpanded = !subagentExpanded"
+                >
+                  {{ subagentExpanded ? '收起' : '展开' }}过程
+                </el-button>
+              </div>
+              <div
+                v-show="subagentExpanded"
+                class="subagent-entries"
+              >
+                <div
+                  v-for="(entry, i) in agentStore.subagentStatus?.entries ?? []"
+                  :key="i"
+                  class="subagent-entry"
+                  :class="`subagent-entry--${entry.role}`"
+                >
+                  {{ entry.text }}
+                </div>
+                <div
+                  v-if="!(agentStore.subagentStatus?.entries.length)"
+                  class="subagent-entry subagent-entry--muted"
+                >
+                  等待子任务输出…
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <ApprovalPanel />
@@ -149,14 +201,20 @@
       </div>
 
       <div class="input-container">
-        <el-input
+        <el-mention
+          ref="mentionRef"
           v-model="input"
           type="textarea"
           :rows="3"
           resize="none"
+          :options="mentionOptions"
+          :loading="mentionLoading"
+          :filter-option="false"
+          whole
           :placeholder="inputPlaceholder"
           aria-label="消息输入"
           :disabled="inputDisabled"
+          @search="handleMentionSearch"
           @keydown="handleKeydown"
         />
         <div class="input-toolbar">
@@ -239,7 +297,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watchEffect, nextTick } from 'vue'
+import { ref, computed, watch, watchEffect, nextTick } from 'vue'
 import {
   ArrowUp,
   CircleClose,
@@ -259,6 +317,7 @@ import { ElMessageBox } from 'element-plus'
 import { useAgentStore } from '@/stores/agent'
 import { useProjectStore } from '@/stores/project'
 import type { AgentMessage } from '@/api/agent'
+import { listProjectEntries } from '@/api/projects'
 import AgentAvatar from './AgentAvatar.vue'
 import ApprovalPanel from './ApprovalPanel.vue'
 import { formatMessageTime } from '@/utils/time'
@@ -275,6 +334,39 @@ const emit = defineEmits<{
 }>()
 
 const input = ref('')
+const mentionRef = ref<{ dropdownVisible?: boolean } | null>(null)
+
+// @ 文件引用：el-mention 触发 search 后防抖查询项目文件列表，
+// 选项已由后端按关键词过滤，故本地 filter-option 关闭。
+const mentionOptions = ref<{ value: string }[]>([])
+const mentionLoading = ref(false)
+let mentionTimer: ReturnType<typeof setTimeout> | undefined
+// 响应乱序保护：只有最后一次查询允许写回选项。
+let mentionSeq = 0
+
+function handleMentionSearch(pattern: string): void {
+  const projectId = projectStore.currentProject?.id
+  if (!projectId) {
+    mentionOptions.value = []
+    return
+  }
+  clearTimeout(mentionTimer)
+  mentionTimer = setTimeout(async () => {
+    const seq = ++mentionSeq
+    mentionLoading.value = true
+    try {
+      const entries = await listProjectEntries(projectId, pattern)
+      if (seq === mentionSeq) {
+        mentionOptions.value = entries.map((e) => ({ value: e }))
+      }
+    } catch {
+      // 索引失败不阻断输入：仅清空候选，错误已由 axios 拦截器统一提示。
+      if (seq === mentionSeq) mentionOptions.value = []
+    } finally {
+      if (seq === mentionSeq) mentionLoading.value = false
+    }
+  }, 200)
+}
 const messageContainer = ref<HTMLDivElement | null>(null)
 const currentConversationTitle = computed(() => {
   const title = agentStore.currentThread?.title?.trim()
@@ -365,6 +457,53 @@ const showThinkingStream = computed(() => {
     agentStore.busy && !!thinking && !thinking.done && thinking.text.length > 0
   )
 })
+
+// 子任务面板：仅在父 agent 运行期间展示（结束后结论在历史消息的
+// 工具结果里，面板随之收起）。新分派到达时自动展开过程列表。
+const subagentExpanded = ref(true)
+
+const showSubagentPanel = computed(() => {
+  return agentStore.busy && agentStore.subagentStatus !== null
+})
+
+const subagentRunning = computed(() => {
+  return agentStore.subagentStatus?.status === 'running'
+})
+
+const subagentStatusLabel = computed(() => {
+  switch (agentStore.subagentStatus?.status) {
+    case 'running':
+      return '运行中'
+    case 'done':
+      return '完成'
+    case 'failed':
+      return '失败'
+    case 'cancelled':
+      return '已停止'
+    default:
+      return ''
+  }
+})
+
+const subagentTagType = computed(() => {
+  switch (agentStore.subagentStatus?.status) {
+    case 'done':
+      return 'success' as const
+    case 'failed':
+      return 'danger' as const
+    case 'cancelled':
+      return 'warning' as const
+    default:
+      return 'info' as const
+  }
+})
+
+watch(
+  () => agentStore.subagentStatus?.task,
+  (task) => {
+    if (task) subagentExpanded.value = true
+  }
+)
 
 function shouldCollapseTool(content?: string): boolean {
   if (!content) return false
@@ -535,6 +674,23 @@ function scrollToBottom(): void {
 
 function handleKeydown(event: KeyboardEvent): void {
   if (event.isComposing) return
+  if (mentionRef.value?.dropdownVisible) {
+    // 补全弹层打开时：Enter 由 el-mention 自己用于选中候选（不能发送）；
+    // Tab 同样映射为选中。el-mention 未暴露选中方法，向其 Enter
+    // 处理路径转发一个合成 Enter 事件完成选中。
+    if (event.key === 'Tab') {
+      event.preventDefault()
+      ;(event.target as HTMLElement | null)?.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'Enter',
+          bubbles: true,
+          cancelable: true,
+        })
+      )
+    }
+    return
+  }
+  if (event.defaultPrevented) return
   if (event.key === 'Enter' && !event.shiftKey) {
     event.preventDefault()
     handleSend()
@@ -863,6 +1019,60 @@ defineExpose({ clearInput })
   font-size: 0.875rem;
   border-left: 2px solid var(--app-border);
   padding-left: 0.5rem;
+}
+
+.subagent-panel {
+  width: 100%;
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-md);
+  padding: 0.5rem 0.75rem;
+}
+
+.subagent-header {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  color: var(--app-text-secondary);
+  font-size: 0.875rem;
+}
+
+.subagent-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subagent-toggle {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.subagent-entries {
+  margin-top: 0.375rem;
+  border-left: 2px solid var(--app-border);
+  padding-left: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  max-height: 16rem;
+  overflow-y: auto;
+}
+
+.subagent-entry {
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--app-text-secondary);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.subagent-entry--tool {
+  color: var(--app-text-muted);
+}
+
+.subagent-entry--muted {
+  color: var(--app-text-muted);
+  font-style: italic;
 }
 
 .chat-status {

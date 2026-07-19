@@ -46,6 +46,10 @@ vi.mock('@/api/settings', () => ({
   updateSettings: vi.fn(),
 }))
 
+vi.mock('@/api/fs', () => ({
+  listDirectory: vi.fn(),
+}))
+
 vi.mock('vue-router', () => ({
   useRoute: () => ({ path: '/' }),
   useRouter: () => ({ push: routerPush }),
@@ -393,6 +397,8 @@ describe('ProjectTree', () => {
 
     const pathInput = wrapper.find<HTMLInputElement>('input[placeholder*="本机绝对路径"]')
     expect(pathInput.element.value).toBe('C:\\Users\\researcher')
+    const nameInput = wrapper.find('input[placeholder="请输入项目名称"]')
+    expect((nameInput.element as HTMLInputElement).value).toBe('researcher')
   })
 
   it('creates a thread in the clicked project via its plus action', async () => {
