@@ -1,41 +1,18 @@
 import json
 import re
 import os
-import string
 from typing import Optional, Dict, Any, List, Tuple
 
 from openai import OpenAI
 
-
-ID_INFERENCE_TEMPLATE = """你是一个医学影像数据命名规范分析专家。
-请根据提供的文件名样本，推断患者ID的提取规则，返回一个Python正则表达式字符串。
-要求：
-1. 正则只提取患者ID部分，不包含模态、序列、mask等后缀
-2. 尽可能通用，能覆盖所有样本
-3. 只输出纯JSON格式：{{"pattern": "正则表达式字符串", "explanation": "简要说明"}}
-
-文件名样本：
-{samples}
-"""
+from app.constants import DEEPSEEK_MODEL
+from app.skills import load_skill
 
 
 def build_id_inference_prompt(filenames: List[str]) -> Tuple[str, str]:
-    system = "你是一个医学影像文件名分析专家。只返回 JSON。"
-    user = ID_INFERENCE_TEMPLATE.format(samples="\n".join(filenames))
+    system = load_skill("filename-id")
+    user = "文件名样本（JSON）：\n" + json.dumps(filenames, ensure_ascii=False)
     return system, user
-
-
-COLUMN_IDENTIFICATION_TEMPLATE = """请分析以下临床数据表格，识别 ID 列、二分类标签列和临床特征列。
-返回纯 JSON：{{"id_col": "...", "label_col": "...", "feature_cols": ["..."], "reasoning": "..."}}
-
-表格信息：
-- 行数: {n_rows}
-- 列数: {n_columns}
-- 任务描述: {task_hint}
-
-列详情：
-{columns}
-"""
 
 
 def _format_columns(columns: List[Dict]) -> str:
@@ -51,35 +28,22 @@ def _format_columns(columns: List[Dict]) -> str:
 
 
 def build_column_identification_prompt(context: Dict[str, Any]) -> Tuple[str, str]:
-    system = (
-        "You are a clinical data analyst for radiomics research. "
-        "Return ONLY a JSON object with keys: id_col, label_col, feature_cols, reasoning. "
-        "Label_col must be a binary 0/1 outcome. feature_cols must not include id_col or label_col."
-    )
-    user = COLUMN_IDENTIFICATION_TEMPLATE.format(
-        n_rows=context["n_rows"],
-        n_columns=context["n_columns"],
-        task_hint=context["task_hint"],
-        columns=_format_columns(context["columns"]),
+    system = load_skill("clinical-columns")
+    user = (
+        "表格信息：\n"
+        f"- 行数: {context['n_rows']}\n"
+        f"- 列数: {context['n_columns']}\n"
+        f"- 任务描述: {context['task_hint']}\n\n"
+        "列详情：\n"
+        f"{_format_columns(context['columns'])}"
     )
     return system, user
 
 
-THREAD_TITLE_TEMPLATE = """请为以下用户消息生成一个简短的对话标题。
-要求：
-1. 不超过 15 个字
-2. 概括用户的核心意图
-3. 只输出标题本身：不要引号、不要标点结尾、不要解释
-
-用户消息：
-{content}
-"""
-
-
 def build_thread_title_prompt(content: str) -> Tuple[str, str]:
     """构造会话标题生成 prompt；消息截断到 500 字避免浪费 token。"""
-    system = "你是一个对话标题生成器。只输出标题文本。"
-    return system, THREAD_TITLE_TEMPLATE.format(content=content[:500])
+    system = load_skill("thread-title")
+    return system, f"用户消息：\n{content[:500]}"
 
 
 class LLMClient:
@@ -87,11 +51,10 @@ class LLMClient:
         self,
         api_key: Optional[str] = None,
         base_url: str = "https://api.deepseek.com/v1",
-        model: str = "deepseek-v4-pro",
     ):
         self.api_key = api_key or os.getenv("DEEPSEEK_API_KEY")
         self.base_url = base_url
-        self.model = model
+        self.model = DEEPSEEK_MODEL
         self.client = None
         if self.api_key:
             self.client = OpenAI(api_key=self.api_key, base_url=self.base_url)

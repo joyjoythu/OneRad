@@ -41,6 +41,7 @@ RUN sed -i '/^pyradiomics==/d' requirements.lock && \
 COPY main.py .
 COPY app/ ./app/
 COPY config/ ./config/
+COPY skills/ ./skills/
 
 # Copy built frontend artifacts from the build stage
 COPY --from=frontend-builder /app/dist ./frontend/dist
@@ -59,4 +60,4 @@ USER appuser
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "exec python main.py --host 0.0.0.0 --port 8000 --base-url ${BASE_URL:-https://api.deepseek.com/v1} --model ${MODEL:-deepseek-v4-pro}"]
+CMD ["sh", "-c", "exec python main.py --host 0.0.0.0 --port 8000 --base-url ${BASE_URL:-https://api.deepseek.com/v1}"]

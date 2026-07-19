@@ -2,7 +2,6 @@ import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import { ElMessage } from 'element-plus'
 import * as api from '@/api/agent'
-import { DEFAULT_AGENT_MODEL } from '@/api/agent'
 import type {
   AgentState,
   AgentMessage,
@@ -45,8 +44,6 @@ export const useAgentStore = defineStore('agent', () => {
   // 期望打开的对话 id：跨项目点击对话时由侧边栏设置，
   // AgentView 的项目切换 watcher 消费后完成加载（保证只加载一次）。
   const preferredThreadId = ref<string | null>(null)
-  // 对话模型选择从 AgentView 提升到 store，侧边栏切换对话时同步更新。
-  const selectedModel = ref(DEFAULT_AGENT_MODEL)
   const currentThread = ref<ThreadSummary | null>(null)
   // 智能体是否正在处理中（流式运行期间为 true），用于禁用输入并展示状态。
   const busy = ref(false)
@@ -217,11 +214,7 @@ export const useAgentStore = defineStore('agent', () => {
     contextWindow.value = null
   }
 
-  async function ensureThread(
-    projectId: string,
-    apiKey: string,
-    llmModel: string
-  ): Promise<string> {
+  async function ensureThread(projectId: string): Promise<string> {
     if (threadId.value) {
       if (!currentThread.value) {
         currentThread.value =
@@ -229,7 +222,6 @@ export const useAgentStore = defineStore('agent', () => {
             id: threadId.value,
             project_id: projectId,
             title: '',
-            llm_model: llmModel,
             created_at: '',
             updated_at: '',
           }
@@ -237,8 +229,6 @@ export const useAgentStore = defineStore('agent', () => {
       return threadId.value
     }
     const { thread_id } = await api.createThread(projectId, {
-      api_key: apiKey,
-      llm_model: llmModel,
       auto_approve: autoApprove.value,
     })
     threadId.value = thread_id
@@ -246,7 +236,6 @@ export const useAgentStore = defineStore('agent', () => {
       id: thread_id,
       project_id: projectId,
       title: '',
-      llm_model: llmModel,
       created_at: '',
       updated_at: '',
     }
@@ -282,17 +271,11 @@ export const useAgentStore = defineStore('agent', () => {
     delete threadsByProject.value[projectId]
   }
 
-  async function loadThread(
-    threadIdToLoad: string,
-    apiKey: string,
-    llmModel: string
-  ): Promise<void> {
+  async function loadThread(threadIdToLoad: string): Promise<void> {
     resetInternalState()
     // 点进对话即视为已读：清除完成提示点。
     finishedThreadIds.value.delete(threadIdToLoad)
     const state = await api.resumeThread(threadIdToLoad, {
-      api_key: apiKey,
-      llm_model: llmModel,
       auto_approve: autoApprove.value,
     })
     threadId.value = state.thread_id
@@ -304,7 +287,6 @@ export const useAgentStore = defineStore('agent', () => {
         id: threadIdToLoad,
         project_id: '',
         title: '',
-        llm_model: llmModel,
         created_at: '',
         updated_at: '',
       }
@@ -312,15 +294,9 @@ export const useAgentStore = defineStore('agent', () => {
     connect()
   }
 
-  async function createThread(
-    projectId: string,
-    apiKey: string,
-    llmModel: string
-  ): Promise<string> {
+  async function createThread(projectId: string): Promise<string> {
     resetInternalState()
     const { thread_id } = await api.createThread(projectId, {
-      api_key: apiKey,
-      llm_model: llmModel,
       auto_approve: autoApprove.value,
     })
     threadId.value = thread_id
@@ -328,7 +304,6 @@ export const useAgentStore = defineStore('agent', () => {
       id: thread_id,
       project_id: projectId,
       title: '',
-      llm_model: llmModel,
       created_at: '',
       updated_at: '',
     }
@@ -557,7 +532,6 @@ export const useAgentStore = defineStore('agent', () => {
     threadsByProject,
     threadsProjectId,
     preferredThreadId,
-    selectedModel,
     currentThread,
     busy,
     runningThreadIds,

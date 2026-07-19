@@ -6,7 +6,13 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage, convert_to_openai_messages
+from langchain_core.messages import (
+    AIMessage,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+    convert_to_openai_messages,
+)
 from langchain_core.runnables import RunnableConfig
 from langchain_core.utils.function_calling import convert_to_openai_tool
 from langchain_openai import ChatOpenAI
@@ -22,16 +28,15 @@ from app.actions import execute_plan
 from app.code_runner import execute_script_if_safe
 from app.feature import FeatureAgent
 from app.radiomics_analysis import run_radiomics_cv_analysis
+from app.constants import DEEPSEEK_MODEL
+from app.skills import load_skill_bundle
 
 logger = logging.getLogger(__name__)
 
 
 def _resolve_model(state: AgentState, config: Optional[RunnableConfig] = None) -> str:
-    """解析本次调用使用的模型名：config 覆盖优先于 state。"""
-    model = state["model"]
-    if config is not None:
-        model = config.get("configurable", {}).get("llm_model") or model
-    return model
+    """Return OneRad's fixed model, ignoring legacy checkpoint values."""
+    return DEEPSEEK_MODEL
 
 
 def _build_llm(
@@ -92,7 +97,12 @@ def call_llm(state: AgentState, config: Optional[RunnableConfig] = None) -> dict
         api_key=api_key,
         base_url=state["base_url"],
         model=_resolve_model(state, config),
-        messages=state["messages"],
+        messages=[
+            SystemMessage(
+                content=load_skill_bundle(("agent-core", "radiomics-workflow"))
+            ),
+            *state["messages"],
+        ],
         tools=list(tools.values()),
         thread_id=thread_id,
     )

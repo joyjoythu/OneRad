@@ -1,22 +1,14 @@
 <template>
   <div class="project-tree">
     <div class="project-tree-top">
-      <button class="new-task-btn" data-testid="new-task" @click="handleNewTask">
+      <button class="new-project-btn" data-testid="new-project" @click="dialogVisible = true">
         <el-icon><Plus /></el-icon>
-        <span>新建任务</span>
+        <span>新建项目</span>
       </button>
     </div>
 
     <div class="project-tree-group">
       <span>项目</span>
-      <el-button
-        link
-        size="small"
-        :icon="FolderAdd"
-        data-testid="new-project"
-        title="新建项目"
-        @click="dialogVisible = true"
-      />
     </div>
 
     <el-skeleton
@@ -28,7 +20,7 @@
     <el-empty v-else-if="!projectStore.projects.length" description="暂无项目" :image-size="60" />
 
     <ul v-else v-auto-hide-scrollbar class="project-tree-items auto-hide-scrollbar">
-      <li v-for="project in projectStore.projects" :key="project.id">
+      <li v-for="project in sortedProjects" :key="project.id">
         <div
           class="project-row"
           :class="{ 'project-row--active': projectStore.currentProject?.id === project.id }"
@@ -43,6 +35,14 @@
             <Folder v-else />
           </el-icon>
           <span class="row-label">{{ project.name }}</span>
+          <el-icon
+            v-if="isProjectPinned(project.id)"
+            class="pin-indicator"
+            title="已置顶"
+            data-testid="project-pinned"
+          >
+            <Top />
+          </el-icon>
           <span class="row-actions" @click.stop>
             <el-button
               link
@@ -66,6 +66,13 @@
               />
               <template #dropdown>
                 <el-dropdown-menu>
+                  <el-dropdown-item
+                    :icon="Top"
+                    command="pin"
+                    data-testid="project-menu-pin"
+                  >
+                    {{ isProjectPinned(project.id) ? '取消置顶' : '置顶' }}
+                  </el-dropdown-item>
                   <el-dropdown-item
                     :icon="Edit"
                     command="rename"
@@ -101,6 +108,14 @@
           >
             <el-icon class="row-icon"><ChatDotRound /></el-icon>
             <span class="row-label">{{ thread.title || '未命名会话' }}</span>
+            <el-icon
+              v-if="isThreadPinned(thread.id)"
+              class="pin-indicator"
+              title="已置顶"
+              data-testid="thread-pinned"
+            >
+              <Top />
+            </el-icon>
             <span
               class="row-actions"
               :class="{
@@ -139,6 +154,13 @@
                   <template #dropdown>
                     <el-dropdown-menu>
                       <el-dropdown-item
+                        :icon="Top"
+                        command="pin"
+                        data-testid="thread-menu-pin"
+                      >
+                        {{ isThreadPinned(thread.id) ? '取消置顶' : '置顶' }}
+                      </el-dropdown-item>
+                      <el-dropdown-item
                         :icon="Edit"
                         command="rename"
                         data-testid="thread-menu-rename"
@@ -172,7 +194,13 @@
       </li>
     </ul>
 
-    <el-dialog v-model="dialogVisible" title="新建项目" width="480px" @closed="resetForm">
+    <el-dialog
+      v-model="dialogVisible"
+      class="project-create-dialog"
+      title="新建项目"
+      width="min(640px, calc(100vw - 32px))"
+      @closed="resetForm"
+    >
       <el-form ref="formRef" :model="form" :rules="rules" label-width="80px">
         <el-form-item label="名称" prop="name">
           <el-input v-model="form.name" placeholder="请输入项目名称" />
@@ -181,11 +209,16 @@
           <div class="path-input-row">
             <el-input
               v-model="form.path"
+              class="path-input-row__field"
               data-testid="project-path-input"
               placeholder="相对路径（如 demo）或本机绝对路径（如 D:\project）"
             />
-            <el-button data-testid="browse-folder" @click="openFolderBrowser">
-              选择文件夹
+            <el-button
+              class="path-input-row__browse"
+              data-testid="browse-project-path"
+              @click="pathPickerVisible = true"
+            >
+              浏览
             </el-button>
           </div>
         </el-form-item>
@@ -205,78 +238,18 @@
       </template>
     </el-dialog>
 
-    <el-dialog
-      v-model="browserVisible"
-      title="选择文件夹"
-      width="520px"
-      append-to-body
-    >
-      <div class="folder-browser">
-        <div class="folder-browser-bar">
-          <el-button
-            link
-            size="small"
-            :icon="ArrowUp"
-            :disabled="!browserParent"
-            title="上一级"
-            data-testid="browser-up"
-            @click="navigateTo(browserParent ?? undefined)"
-          />
-          <span class="folder-browser-path" :title="browserPath">
-            {{ browserPath }}
-          </span>
-        </div>
-        <div v-if="browserDrives.length > 0" class="folder-browser-drives">
-          <el-button
-            v-for="drive in browserDrives"
-            :key="drive"
-            size="small"
-            data-testid="browser-drive"
-            @click="navigateTo(drive)"
-          >
-            {{ drive }}
-          </el-button>
-        </div>
-        <div
-          v-loading="browserLoading"
-          v-auto-hide-scrollbar
-          class="folder-browser-list auto-hide-scrollbar"
-        >
-          <div
-            v-if="!browserLoading && browserDirs.length === 0"
-            class="folder-browser-empty"
-          >
-            无子文件夹
-          </div>
-          <div
-            v-for="dir in browserDirs"
-            :key="dir.path"
-            class="folder-browser-item"
-            data-testid="browser-dir"
-            @click="navigateTo(dir.path)"
-          >
-            <el-icon><Folder /></el-icon>
-            <span class="folder-browser-item-name">{{ dir.name }}</span>
-          </div>
-        </div>
-      </div>
-      <template #footer>
-        <el-button @click="browserVisible = false">取消</el-button>
-        <el-button
-          type="primary"
-          :disabled="!browserPath"
-          data-testid="browser-confirm"
-          @click="confirmFolderSelection"
-        >
-          选择当前文件夹
-        </el-button>
-      </template>
-    </el-dialog>
+    <PathPickerDialog
+      v-model:visible="pathPickerVisible"
+      :model-value="form.path"
+      mode="directory"
+      title="选择项目目录"
+      @select="handleProjectPathSelected"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, watch, onMounted } from 'vue'
+import { computed, reactive, ref, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   Plus,
@@ -284,27 +257,29 @@ import {
   Delete,
   Folder,
   FolderOpened,
-  FolderAdd,
   ChatDotRound,
   Loading,
   More,
-  ArrowUp,
+  Top,
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { useProjectStore } from '@/stores/project'
 import { useAgentStore } from '@/stores/agent'
+import { useSettingsStore } from '@/stores/settings'
 import type { Project } from '@/api/projects'
 import type { ThreadSummary } from '@/api/agent'
-import { listDirectory, type DirEntry } from '@/api/fs'
 import { vAutoHideScrollbar } from '@/directives/autoHideScrollbar'
+import PathPickerDialog from '@/components/PathPickerDialog.vue'
 
 const projectStore = useProjectStore()
 const agentStore = useAgentStore()
+const settingsStore = useSettingsStore()
 const route = useRoute()
 const router = useRouter()
 
 const dialogVisible = ref(false)
+const pathPickerVisible = ref(false)
 const formRef = ref<FormInstance>()
 const form = reactive({
   name: '',
@@ -317,6 +292,40 @@ const rules = reactive<FormRules>({
   path: [{ required: true, message: '请输入项目路径', trigger: 'blur' }],
 })
 
+const PINNED_PROJECTS_KEY = 'onerad:sidebar:pinnedProjects'
+const PINNED_THREADS_KEY = 'onerad:sidebar:pinnedThreads'
+
+function loadPinnedIds(key: string): Set<string> {
+  try {
+    const value = JSON.parse(localStorage.getItem(key) || '[]')
+    return new Set(Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string') : [])
+  } catch {
+    return new Set()
+  }
+}
+
+function savePinnedIds(key: string, ids: Set<string>): void {
+  try {
+    localStorage.setItem(key, JSON.stringify([...ids]))
+  } catch {
+    // 浏览器禁用本地存储时，置顶仍在当前页面内生效。
+  }
+}
+
+function sortPinned<T extends { id: string }>(items: T[], pinnedIds: Set<string>): T[] {
+  return items
+    .map((item, index) => ({ item, index }))
+    .sort((left, right) => {
+      const pinOrder = Number(pinnedIds.has(right.item.id)) - Number(pinnedIds.has(left.item.id))
+      return pinOrder || left.index - right.index
+    })
+    .map(({ item }) => item)
+}
+
+const pinnedProjectIds = ref(loadPinnedIds(PINNED_PROJECTS_KEY))
+const pinnedThreadIds = ref(loadPinnedIds(PINNED_THREADS_KEY))
+const sortedProjects = computed(() => sortPinned(projectStore.projects, pinnedProjectIds.value))
+
 // 展开状态：会话内存即可，刷新后默认只展开当前项目。
 const expandedIds = ref<Set<string>>(new Set())
 
@@ -328,11 +337,37 @@ function isExpanded(projectId: string): boolean {
 }
 
 function threadsOf(projectId: string): ThreadSummary[] {
-  return agentStore.threadsByProject[projectId] ?? []
+  return sortPinned(agentStore.threadsByProject[projectId] ?? [], pinnedThreadIds.value)
+}
+
+function isProjectPinned(projectId: string): boolean {
+  return pinnedProjectIds.value.has(projectId)
+}
+
+function isThreadPinned(threadId: string): boolean {
+  return pinnedThreadIds.value.has(threadId)
+}
+
+function togglePinnedId(ids: Set<string>, id: string): Set<string> {
+  const next = new Set(ids)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  return next
+}
+
+function toggleProjectPin(projectId: string): void {
+  pinnedProjectIds.value = togglePinnedId(pinnedProjectIds.value, projectId)
+  savePinnedIds(PINNED_PROJECTS_KEY, pinnedProjectIds.value)
+}
+
+function toggleThreadPin(threadId: string): void {
+  pinnedThreadIds.value = togglePinnedId(pinnedThreadIds.value, threadId)
+  savePinnedIds(PINNED_THREADS_KEY, pinnedThreadIds.value)
 }
 
 onMounted(() => {
-  loadProjects()
+  void loadProjects()
+  void settingsStore.ensureLoaded()
 })
 
 async function loadProjects(): Promise<void> {
@@ -393,30 +428,33 @@ async function handleThreadClick(project: Project, thread: ThreadSummary): Promi
   if (projectStore.currentProject?.id !== project.id) {
     // 交由 AgentView 的项目切换 watcher 消费 preferredThreadId 完成加载
     agentStore.preferredThreadId = thread.id
-    agentStore.selectedModel = thread.llm_model
     projectStore.selectProject(project.id)
   } else if (thread.id !== agentStore.currentThread?.id) {
-    agentStore.selectedModel = thread.llm_model
-    await agentStore.loadThread(thread.id, project.analysis.api_key, thread.llm_model)
+    await agentStore.loadThread(thread.id)
   }
   if (route.path !== '/') {
     void router.push('/')
   }
 }
 
-function handleNewTask(): void {
-  const project = projectStore.currentProject
-  if (!project) {
-    ElMessage.warning('请先选择项目')
+async function handleNewThread(project: Project): Promise<void> {
+  try {
+    await settingsStore.ensureLoaded()
+  } catch {
     return
   }
-  void handleNewThread(project)
-}
+  if (!settingsStore.apiKeyConfigured) {
+    projectStore.selectProject(project.id)
+    settingsStore.requestApiKey()
+    if (route.path !== '/settings') {
+      await router.push('/settings')
+    }
+    return
+  }
 
-async function handleNewThread(project: Project): Promise<void> {
   const isCurrent = projectStore.currentProject?.id === project.id
   try {
-    await agentStore.createThread(project.id, project.analysis.api_key, agentStore.selectedModel)
+    await agentStore.createThread(project.id)
   } catch {
     // axios 拦截器统一 toast；创建失败不切换项目
     return
@@ -430,7 +468,9 @@ async function handleNewThread(project: Project): Promise<void> {
 }
 
 function handleProjectCommand(command: string, project: Project): void {
-  if (command === 'rename') {
+  if (command === 'pin') {
+    toggleProjectPin(project.id)
+  } else if (command === 'rename') {
     void handleRenameProject(project)
   } else if (command === 'delete') {
     void handleDeleteProject(project)
@@ -438,7 +478,9 @@ function handleProjectCommand(command: string, project: Project): void {
 }
 
 function handleThreadCommand(command: string, project: Project, thread: ThreadSummary): void {
-  if (command === 'rename') {
+  if (command === 'pin') {
+    toggleThreadPin(thread.id)
+  } else if (command === 'rename') {
     void handleRenameThread(project, thread)
   } else if (command === 'delete') {
     void handleDeleteThread(project, thread)
@@ -460,10 +502,11 @@ async function handleRenameProject(project: Project): Promise<void> {  try {
 
 async function handleDeleteProject(project: Project): Promise<void> {
   try {
-    await ElMessageBox.confirm('确定要删除该项目吗？其下的会话将一并删除。', '提示', {
+    await ElMessageBox.confirm('删除项目及其全部对话？此操作无法恢复。', '删除项目', {
       type: 'warning',
       confirmButtonText: '删除',
       cancelButtonText: '取消',
+      customClass: 'compact-confirm-box',
     })
   } catch {
     return
@@ -474,6 +517,10 @@ async function handleDeleteProject(project: Project): Promise<void> {
     await projectStore.deleteProject(project.id)
     agentStore.clearProjectThreads(project.id)
     expandedIds.value.delete(project.id)
+    if (pinnedProjectIds.value.delete(project.id)) {
+      pinnedProjectIds.value = new Set(pinnedProjectIds.value)
+      savePinnedIds(PINNED_PROJECTS_KEY, pinnedProjectIds.value)
+    }
     if (wasCurrent) {
       agentStore.resetThread()
     }
@@ -499,15 +546,20 @@ async function handleRenameThread(project: Project, thread: ThreadSummary): Prom
 async function handleDeleteThread(project: Project, thread: ThreadSummary): Promise<void> {
   try {
     await ElMessageBox.confirm(
-      `确定要删除会话 "${thread.title || '未命名会话'}" 吗？删除后无法恢复。`,
+      `删除会话“${thread.title || '未命名会话'}”？此操作无法恢复。`,
       '删除会话',
       {
         confirmButtonText: '删除',
         cancelButtonText: '取消',
         type: 'warning',
+        customClass: 'compact-confirm-box',
       }
     )
     await agentStore.deleteThread(thread.id, project.id)
+    if (pinnedThreadIds.value.delete(thread.id)) {
+      pinnedThreadIds.value = new Set(pinnedThreadIds.value)
+      savePinnedIds(PINNED_THREADS_KEY, pinnedThreadIds.value)
+    }
   } catch {
     // 用户取消；API 失败由 axios 拦截器统一 toast
   }
@@ -541,52 +593,16 @@ function resetForm(): void {
   form.path = ''
   form.description = ''
   formRef.value?.resetFields()
+  pathPickerVisible.value = false
 }
 
-// ---- 文件夹浏览器 ----
-
-const browserVisible = ref(false)
-const browserLoading = ref(false)
-const browserPath = ref('')
-const browserParent = ref<string | null>(null)
-const browserDirs = ref<DirEntry[]>([])
-const browserDrives = ref<string[]>([])
-
-/** 粗略判断绝对路径（/ 或盘符开头），相对路径直接交给后端解析。 */
-function looksAbsolute(p: string): boolean {
-  return p.startsWith('/') || /^[A-Za-z]:[\\/]/.test(p)
-}
-
-function openFolderBrowser(): void {
-  browserVisible.value = true
-  // 已填绝对路径时从该处打开，否则从用户主目录开始
-  const current = form.path.trim()
-  void navigateTo(current && looksAbsolute(current) ? current : undefined)
-}
-
-async function navigateTo(path?: string): Promise<void> {
-  browserLoading.value = true
-  try {
-    const data = await listDirectory(path)
-    browserPath.value = data.path
-    browserParent.value = data.parent
-    browserDirs.value = data.dirs
-    browserDrives.value = data.drives
-  } catch {
-    // 错误由 axios 拦截器统一提示；停留在当前目录
-  } finally {
-    browserLoading.value = false
-  }
-}
-
-function confirmFolderSelection(): void {
-  form.path = browserPath.value
-  // 名称为空时用文件夹名兜底
+function handleProjectPathSelected(path: string): void {
+  form.path = path
+  // 保留原项目目录选择器的便利行为：名称为空时使用文件夹名。
   if (!form.name.trim()) {
     form.name =
-      browserPath.value.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? ''
+      path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? ''
   }
-  browserVisible.value = false
 }
 </script>
 
@@ -605,41 +621,46 @@ function confirmFolderSelection(): void {
   padding: 0.75rem 0.75rem 0.25rem;
 }
 
-.new-task-btn {
+.new-project-btn {
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 0.25rem;
-  padding: 0.25rem 0.5rem;
+  min-height: 38px;
+  padding: 0.375rem 0.75rem;
   border: 1px solid var(--app-border-strong);
   border-radius: var(--app-radius-lg);
-  background: transparent;
-  color: var(--app-text);
-  font-size: 0.75rem;
+  background: var(--app-bg-panel);
+  color: var(--app-accent-active);
+  font-size: 0.8125rem;
+  font-weight: 600;
   cursor: pointer;
-  transition: background-color 0.2s;
+  box-shadow: var(--app-shadow-sm);
+  transition: background-color 0.16s ease, border-color 0.16s ease,
+    box-shadow 0.16s ease, transform 0.12s ease;
 }
 
-.new-task-btn:hover {
+.new-project-btn:hover {
+  border-color: var(--app-accent);
   background-color: var(--app-sidebar-hover);
+}
+
+.new-project-btn:active {
+  transform: translateY(1px);
+}
+
+.new-project-btn:focus-visible {
+  outline: 3px solid var(--app-focus-ring);
+  outline-offset: 1px;
 }
 
 .project-tree-group {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   padding: 0.75rem 1rem 0.375rem;
   font-size: 0.75rem;
   color: var(--app-text-muted);
-}
-
-.project-tree-group .el-button {
-  color: var(--app-text-muted);
-}
-
-.project-tree-group .el-button:hover {
-  color: var(--app-text);
 }
 
 .tree-skeleton {
@@ -657,78 +678,6 @@ function confirmFolderSelection(): void {
   flex: 1;
 }
 
-.folder-browser {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.folder-browser-bar {
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
-}
-
-.folder-browser-path {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--app-text-secondary);
-  font-size: 0.8125rem;
-}
-
-.folder-browser-drives {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.375rem;
-}
-
-.folder-browser-drives .el-button {
-  margin-left: 0;
-}
-
-.folder-browser-list {
-  height: 280px;
-  overflow-y: auto;
-  border: 1px solid var(--app-border);
-  border-radius: var(--app-radius-md);
-  padding: 0.25rem;
-}
-
-.folder-browser-empty {
-  padding: 2rem 1rem;
-  text-align: center;
-  color: var(--app-text-muted);
-  font-size: 0.875rem;
-}
-
-.folder-browser-item {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.375rem 0.625rem;
-  border-radius: var(--app-radius-sm);
-  cursor: pointer;
-  color: var(--app-text);
-  font-size: 0.875rem;
-}
-
-.folder-browser-item:hover {
-  background-color: var(--app-sidebar-hover);
-}
-
-.folder-browser-item .el-icon {
-  color: var(--app-text-muted);
-}
-
-.folder-browser-item-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .project-tree-items {
   list-style: none;
   margin: 0;
@@ -741,6 +690,7 @@ function confirmFolderSelection(): void {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  min-height: 38px;
   padding: 0.4375rem 0.625rem;
   border-radius: var(--app-radius-md);
   cursor: pointer;
@@ -768,6 +718,12 @@ function confirmFolderSelection(): void {
 .row-icon {
   flex-shrink: 0;
   color: var(--app-text-muted);
+}
+
+.pin-indicator {
+  flex: 0 0 auto;
+  color: var(--app-accent-active);
+  font-size: 0.75rem;
 }
 
 .row-label {
@@ -846,7 +802,7 @@ function confirmFolderSelection(): void {
 
 .thread-items {
   list-style: none;
-  margin: 0;
+  margin: 0.25rem 0 0;
   padding: 0 0 0.25rem 1.25rem;
 }
 
@@ -854,6 +810,7 @@ function confirmFolderSelection(): void {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  min-height: 36px;
   padding: 0.375rem 0.625rem;
   border-radius: var(--app-radius-md);
   cursor: pointer;
@@ -893,5 +850,46 @@ function confirmFolderSelection(): void {
 
 .thread-retry:hover {
   background-color: var(--app-sidebar-hover);
+}
+
+.path-input-row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.path-input-row__field {
+  min-width: 0;
+  flex: 1;
+}
+
+.path-input-row__browse {
+  min-width: 72px;
+  flex: 0 0 auto;
+}
+
+:global(.project-create-dialog) {
+  max-width: calc(100vw - 2rem);
+  border-radius: 16px;
+}
+
+@media (max-width: 560px) {
+  :global(.project-create-dialog .el-dialog__body) {
+    padding-inline: 1rem;
+  }
+
+  :global(.project-create-dialog .el-form-item) {
+    display: block;
+  }
+
+  :global(.project-create-dialog .el-form-item__label) {
+    width: auto !important;
+  }
+
+  .path-input-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
 }
 </style>

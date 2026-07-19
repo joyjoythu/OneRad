@@ -16,15 +16,17 @@ from langchain_core.messages import (
 )
 from langgraph.errors import InvalidUpdateError
 from langgraph.types import Command
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from starlette.responses import StreamingResponse
 
 from app.agent import build_initial_state, create_agent_graph
 from app.agent import runtime as agent_runtime
-from app.api.deps import get_project_store
+from app.api.deps import get_general_settings_store, get_project_store
 from app.api.runner import get_bridge
 from app.llm import LLMClient, build_thread_title_prompt
 from app.projects import ProjectStore
+from app.settings import GeneralSettingsStore
+from app.skills import SkillLoadError
 
 router = APIRouter()
 
@@ -41,8 +43,8 @@ class MessageRequest(BaseModel):
 class CreateThreadRequest(BaseModel):
     """Request body for creating an agent thread."""
 
-    api_key: str = ""
-    llm_model: Literal["deepseek-v4-pro", "deepseek-v4-flash"] = "deepseek-v4-pro"
+    model_config = ConfigDict(extra="forbid")
+
     auto_approve: bool = False
 
 
@@ -73,8 +75,8 @@ class ThreadPatchRequest(BaseModel):
 class LoadThreadRequest(BaseModel):
     """Request body for resuming an existing thread."""
 
-    api_key: str = ""
-    llm_model: Literal["deepseek-v4-pro", "deepseek-v4-flash"] = "deepseek-v4-pro"
+    model_config = ConfigDict(extra="forbid")
+
     auto_approve: bool = False
 
 
@@ -86,20 +88,23 @@ async def _run_store_sync(fn, *args):
 
 def _schedule_title_generation(app, thread_id: str, content: str) -> None:
     """后台为首次对话生成摘要标题，不阻塞消息响应。"""
-    task = asyncio.create_task(_generate_thread_title(app, thread_id, content))
+    system, user = build_thread_title_prompt(content)
+    task = asyncio.create_task(
+        _generate_thread_title(app, thread_id, content, system, user)
+    )
     app.state.agent_title_tasks.add(task)
     task.add_done_callback(app.state.agent_title_tasks.discard)
 
 
-async def _generate_thread_title(app, thread_id: str, content: str) -> None:
+async def _generate_thread_title(
+    app, thread_id: str, content: str, system: str, user: str
+) -> None:
     """用 LLM 概括首条消息作为会话标题；失败时回退为首句截断。"""
     store: ProjectStore = app.state.project_store
     api_key = app.state.agent_api_keys.get(thread_id, "")
-    model = app.state.agent_llm_models.get(thread_id) or "deepseek-v4-pro"
     title = ""
     try:
-        client = LLMClient(api_key=api_key, model=model)
-        system, user = build_thread_title_prompt(content)
+        client = LLMClient(api_key=api_key)
         # max_tokens 需要余量：推理模型（如 deepseek-v4-flash）会先消耗
         # reasoning tokens，额度太小会导致 content 为空、静默落入截断兜底。
         raw = await asyncio.to_thread(client.call, system, user, 0.3, 200)
@@ -121,25 +126,15 @@ async def _generate_thread_title(app, thread_id: str, content: str) -> None:
 async def _agent_config(thread_id: str, app) -> Dict[str, Any]:
     """Build the RunnableConfig for a thread.
 
-    api_key and llm_model are normally set when the thread is created or
-    resumed. If the server has restarted, fall back to the model stored in the
-    threads table.
+    The API key is refreshed when the thread is created or resumed. The model
+    is fixed globally; legacy values stored in checkpoints or SQLite are
+    intentionally ignored.
     """
     api_key = getattr(app.state, "agent_api_keys", {}).get(thread_id, "")
-    llm_model = getattr(app.state, "agent_llm_models", {}).get(
-        thread_id, ""
-    )
-    if not llm_model:
-        store = getattr(app.state, "project_store", None)
-        if store is not None:
-            meta = await _run_store_sync(store.get_thread_meta, thread_id)
-            llm_model = meta.get("llm_model", "deepseek-v4-pro") if meta else "deepseek-v4-pro"
-    llm_model = llm_model or "deepseek-v4-pro"
     return {
         "configurable": {
             "thread_id": thread_id,
             "api_key": api_key,
-            "llm_model": llm_model,
             "auto_approve": getattr(app.state, "agent_auto_approve", {}).get(
                 thread_id, False
             ),
@@ -197,15 +192,11 @@ def _stringify_content(content: Any) -> str:
 
 
 DEFAULT_CONTEXT_WINDOW = 1_000_000
-MODEL_CONTEXT_WINDOWS = {
-    "deepseek-v4-pro": 1_000_000,
-    "deepseek-v4-flash": 1_000_000,
-}
 
 
 def _context_window_for_model(model: Optional[str]) -> int:
-    """按模型名查上下文窗口大小，未知模型默认 1M。"""
-    return MODEL_CONTEXT_WINDOWS.get(model or "", DEFAULT_CONTEXT_WINDOW)
+    """Return the fixed model's context window; legacy state is ignored."""
+    return DEFAULT_CONTEXT_WINDOW
 
 
 def _sync_payload(values: Optional[Dict[str, Any]], running: bool) -> Dict[str, Any]:
@@ -413,6 +404,7 @@ async def create_thread(
     project_id: str = Query(..., description="Project to associate with the new thread"),
     graph=Depends(get_agent_graph),
     store: ProjectStore = Depends(get_project_store),
+    settings_store: GeneralSettingsStore = Depends(get_general_settings_store),
 ) -> Dict[str, Any]:
     """Create a new agent thread and seed it with the project's initial state."""
     project = await _run_store_sync(store.load_project, project_id)
@@ -423,14 +415,17 @@ async def create_thread(
 
     payload = payload or CreateThreadRequest()
     thread_id = str(uuid.uuid4())
-    api_key = payload.api_key
-    llm_model = payload.llm_model
+    api_key = settings_store.resolve_api_key()
+    if not api_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="尚未配置 DeepSeek API 密钥",
+        )
     request.app.state.agent_api_keys[thread_id] = api_key
-    request.app.state.agent_llm_models[thread_id] = llm_model
     request.app.state.agent_auto_approve[thread_id] = payload.auto_approve
-    initial_state = build_initial_state(project, api_key=api_key, llm_model=llm_model)
+    initial_state = build_initial_state(project)
     await graph.aupdate_state(await _agent_config(thread_id, request.app), initial_state)
-    await _run_store_sync(store.record_thread, project_id, thread_id, "", llm_model)
+    await _run_store_sync(store.record_thread, project_id, thread_id, "")
     return {"thread_id": thread_id}
 
 
@@ -475,6 +470,7 @@ async def list_threads(
     threads = await _run_store_sync(store.list_threads, project_id)
     active = request.app.state.active_agent_streams
     for thread in threads:
+        thread.pop("llm_model", None)
         thread["running"] = thread["id"] in active
     return {"threads": threads}
 
@@ -497,7 +493,6 @@ async def delete_thread(
         await checkpointer.adelete_thread(thread_id)
         await _run_store_sync(store.delete_thread, thread_id)
         request.app.state.agent_api_keys.pop(thread_id, None)
-        request.app.state.agent_llm_models.pop(thread_id, None)
         request.app.state.agent_auto_approve.pop(thread_id, None)
     except Exception as exc:
         raise HTTPException(
@@ -519,6 +514,8 @@ async def patch_thread(
             status_code=status.HTTP_404_NOT_FOUND, detail="thread not found"
         )
     updated = await _run_store_sync(store.update_thread_title, thread_id, payload.title)
+    if updated:
+        updated.pop("llm_model", None)
     return {"thread": updated}
 
 
@@ -529,14 +526,14 @@ async def resume_thread(
     payload: LoadThreadRequest,
     graph=Depends(get_agent_graph),
     store: ProjectStore = Depends(get_project_store),
+    settings_store: GeneralSettingsStore = Depends(get_general_settings_store),
 ) -> Dict[str, Any]:
-    """Resume an existing thread, refreshing api_key/llm_model in memory."""
+    """Resume an existing thread, refreshing its API key in memory."""
     if await _run_store_sync(store.get_thread_meta, thread_id) is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="thread not found"
         )
-    request.app.state.agent_api_keys[thread_id] = payload.api_key
-    request.app.state.agent_llm_models[thread_id] = payload.llm_model
+    request.app.state.agent_api_keys[thread_id] = settings_store.resolve_api_key()
     request.app.state.agent_auto_approve[thread_id] = payload.auto_approve
     snapshot = await graph.aget_state(await _agent_config(thread_id, request.app))
     payload_out = _sync_payload(
@@ -605,9 +602,15 @@ async def send_message(
         meta = await _run_store_sync(store.get_thread_meta, thread_id)
         if meta and not meta.get("title"):
             if request.app.state.agent_api_keys.get(thread_id):
-                _schedule_title_generation(
-                    request.app, thread_id, payload.content or ""
-                )
+                try:
+                    _schedule_title_generation(
+                        request.app, thread_id, payload.content or ""
+                    )
+                except SkillLoadError as exc:
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail=str(exc),
+                    ) from exc
             else:
                 # 无 API key 时回退为首句截断命名
                 title = payload.content[:30] if payload.content else ""

@@ -1,8 +1,6 @@
 import client from './client'
 import { API_BASE } from './client'
 
-export const DEFAULT_AGENT_MODEL = 'deepseek-v4-flash'
-
 export interface ToolCall {
   id?: string
   name?: string
@@ -146,8 +144,6 @@ export interface AgentState {
 }
 
 export interface CreateThreadRequest {
-  api_key: string
-  llm_model: string
   auto_approve: boolean
 }
 
@@ -168,7 +164,6 @@ export interface ThreadSummary {
   id: string
   project_id: string
   title: string
-  llm_model: string
   created_at: string
   updated_at: string
   /** 该线程当前是否有正在运行的流式任务（后端内存态）。 */
@@ -176,8 +171,6 @@ export interface ThreadSummary {
 }
 
 export interface LoadThreadRequest {
-  api_key: string
-  llm_model: string
   auto_approve: boolean
 }
 

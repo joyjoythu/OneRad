@@ -5,7 +5,7 @@ import traceback
 from typing import Any, Dict
 
 from fastapi import Request
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from starlette.concurrency import run_in_threadpool
 
 from app.api.sse import EventBridge
@@ -19,6 +19,8 @@ logger = logging.getLogger(__name__)
 class RunConfig(BaseModel):
     """Analysis configuration submitted when triggering a pipeline run."""
 
+    model_config = ConfigDict(extra="forbid")
+
     image_dir: str = ""
     clinical_path: str = ""
     output_dir: str = "./outputs"
@@ -26,8 +28,6 @@ class RunConfig(BaseModel):
     covariates: str = ""
     model: str = "logistic"
     analysis_model: str = "logistic"
-    llm_model: str = "deepseek-v4-pro"
-    api_key: str = ""
 
 
 def get_bridge(request: Request) -> EventBridge:
@@ -94,7 +94,6 @@ def run_pipeline(
             modality=config.get("modality", "auto"),
             covariates=parse_covariates(config.get("covariates", "")),
             model=config.get("analysis_model") or config.get("model", "logistic"),
-            llm_model=config.get("llm_model", "deepseek-v4-pro"),
             api_key=config.get("api_key"),
         )
         register_default_handlers(orch)

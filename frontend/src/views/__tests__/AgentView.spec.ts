@@ -3,6 +3,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import ElementPlus from 'element-plus'
 import AgentView from '../AgentView.vue'
+import AgentChat from '@/components/AgentChat.vue'
 import { useProjectStore } from '@/stores/project'
 import { useAgentStore } from '@/stores/agent'
 import type { Project } from '@/api/projects'
@@ -22,7 +23,6 @@ const mockProject = (id: string): Project => ({
     covariates: '',
     model: 'logistic',
     analysis_model: 'logistic',
-    api_key: '',
   },
 })
 
@@ -70,6 +70,27 @@ describe('AgentView', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('暂无待审批的计划/文件')
+  })
+
+  it('runs quick actions through the same agent message pipeline', async () => {
+    const projectStore = useProjectStore()
+    const agentStore = useAgentStore()
+    projectStore.projects = [mockProject('1')]
+    projectStore.selectProject('1')
+
+    vi.spyOn(agentStore, 'listThreads').mockResolvedValue(undefined)
+    vi.spyOn(agentStore, 'loadThread').mockResolvedValue(undefined)
+    const ensureSpy = vi.spyOn(agentStore, 'ensureThread').mockResolvedValue('thread-quick')
+    const sendSpy = vi.spyOn(agentStore, 'sendMessage').mockResolvedValue(undefined)
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    wrapper.findComponent(AgentChat).vm.$emit('quick-action', '快捷分析指令')
+    await flushPromises()
+
+    expect(ensureSpy).toHaveBeenCalledWith('1')
+    expect(sendSpy).toHaveBeenCalledWith('快捷分析指令', 'user')
   })
 
   it('shows the read-only script panel in the side panel for python_script interrupts', async () => {
@@ -147,7 +168,6 @@ describe('AgentView', () => {
       id: 't1',
       project_id: '2',
       title: 'Latest',
-      llm_model: 'deepseek-v4-flash',
       created_at: '2026-01-01',
       updated_at: '2026-01-03',
     }
@@ -167,7 +187,7 @@ describe('AgentView', () => {
     projectStore.selectProject('2')
     await flushPromises()
 
-    expect(loadSpy).toHaveBeenCalledWith('t2', expect.any(String), 'deepseek-v4-flash')
+    expect(loadSpy).toHaveBeenCalledWith('t2')
     expect(agentStore.preferredThreadId).toBeNull()
   })
 
@@ -183,7 +203,6 @@ describe('AgentView', () => {
       id: 't1',
       project_id: '1',
       title: 'Open',
-      llm_model: 'deepseek-v4-flash',
       created_at: '2026-01-01',
       updated_at: '2026-01-02',
     }

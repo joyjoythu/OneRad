@@ -60,8 +60,17 @@ def _run_config():
         "covariates": "",
         "model": "logistic",
         "analysis_model": "logistic",
-        "api_key": "",
     }
+
+
+def test_start_run_rejects_project_scoped_api_key(client, temp_db):
+    store, root = temp_db
+    project = store.create_project("A", str(root / "a"), "")
+    response = client.post(
+        f"/api/projects/{project['id']}/runs",
+        json={**_run_config(), "api_key": "legacy-secret"},
+    )
+    assert response.status_code == 422
 
 
 def test_start_run_idempotency(client, temp_db):
@@ -88,8 +97,7 @@ def test_get_run_returns_record(client, temp_db):
     data = response.json()
     assert data["id"] == run_id
     assert data["project_id"] == project["id"]
-    if "llm_model" in data:
-        assert data["llm_model"] == "deepseek-v4-pro"
+    assert "llm_model" not in data
 
     response = client.get("/api/runs/non-existent-id")
     assert response.status_code == 404

@@ -29,7 +29,6 @@ def run_direct_analysis(
     n_splits: int = 5,
     api_key: Optional[str] = None,
     base_url: str = "https://api.deepseek.com/v1",
-    model: str = "deepseek-v4-pro",
 ) -> str:
     """Run LASSO + logistic regression from pre-extracted feature and clinical CSVs.
 
@@ -44,7 +43,6 @@ def run_direct_analysis(
         n_splits: Number of cross-validation folds.
         api_key: Optional DeepSeek API key for report polishing.
         base_url: DeepSeek API base URL.
-        model: DeepSeek model name.
 
     Returns:
         Path to the generated Word report.
@@ -84,7 +82,6 @@ def run_direct_analysis(
             llm_client = LLMClient(
                 api_key=api_key,
                 base_url=base_url,
-                model=model,
             )
         except Exception:
             logger.warning("LLM client 初始化失败，报告将不经过 AI 润色", exc_info=True)

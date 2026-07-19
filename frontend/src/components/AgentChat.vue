@@ -8,6 +8,11 @@
     </div>
 
     <template v-else>
+      <header class="conversation-header" data-testid="current-conversation-title">
+        <span class="conversation-header__label">当前会话</span>
+        <h2 :title="currentConversationTitle">{{ currentConversationTitle }}</h2>
+      </header>
+
       <div
         ref="messageContainer"
         v-auto-hide-scrollbar
@@ -213,15 +218,52 @@
           @keydown="handleKeydown"
         />
         <div class="input-toolbar">
-          <div class="auto-approve-row">
-            <span class="auto-approve-label">自动审批</span>
-            <el-switch
-              :model-value="agentStore.autoApprove"
-              :disabled="agentStore.autoApproveSyncing"
-              size="small"
-              aria-label="自动审批"
-              @change="handleAutoApproveChange"
-            />
+          <div class="input-toolbar-left">
+            <el-dropdown
+              placement="top-start"
+              trigger="click"
+              popper-class="quick-actions-menu"
+              :disabled="inputDisabled"
+              @command="handleQuickAction"
+            >
+              <el-button
+                plain
+                size="small"
+                class="quick-actions-trigger"
+                :icon="Operation"
+                :disabled="inputDisabled"
+                data-testid="quick-actions-trigger"
+              >
+                快捷操作
+                <el-icon class="el-icon--right"><ArrowUp /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item
+                    v-for="action in QUICK_ACTIONS"
+                    :key="action.command"
+                    :command="action.command"
+                    :icon="action.icon"
+                    :divided="action.divided"
+                    :class="{ 'quick-action--danger': action.command === 'clear-task' }"
+                    :data-testid="`quick-action-${action.command}`"
+                  >
+                    {{ action.label }}
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+
+            <div class="auto-approve-row">
+              <span class="auto-approve-label">自动审批</span>
+              <el-switch
+                :model-value="agentStore.autoApprove"
+                :disabled="agentStore.autoApproveSyncing"
+                size="small"
+                aria-label="自动审批"
+                @change="handleAutoApproveChange"
+              />
+            </div>
           </div>
           <div class="input-toolbar-right">
             <el-tooltip :content="contextTooltip" placement="top">
@@ -230,14 +272,6 @@
                 <span>{{ contextUsageText }}</span>
               </span>
             </el-tooltip>
-            <el-select
-              v-model="selectedModel"
-              class="model-selector"
-              placeholder="模型（仅新会话）"
-            >
-              <el-option label="DeepSeek-V4 Flash" value="deepseek-v4-flash" />
-              <el-option label="DeepSeek-V4 Pro" value="deepseek-v4-pro" />
-            </el-select>
             <el-button
               v-if="agentStore.busy"
               circle
@@ -264,10 +298,24 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, watchEffect, nextTick } from 'vue'
-import { Loading, CircleClose, Promotion, Odometer } from '@element-plus/icons-vue'
+import {
+  ArrowUp,
+  CircleClose,
+  DataAnalysis,
+  Delete,
+  Document,
+  Download,
+  List,
+  Loading,
+  Odometer,
+  Operation,
+  Promotion,
+  Refresh,
+  UploadFilled,
+} from '@element-plus/icons-vue'
+import { ElMessageBox } from 'element-plus'
 import { useAgentStore } from '@/stores/agent'
 import { useProjectStore } from '@/stores/project'
-import { DEFAULT_AGENT_MODEL } from '@/api/agent'
 import type { AgentMessage } from '@/api/agent'
 import { listProjectEntries } from '@/api/projects'
 import AgentAvatar from './AgentAvatar.vue'
@@ -280,13 +328,9 @@ const agentStore = useAgentStore()
 const projectStore = useProjectStore()
 
 const emit = defineEmits<{
-  'update:model': [model: string]
   'send-message': [content: string]
+  'quick-action': [content: string]
   'stop': []
-}>()
-
-const props = defineProps<{
-  model?: string
 }>()
 
 const input = ref('')
@@ -324,10 +368,68 @@ function handleMentionSearch(pattern: string): void {
   }, 200)
 }
 const messageContainer = ref<HTMLDivElement | null>(null)
-const selectedModel = computed({
-  get: () => props.model ?? DEFAULT_AGENT_MODEL,
-  set: (value) => emit('update:model', value),
+const currentConversationTitle = computed(() => {
+  const title = agentStore.currentThread?.title?.trim()
+  if (title) return title
+  return agentStore.threadId ? '未命名会话' : '新对话'
 })
+
+const QUICK_ACTIONS = [
+  {
+    command: 'diagnostic-report',
+    label: '输出诊断报告',
+    icon: Document,
+    divided: false,
+    prompt:
+      '请基于当前项目的影像组学分析结果输出诊断报告草稿，明确关键发现、证据与局限，并注明仅供科研参考。',
+  },
+  {
+    command: 'start-analysis',
+    label: '开始分析',
+    icon: DataAnalysis,
+    divided: false,
+    prompt: '请检查当前项目配置与数据完整性，并开始执行完整的影像组学分析流程。',
+  },
+  {
+    command: 'import-data',
+    label: '导入数据／影像',
+    icon: UploadFilled,
+    divided: false,
+    prompt:
+      '请检查当前项目配置的影像目录和临床数据文件，导入数据并验证可用性；如果路径尚未配置，请明确告诉我需要补充哪些配置。',
+  },
+  {
+    command: 'structured-conclusion',
+    label: '生成结构化结论',
+    icon: List,
+    divided: true,
+    prompt:
+      '请基于当前分析结果生成结构化结论，按研究目的、数据概况、核心发现、统计证据、局限性和下一步建议组织。',
+  },
+  {
+    command: 'export-report',
+    label: '导出报告',
+    icon: Download,
+    divided: false,
+    prompt:
+      '请将当前分析结果整理并导出为正式报告，保存到项目输出目录，并返回生成文件的完整路径。',
+  },
+  {
+    command: 'reanalyze',
+    label: '重新分析',
+    icon: Refresh,
+    divided: true,
+    prompt:
+      '请基于当前项目配置重新执行完整分析；开始前先说明将复用的数据、参数以及会覆盖或新生成的结果。',
+  },
+  {
+    command: 'clear-task',
+    label: '清除当前任务',
+    icon: Delete,
+    divided: false,
+    prompt: '',
+  },
+] as const
 
 /** 工具输出超过该阈值（行数）后自动折叠。 */
 const TOOL_COLLAPSE_LINE_THRESHOLD = 10
@@ -446,6 +548,32 @@ async function handleAutoApproveChange(value: string | number | boolean): Promis
   } catch {
     // 错误已由 axios 拦截器统一提示；store 已回滚开关状态。
   }
+}
+
+async function handleQuickAction(command: string): Promise<void> {
+  if (inputDisabled.value) return
+
+  if (command === 'clear-task') {
+    try {
+      await ElMessageBox.confirm(
+        '清除当前任务上下文并开始新对话？历史对话仍会保留。',
+        '清除当前任务',
+        {
+          type: 'warning',
+          confirmButtonText: '清除',
+          cancelButtonText: '取消',
+          customClass: 'compact-confirm-box',
+        }
+      )
+    } catch {
+      return
+    }
+    agentStore.resetThread()
+    return
+  }
+
+  const action = QUICK_ACTIONS.find((item) => item.command === command)
+  if (action?.prompt) emit('quick-action', action.prompt)
 }
 
 // 根据运行状态推导用户可见的状态文案。
@@ -591,14 +719,12 @@ defineExpose({ clearInput })
 <style scoped>
 .agent-chat {
   display: flex;
+  min-width: 0;
+  min-height: 0;
   flex-direction: column;
   height: 100%;
-  gap: 1rem;
-  /* 聊天列限宽居中：消息区、状态栏、输入框对齐同一列，
-     侧边栏折叠时不再铺满全宽或贴边 */
+  gap: 0.75rem;
   width: 100%;
-  max-width: 48rem;
-  margin-inline: auto;
 }
 
 .chat-empty {
@@ -608,11 +734,48 @@ defineExpose({ clearInput })
   justify-content: center;
 }
 
+.conversation-header {
+  display: flex;
+  min-width: 0;
+  min-height: 36px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0 0.25rem;
+}
+
+.conversation-header__label {
+  flex: 0 0 auto;
+  padding: 0.1875rem 0.5rem;
+  border: 1px solid var(--app-border-strong);
+  border-radius: 999px;
+  background: var(--app-bg-panel);
+  color: var(--app-text-muted);
+  font-size: 0.6875rem;
+  font-weight: 600;
+}
+
+.conversation-header h2 {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--app-text);
+  font-size: 1rem;
+  font-weight: 650;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .message-list {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 1rem;
+  padding: clamp(0.75rem, 2vw, 1.25rem);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-lg);
+  background: var(--app-bg-panel);
+  box-shadow: var(--app-shadow-sm);
 }
 
 .message-row {
@@ -672,8 +835,9 @@ defineExpose({ clearInput })
 }
 
 .message-bubble--user {
-  background-color: var(--app-bg-bubble);
-  color: var(--app-text);
+  background-color: var(--app-accent);
+  color: #ffffff;
+  box-shadow: 0 4px 12px var(--app-focus-ring);
 }
 
 .message-bubble--assistant {
@@ -933,7 +1097,8 @@ defineExpose({ clearInput })
   border: 1px solid var(--app-border-strong);
   border-radius: var(--app-radius-lg);
   background-color: var(--app-bg-panel);
-  transition: border-color 0.2s;
+  box-shadow: var(--app-shadow-sm);
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
   /* 容器内输入控件去边框去底色：边框由容器统一提供 */
   --el-input-border-color: transparent;
   --el-input-hover-border-color: transparent;
@@ -945,7 +1110,8 @@ defineExpose({ clearInput })
 }
 
 .input-container:focus-within {
-  border-color: var(--app-text-muted);
+  border-color: var(--app-accent);
+  box-shadow: 0 0 0 3px var(--app-focus-ring), var(--app-shadow-sm);
 }
 
 .input-container :deep(.el-textarea__inner) {
@@ -966,6 +1132,25 @@ defineExpose({ clearInput })
   padding: 0.25rem 0.75rem 0.5rem;
 }
 
+.input-toolbar-left {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.quick-actions-trigger {
+  border-color: var(--app-border-strong);
+  color: var(--app-text-secondary);
+}
+
+.quick-actions-trigger:hover,
+.quick-actions-trigger:focus-visible {
+  border-color: var(--app-accent);
+  background: var(--app-sidebar-hover);
+  color: var(--app-accent-active);
+}
+
 .auto-approve-row {
   display: flex;
   align-items: center;
@@ -979,10 +1164,6 @@ defineExpose({ clearInput })
   align-items: center;
   gap: 0.5rem;
   margin-left: auto;
-}
-
-.model-selector {
-  width: 150px;
 }
 
 .context-usage {
@@ -1001,5 +1182,36 @@ defineExpose({ clearInput })
 
 .context-usage--danger {
   color: var(--app-danger);
+}
+
+@media (max-width: 680px) {
+  .message-main {
+    max-width: 90%;
+  }
+
+  .message-list {
+    padding: 0.75rem;
+  }
+
+  .input-toolbar {
+    gap: 0.5rem;
+    padding-inline: 0.625rem;
+  }
+
+  .input-toolbar-left {
+    gap: 0.5rem;
+  }
+
+  .quick-actions-trigger {
+    padding-inline: 0.625rem;
+  }
+
+  .context-usage {
+    font-size: 0;
+  }
+
+  .context-usage :deep(.el-icon) {
+    font-size: 0.875rem;
+  }
 }
 </style>

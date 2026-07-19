@@ -1,51 +1,49 @@
-/* OneRad 设计令牌
-   :root 存浅色值，html.dark 存深色值。
-   Element Plus 的 --el-* 变量映射到 --app-* 令牌，使 EP 组件自动跟随主题。 */
+/* OneRad medical-research design tokens.
+   Light is the default; html.dark uses a restrained Dracula palette. */
 
 :root {
   color-scheme: light;
 
-  /* 背景 */
-  --app-bg: #fafafa;
+  --app-bg: #f3f7fc;
   --app-bg-panel: #ffffff;
-  --app-bg-hover: #f0f0f0;
-  --app-bg-bubble: #eaeaea;
+  --app-bg-hover: #edf4fd;
+  --app-bg-bubble: #e7f1ff;
+  --app-sidebar-bg: #f8fbff;
+  --app-sidebar-hover: #eaf3ff;
+  --app-sidebar-active: #dcecff;
 
-  /* 侧边栏（参考 Kimi 风格：圆角行、浅灰分层） */
-  --app-sidebar-hover: #f3f3f3;
-  --app-sidebar-active: #e9e9e9;
+  --app-border: #dce7f3;
+  --app-border-strong: #bfd1e5;
 
-  /* 边框 */
-  --app-border: #ececec;
-  --app-border-strong: #d9d9d9;
+  --app-text: #17324d;
+  --app-text-secondary: #526c84;
+  --app-text-muted: #8196aa;
 
-  /* 文字 */
-  --app-text: #1f2328;
-  --app-text-secondary: #6b6b6b;
-  --app-text-muted: #9b9b9b;
-
-  /* 强调（浅色主题：近黑底白字） */
-  --app-accent: #1f2328;
+  --app-accent: #1677ff;
+  --app-accent-hover: #4096ff;
+  --app-accent-active: #0958d9;
   --app-accent-text: #ffffff;
 
-  /* 状态 */
-  --app-success: #16a34a;
-  --app-warning: #d97706;
-  --app-danger: #dc2626;
+  --app-success: #159447;
+  --app-warning: #c56a08;
+  --app-danger: #d9363e;
 
-  /* 圆角 */
   --app-radius-sm: 6px;
   --app-radius-md: 8px;
   --app-radius-lg: 12px;
+  --app-radius-xl: 16px;
 
-  /* Element Plus 变量映射 */
+  --app-shadow-sm: 0 2px 8px rgba(35, 82, 124, 0.08);
+  --app-shadow-md: 0 12px 32px rgba(35, 82, 124, 0.14);
+  --app-focus-ring: rgba(22, 119, 255, 0.24);
+
   --el-color-primary: var(--app-accent);
-  --el-color-primary-light-3: #4a5158;
-  --el-color-primary-light-5: #7d848c;
-  --el-color-primary-light-7: #b0b5ba;
-  --el-color-primary-light-8: #cdd1d5;
-  --el-color-primary-light-9: #e9ebec;
-  --el-color-primary-dark-2: #14171b;
+  --el-color-primary-light-3: #5a9dff;
+  --el-color-primary-light-5: #8abcff;
+  --el-color-primary-light-7: #b9d7ff;
+  --el-color-primary-light-8: #d2e6ff;
+  --el-color-primary-light-9: #e8f2ff;
+  --el-color-primary-dark-2: var(--app-accent-active);
   --el-color-success: var(--app-success);
   --el-color-warning: var(--app-warning);
   --el-color-danger: var(--app-danger);
@@ -62,7 +60,7 @@
   --el-border-color-light: var(--app-border);
   --el-border-color-lighter: var(--app-border);
   --el-border-color-extra-light: var(--app-border);
-  --el-border-color-hover: var(--app-text-muted);
+  --el-border-color-hover: var(--app-accent);
   --el-fill-color: var(--app-bg-hover);
   --el-fill-color-light: var(--app-bg-hover);
   --el-fill-color-lighter: var(--app-bg);
@@ -70,49 +68,48 @@
   --el-fill-color-blank: var(--app-bg-panel);
   --el-border-radius-base: var(--app-radius-md);
   --el-border-radius-small: var(--app-radius-sm);
-  --el-border-radius-round: var(--app-radius-lg);
-  --el-mask-color: rgba(0, 0, 0, 0.5);
+  --el-border-radius-round: 999px;
+  --el-mask-color: rgba(10, 35, 58, 0.46);
 }
 
 html.dark {
   color-scheme: dark;
 
-  /* 背景 */
-  --app-bg: #0a0a0a;
-  --app-bg-panel: #111111;
-  --app-bg-hover: #1a1a1a;
-  --app-bg-bubble: #262626;
+  --app-bg: #282a36;
+  --app-bg-panel: #30323f;
+  --app-bg-hover: #3a3d4d;
+  --app-bg-bubble: #44475a;
+  --app-sidebar-bg: #21222c;
+  --app-sidebar-hover: #343746;
+  --app-sidebar-active: #44475a;
 
-  /* 侧边栏 */
-  --app-sidebar-hover: #181818;
-  --app-sidebar-active: #242424;
+  --app-border: #44475a;
+  --app-border-strong: #6272a4;
 
-  /* 边框 */
-  --app-border: #1f1f1f;
-  --app-border-strong: #2e2e2e;
+  --app-text: #f8f8f2;
+  --app-text-secondary: #c9c9c2;
+  --app-text-muted: #8a8da0;
 
-  /* 文字 */
-  --app-text: #ededed;
-  --app-text-secondary: #a3a3a3;
-  --app-text-muted: #525252;
+  --app-accent: #ff79c6;
+  --app-accent-hover: #ff92d0;
+  --app-accent-active: #e85fac;
+  --app-accent-text: #282a36;
 
-  /* 强调（深色主题：纯白底黑字） */
-  --app-accent: #ededed;
-  --app-accent-text: #0a0a0a;
+  --app-success: #50fa7b;
+  --app-warning: #ffb86c;
+  --app-danger: #ff5555;
 
-  /* 状态 */
-  --app-success: #4ade80;
-  --app-warning: #fbbf24;
-  --app-danger: #f87171;
+  --app-shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.22);
+  --app-shadow-md: 0 16px 40px rgba(0, 0, 0, 0.38);
+  --app-focus-ring: rgba(255, 121, 198, 0.28);
 
-  /* Element Plus 变量映射：var() 映射与 :root 相同；主色阶字面量按主题反转。重复声明以压过 EP 暗色表 */
   --el-color-primary: var(--app-accent);
-  --el-color-primary-light-3: #ffffff;
-  --el-color-primary-light-5: #f7f7f7;
-  --el-color-primary-light-7: #efefef;
-  --el-color-primary-light-8: #e9e9e9;
-  --el-color-primary-light-9: #2a2a2a;
-  --el-color-primary-dark-2: #d4d4d4;
+  --el-color-primary-light-3: #ff9bd3;
+  --el-color-primary-light-5: #ffb3dd;
+  --el-color-primary-light-7: #8b5579;
+  --el-color-primary-light-8: #6c4661;
+  --el-color-primary-light-9: #493746;
+  --el-color-primary-dark-2: var(--app-accent-active);
   --el-color-success: var(--app-success);
   --el-color-warning: var(--app-warning);
   --el-color-danger: var(--app-danger);
@@ -129,7 +126,7 @@ html.dark {
   --el-border-color-light: var(--app-border);
   --el-border-color-lighter: var(--app-border);
   --el-border-color-extra-light: var(--app-border);
-  --el-border-color-hover: var(--app-text-muted);
+  --el-border-color-hover: var(--app-accent);
   --el-fill-color: var(--app-bg-hover);
   --el-fill-color-light: var(--app-bg-hover);
   --el-fill-color-lighter: var(--app-bg);
@@ -137,6 +134,6 @@ html.dark {
   --el-fill-color-blank: var(--app-bg-panel);
   --el-border-radius-base: var(--app-radius-md);
   --el-border-radius-small: var(--app-radius-sm);
-  --el-border-radius-round: var(--app-radius-lg);
-  --el-mask-color: rgba(0, 0, 0, 0.7);
+  --el-border-radius-round: 999px;
+  --el-mask-color: rgba(20, 20, 27, 0.76);
 }

@@ -1,9 +1,8 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { mount, flushPromises, VueWrapper } from '@vue/test-utils'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
-import ElementPlus from 'element-plus'
+import ElementPlus, { ElDropdown, ElMessageBox, type MessageBoxData } from 'element-plus'
 import AgentChat from '../AgentChat.vue'
-import { DEFAULT_AGENT_MODEL } from '@/api/agent'
 import { useAgentStore } from '@/stores/agent'
 import { useProjectStore } from '@/stores/project'
 import { listProjectEntries } from '@/api/projects'
@@ -32,7 +31,6 @@ const mockProject = (): Project => ({
     covariates: '',
     model: 'logistic',
     analysis_model: 'logistic',
-    api_key: '',
   },
 })
 
@@ -50,7 +48,12 @@ function setupWrapper() {
 describe('AgentChat', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
-    vi.mocked(listProjectEntries).mockClear()
+    vi.mocked(listProjectEntries).mockReset()
+    vi.mocked(listProjectEntries).mockResolvedValue(['data/', 'data/image.nii.gz'])
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
   })
 
   it('renders placeholder when no project is selected', async () => {
@@ -92,6 +95,28 @@ describe('AgentChat', () => {
     expect(rows[2].text()).toContain('result')
   })
 
+  it('shows the current conversation name above the message area', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.threadId = 'thread-1'
+    agentStore.currentThread = {
+      id: 'thread-1',
+      project_id: 'proj-1',
+      title: '肺结节影像组学分析',
+      created_at: '2026-01-01',
+      updated_at: '2026-01-01',
+    }
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    const title = wrapper.find('[data-testid="current-conversation-title"]')
+    expect(title.text()).toContain('当前会话')
+    expect(title.text()).toContain('肺结节影像组学分析')
+  })
+
   it('emits send-message when clicking the send button', async () => {
     const projectStore = useProjectStore()
     projectStore.currentProject = mockProject()
@@ -126,6 +151,51 @@ describe('AgentChat', () => {
 
     expect(wrapper.emitted('send-message')).toHaveLength(1)
     expect(wrapper.emitted('send-message')![0]).toEqual(['Enter message'])
+  })
+
+  it('starts a quick action immediately while preserving the input draft', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    const textarea = wrapper.find('textarea')
+    await textarea.setValue('尚未发送的草稿')
+
+    const dropdown = wrapper.findComponent(ElDropdown)
+    expect(dropdown.exists()).toBe(true)
+    dropdown.vm.$emit('command', 'start-analysis')
+    await flushPromises()
+
+    expect(wrapper.emitted('quick-action')).toEqual([
+      ['请检查当前项目配置与数据完整性，并开始执行完整的影像组学分析流程。'],
+    ])
+    expect((textarea.element as HTMLTextAreaElement).value).toBe('尚未发送的草稿')
+  })
+
+  it('confirms before clearing the current task and keeps history untouched', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.threadId = 'thread-1'
+    agentStore.messages = [{ role: 'user', content: '保留的历史内容' }]
+    const resetSpy = vi.spyOn(agentStore, 'resetThread')
+    vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm' as MessageBoxData)
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    wrapper.findComponent(ElDropdown).vm.$emit('command', 'clear-task')
+    await flushPromises()
+
+    expect(ElMessageBox.confirm).toHaveBeenCalledWith(
+      '清除当前任务上下文并开始新对话？历史对话仍会保留。',
+      '清除当前任务',
+      expect.objectContaining({ customClass: 'compact-confirm-box' })
+    )
+    expect(resetSpy).toHaveBeenCalledOnce()
   })
 
   it('does not emit send-message on Enter while IME is composing', async () => {
@@ -262,7 +332,7 @@ describe('AgentChat', () => {
     }
   })
 
-  it('enables the input and model selector when a project is selected without a thread', async () => {
+  it('enables the input when a project is selected without a thread', async () => {
     const projectStore = useProjectStore()
     projectStore.currentProject = mockProject()
 
@@ -272,41 +342,7 @@ describe('AgentChat', () => {
     const textarea = wrapper.find('textarea')
     expect(textarea.attributes('disabled')).toBeUndefined()
 
-    const select = wrapper.findComponent('.model-selector') as VueWrapper<any>
-    expect(select.props('disabled')).toBeFalsy()
-  })
-
-  it('defaults the model selector to DEFAULT_AGENT_MODEL', async () => {
-    const projectStore = useProjectStore()
-    projectStore.currentProject = mockProject()
-
-    const agentStore = useAgentStore()
-    agentStore.threadId = 'thread-1'
-
-    const wrapper = setupWrapper()
-    await flushPromises()
-
-    const select = wrapper.findComponent('.model-selector') as VueWrapper<any>
-    expect(select.exists()).toBe(true)
-    expect(select.props('modelValue')).toBe(DEFAULT_AGENT_MODEL)
-  })
-
-  it('emits update:model when the model selector changes', async () => {
-    const projectStore = useProjectStore()
-    projectStore.currentProject = mockProject()
-
-    const agentStore = useAgentStore()
-    agentStore.threadId = 'thread-1'
-
-    const wrapper = setupWrapper()
-    await flushPromises()
-
-    const select = wrapper.findComponent('.model-selector') as VueWrapper<any>
-    select.vm.$emit('update:modelValue', 'deepseek-v4-pro')
-    await flushPromises()
-
-    expect(wrapper.emitted('update:model')).toHaveLength(1)
-    expect(wrapper.emitted('update:model')![0]).toEqual(['deepseek-v4-pro'])
+    expect(wrapper.find('.model-selector').exists()).toBe(false)
   })
 
   it('disables input while the agent is busy', async () => {
@@ -602,7 +638,7 @@ describe('AgentChat', () => {
     expect(wrapper.find('.context-usage').classes()).toContain('context-usage--danger')
   })
 
-  it('renders auto-approve switch above the model selector and toggles the store', async () => {
+  it('renders the auto-approve switch and toggles the store', async () => {
     const projectStore = useProjectStore()
     projectStore.currentProject = mockProject()
     const agentStore = useAgentStore()
@@ -613,10 +649,6 @@ describe('AgentChat', () => {
     const row = wrapper.find('.auto-approve-row')
     expect(row.exists()).toBe(true)
     expect(row.text()).toContain('自动审批')
-
-    // DOM 顺序：开关行必须在输入区（含模型选择器）之前。
-    const html = wrapper.html()
-    expect(html.indexOf('auto-approve-row')).toBeLessThan(html.indexOf('model-selector'))
 
     await wrapper.find('.el-switch').trigger('click')
     expect(agentStore.autoApprove).toBe(true)
@@ -720,7 +752,7 @@ describe('AgentChat', () => {
     const toolbar = container.find('.input-toolbar')
     expect(toolbar.exists()).toBe(true)
     expect(toolbar.find('.auto-approve-row').exists()).toBe(true)
-    expect(toolbar.find('.model-selector').exists()).toBe(true)
+    expect(toolbar.find('.model-selector').exists()).toBe(false)
     expect(toolbar.find('[aria-label="发送"]').exists()).toBe(true)
   })
 

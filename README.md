@@ -90,11 +90,17 @@ npm run test:unit  # 运行前端单元测试
 
 ## 运行
 
-### 设置 API Key（可选，用于 LLM 列名识别与报告润色）
+### 设置 DeepSeek API Key
+
+UI 用户可在“设置 → 通用设置”中填写。密钥应用于所有项目与会话，并以明文保存到 OneRad 数据目录下的 `settings.yaml`（Windows 默认 `%USERPROFILE%\.onerad\settings.yaml`，Docker 默认 `/app/data/settings.yaml`）；请勿提交或分享该文件。新版本不再把密钥写入各项目的 `project.yaml`，首次启动时会把已有项目中的旧密钥迁移到通用配置。
+
+也可以使用环境变量，此时无需在 UI 中重复填写：
 
 ```bash
 export DEEPSEEK_API_KEY=your_key
 ```
+
+若 `settings.yaml` 与环境变量同时存在，通用设置中的密钥优先。
 
 ### CLI
 
@@ -122,9 +128,23 @@ python main.py
 - `--host`：服务器绑定地址，默认 `0.0.0.0`。
 - `--port`：服务器端口，默认 `8000`。
 - `--base-url`：LLM API Base URL，默认 `https://api.deepseek.com/v1`。
-- `--model`：模型名称，默认 `deepseek-v4-pro`。
 - `--api-key`：LLM API Key；也可通过 `DEEPSEEK_API_KEY` 环境变量设置。
 - `--feature-csv`：已提取好的影像组学特征 CSV 路径，提供后直接进入 LASSO + Logistic Regression 分析。
+
+OneRad 固定使用 `deepseek-v4-flash`，前端、线程 API、命令行和 Docker 均不提供模型切换参数。旧数据库中的 `threads.llm_model` 列会继续保留以兼容已有数据，但运行时忽略旧值。
+
+### 运行时 Markdown Skills
+
+模型行为提示词位于仓库根目录的 `skills/<name>/SKILL.md`：
+
+- `agent-core` 与 `radiomics-workflow`：主 Agent 的通用行为和影像组学流程。
+- `file-operations`：文件整理计划。
+- `clinical-columns`：临床表列识别。
+- `filename-id`：文件名患者 ID 规则推断。
+- `report-writing`：报告方法学润色。
+- `thread-title`：对话标题生成。
+
+后端在每次对应模型调用前以 UTF-8 重新读取 Markdown，不做缓存；保存 skill 后，下一次调用即使用新内容，无需重启服务。skill 缺失、为空或不是有效 UTF-8 时会返回包含具体 `SKILL.md` 路径的错误。工具参数 schema、沙箱、安全校验和审批流程仍由 Python 代码强制执行，不能通过修改 Markdown 绕过。Docker 镜像也会复制完整的 `skills/` 目录。
 
 ### 前端独立开发
 
@@ -171,4 +191,3 @@ npm run test:unit
 
 - `DEEPSEEK_API_KEY`：DeepSeek API Key。
 - `BASE_URL`：LLM API Base URL，默认 `https://api.deepseek.com/v1`。
-- `MODEL`：模型名称，默认 `deepseek-v4-pro`。

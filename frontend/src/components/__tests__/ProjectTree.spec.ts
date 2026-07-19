@@ -5,8 +5,11 @@ import ElementPlus, { ElMessageBox, ElMessage, MessageBoxData, MessageHandler } 
 import ProjectTree from '../ProjectTree.vue'
 import { useProjectStore } from '@/stores/project'
 import { useAgentStore } from '@/stores/agent'
+import { useSettingsStore } from '@/stores/settings'
 import type { Project } from '@/api/projects'
 import type { ThreadSummary } from '@/api/agent'
+
+const routerPush = vi.hoisted(() => vi.fn())
 
 vi.mock('@/api/projects', () => ({
   listProjects: vi.fn(),
@@ -31,7 +34,16 @@ vi.mock('@/api/agent', () => ({
   setAutoApprove: vi.fn(),
   updatePlan: vi.fn(),
   connectAgentEvents: vi.fn(),
-  DEFAULT_AGENT_MODEL: 'deepseek-v4-flash',
+}))
+
+vi.mock('@/api/filesystem', () => ({
+  listFilesystemRoots: vi.fn(),
+  listFilesystemEntries: vi.fn(),
+}))
+
+vi.mock('@/api/settings', () => ({
+  getSettings: vi.fn(),
+  updateSettings: vi.fn(),
 }))
 
 vi.mock('@/api/fs', () => ({
@@ -40,14 +52,15 @@ vi.mock('@/api/fs', () => ({
 
 vi.mock('vue-router', () => ({
   useRoute: () => ({ path: '/' }),
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: routerPush }),
 }))
 
 import * as projectsApi from '@/api/projects'
 import * as agentApi from '@/api/agent'
-import * as fsApi from '@/api/fs'
+import * as filesystemApi from '@/api/filesystem'
+import * as settingsApi from '@/api/settings'
 
-const mockAnalysis = () => ({
+const mockAnalysis = (overrides: Record<string, string> = {}) => ({
   image_dir: '',
   clinical_path: '',
   output_dir: './outputs',
@@ -55,24 +68,23 @@ const mockAnalysis = () => ({
   covariates: '',
   model: 'logistic',
   analysis_model: 'logistic',
-  api_key: '',
+  ...overrides,
 })
 
-const mockProject = (id: string): Project => ({
+const mockProject = (id: string, analysisOverrides: Record<string, string> = {}): Project => ({
   id,
   name: `Project ${id}`,
   path: `/tmp/${id}`,
   description: '',
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString(),
-  analysis: mockAnalysis(),
+  analysis: mockAnalysis(analysisOverrides),
 })
 
 const mockThread = (id: string, projectId: string): ThreadSummary => ({
   id,
   project_id: projectId,
   title: `Thread ${id}`,
-  llm_model: 'deepseek-v4-flash',
   created_at: '2026-01-01',
   updated_at: '2026-01-02',
 })
@@ -112,10 +124,16 @@ async function clickRowMenuItem(
 describe('ProjectTree', () => {
   beforeEach(() => {
     vi.resetAllMocks()
+    localStorage.clear()
     vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm' as MessageBoxData)
     vi.spyOn(ElMessageBox, 'prompt').mockResolvedValue({ value: '新名称', action: 'confirm' } as any)
     vi.spyOn(ElMessage, 'error').mockImplementation(() => ({ close: () => {} }) as MessageHandler)
     vi.spyOn(ElMessage, 'warning').mockImplementation(() => ({ close: () => {} }) as MessageHandler)
+    vi.mocked(settingsApi.getSettings).mockResolvedValue({
+      api_key: 'sk-general',
+      api_key_configured: true,
+      api_key_source: 'settings',
+    })
   })
 
   afterEach(() => {
@@ -225,10 +243,7 @@ describe('ProjectTree', () => {
     await wrapper.find('[data-testid="thread-row"]').trigger('click')
     await flushPromises()
 
-    expect(agentApi.resumeThread).toHaveBeenCalledWith('t1', expect.objectContaining({
-      api_key: '',
-      llm_model: 'deepseek-v4-flash',
-    }))
+    expect(agentApi.resumeThread).toHaveBeenCalledWith('t1', { auto_approve: false })
     const agentStore = useAgentStore()
     expect(agentStore.preferredThreadId).toBeNull()
   })
@@ -288,7 +303,11 @@ describe('ProjectTree', () => {
 
     await clickRowMenuItem(wrapper, 'project-more', 'project-menu-delete')
 
-    expect(ElMessageBox.confirm).toHaveBeenCalled()
+    expect(ElMessageBox.confirm).toHaveBeenCalledWith(
+      '删除项目及其全部对话？此操作无法恢复。',
+      '删除项目',
+      expect.objectContaining({ customClass: 'compact-confirm-box' })
+    )
     expect(projectsApi.deleteProject).toHaveBeenCalledWith('1')
     const agentStore = useAgentStore()
     expect(agentStore.threadsByProject['1']).toBeUndefined()
@@ -321,6 +340,11 @@ describe('ProjectTree', () => {
 
     await clickRowMenuItem(wrapper, 'thread-more', 'thread-menu-delete')
 
+    expect(ElMessageBox.confirm).toHaveBeenCalledWith(
+      '删除会话“Thread t1”？此操作无法恢复。',
+      '删除会话',
+      expect.objectContaining({ customClass: 'compact-confirm-box' })
+    )
     expect(agentApi.deleteThread).toHaveBeenCalledWith('t1')
   })
 
@@ -349,73 +373,32 @@ describe('ProjectTree', () => {
     })
   })
 
-  it('browses folders and fills the create form on confirm', async () => {
+  it('browses a local directory and fills the project path', async () => {
     vi.mocked(projectsApi.listProjects).mockResolvedValue([])
-    vi.mocked(fsApi.listDirectory).mockImplementation(async (path?: string) => {
-      if (!path) {
-        return {
-          path: '/home',
-          parent: '/',
-          dirs: [{ name: 'data', path: '/home/data' }],
-          drives: [],
-        }
-      }
-      if (path === '/home/data') {
-        return { path: '/home/data', parent: '/home', dirs: [], drives: [] }
-      }
-      if (path === '/home') {
-        return {
-          path: '/home',
-          parent: '/',
-          dirs: [{ name: 'data', path: '/home/data' }],
-          drives: [],
-        }
-      }
-      return {
-        path: '/',
-        parent: null,
-        dirs: [{ name: 'home', path: '/home' }],
-        drives: [],
-      }
+    vi.mocked(filesystemApi.listFilesystemRoots).mockResolvedValue([
+      { name: '主目录', path: 'C:\\Users\\researcher' },
+    ])
+    vi.mocked(filesystemApi.listFilesystemEntries).mockResolvedValue({
+      path: 'C:\\Users\\researcher',
+      parent: 'C:\\Users',
+      breadcrumbs: [{ name: 'researcher', path: 'C:\\Users\\researcher' }],
+      entries: [],
     })
 
     const wrapper = setupWrapper()
     await flushPromises()
-
     await wrapper.find('[data-testid="new-project"]').trigger('click')
     await flushPromises()
-    await wrapper.find('[data-testid="browse-folder"]').trigger('click')
+    await wrapper.find('[data-testid="browse-project-path"]').trigger('click')
     await flushPromises()
 
-    // 浏览器对话框 append-to-body：内部元素走 document 查询
-    const docFind = (testid: string): HTMLElement => {
-      const el = document.querySelector<HTMLElement>(`[data-testid="${testid}"]`)
-      expect(el, `未找到元素：${testid}`).toBeTruthy()
-      return el!
-    }
-
-    // 初始列出主目录，点击进入 data
-    expect(fsApi.listDirectory).toHaveBeenCalledWith(undefined)
-    docFind('browser-dir').click()
-    await flushPromises()
-    expect(fsApi.listDirectory).toHaveBeenCalledWith('/home/data')
-
-    // 无子目录时显示空态；返回上一级
-    expect(document.body.textContent).toContain('无子文件夹')
-    docFind('browser-up').click()
-    await flushPromises()
-    expect(fsApi.listDirectory).toHaveBeenCalledWith('/home')
-
-    // 回到 data 并确认：路径填入、名称为空时取文件夹名
-    docFind('browser-dir').click()
-    await flushPromises()
-    docFind('browser-confirm').click()
+    document.querySelector<HTMLElement>('[data-testid="path-picker-confirm"]')!.click()
     await flushPromises()
 
-    const pathInput = wrapper.find('input[data-testid="project-path-input"]')
-    expect((pathInput.element as HTMLInputElement).value).toBe('/home/data')
+    const pathInput = wrapper.find<HTMLInputElement>('input[placeholder*="本机绝对路径"]')
+    expect(pathInput.element.value).toBe('C:\\Users\\researcher')
     const nameInput = wrapper.find('input[placeholder="请输入项目名称"]')
-    expect((nameInput.element as HTMLInputElement).value).toBe('data')
+    expect((nameInput.element as HTMLInputElement).value).toBe('researcher')
   })
 
   it('creates a thread in the clicked project via its plus action', async () => {
@@ -429,27 +412,53 @@ describe('ProjectTree', () => {
     await wrapper.find('[data-testid="project-new-thread"]').trigger('click')
     await flushPromises()
 
-    expect(agentApi.createThread).toHaveBeenCalledWith('1', expect.objectContaining({
-      llm_model: 'deepseek-v4-flash',
-    }))
+    expect(agentApi.createThread).toHaveBeenCalledWith('1', { auto_approve: false })
     expect(useProjectStore().currentProject?.id).toBe('1')
   })
 
-  it('warns on 新建任务 when no project is selected', async () => {
+  it('redirects to settings and requests an API key instead of silently failing', async () => {
+    vi.mocked(settingsApi.getSettings).mockResolvedValue({
+      api_key: '',
+      api_key_configured: false,
+      api_key_source: 'none',
+    })
     vi.mocked(projectsApi.listProjects).mockResolvedValue([mockProject('1')])
 
     const wrapper = setupWrapper()
     await flushPromises()
 
-    await wrapper.find('[data-testid="new-task"]').trigger('click')
+    await wrapper.find('[data-testid="project-new-thread"]').trigger('click')
     await flushPromises()
 
-    expect(ElMessage.warning).toHaveBeenCalled()
+    expect(useProjectStore().currentProject?.id).toBe('1')
+    expect(useSettingsStore().apiKeyRequired).toBe(true)
+    expect(routerPush).toHaveBeenCalledWith('/settings')
+    expect(agentApi.createThread).not.toHaveBeenCalled()
+  })
+
+  it('uses one primary 新建项目 entry and removes the legacy task action', async () => {
+    vi.mocked(projectsApi.listProjects).mockResolvedValue([mockProject('1')])
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    const entries = wrapper.findAll('[data-testid="new-project"]')
+    expect(entries).toHaveLength(1)
+    expect(entries[0].text()).toContain('新建项目')
+    expect(wrapper.find('[data-testid="new-task"]').exists()).toBe(false)
+
+    await entries[0].trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('.project-create-dialog').exists()).toBe(true)
     expect(agentApi.createThread).not.toHaveBeenCalled()
   })
 
   it('creates the thread before switching project via another project\'s plus action', async () => {
-    vi.mocked(projectsApi.listProjects).mockResolvedValue([mockProject('1'), mockProject('2')])
+    vi.mocked(projectsApi.listProjects).mockResolvedValue([
+      mockProject('1'),
+      mockProject('2'),
+    ])
     let resolveCreate: (v: { thread_id: string }) => void = () => {}
     vi.mocked(agentApi.createThread).mockImplementation(
       () => new Promise((resolve) => { resolveCreate = resolve })
@@ -472,10 +481,41 @@ describe('ProjectTree', () => {
     resolveCreate({ thread_id: 't-new' })
     await flushPromises()
 
-    expect(agentApi.createThread).toHaveBeenCalledWith('2', expect.objectContaining({
-      llm_model: 'deepseek-v4-flash',
-    }))
+    expect(agentApi.createThread).toHaveBeenCalledWith('2', { auto_approve: false })
     expect(projectStore.currentProject?.id).toBe('2')
+  })
+
+  it('persists project pins and sorts pinned projects first', async () => {
+    localStorage.setItem('onerad:sidebar:pinnedProjects', JSON.stringify(['2']))
+    vi.mocked(projectsApi.listProjects).mockResolvedValue([mockProject('1'), mockProject('2')])
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    const rows = wrapper.findAll('[data-testid="project-row"]')
+    expect(rows[0].text()).toContain('Project 2')
+    expect(rows[0].find('[data-testid="project-pinned"]').exists()).toBe(true)
+
+    await clickRowMenuItem(wrapper, 'project-more', 'project-menu-pin')
+    expect(JSON.parse(localStorage.getItem('onerad:sidebar:pinnedProjects') || '[]'))
+      .not.toContain('2')
+  })
+
+  it('persists thread pins and sorts pinned threads first inside a project', async () => {
+    localStorage.setItem('onerad:sidebar:pinnedThreads', JSON.stringify(['t2']))
+    vi.mocked(projectsApi.listProjects).mockResolvedValue([mockProject('1')])
+    vi.mocked(agentApi.listThreads).mockResolvedValue({
+      threads: [mockThread('t1', '1'), mockThread('t2', '1')],
+    })
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+    await wrapper.find('[data-testid="project-row"]').trigger('click')
+    await flushPromises()
+
+    const rows = wrapper.findAll('[data-testid="thread-row"]')
+    expect(rows[0].text()).toContain('Thread t2')
+    expect(rows[0].find('[data-testid="thread-pinned"]').exists()).toBe(true)
   })
 
   it('shows an inline retry when loading threads fails and recovers on click', async () => {

@@ -63,7 +63,6 @@ export const useProjectStore = defineStore('project', () => {
       }
       if (currentProject.value?.id === projectId) {
         currentProject.value = updated
-        // api_key 已随 project.yaml 持久化，直接使用后端返回的配置。
         currentConfig.value = { ...updated.analysis }
       }
       return updated

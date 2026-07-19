@@ -82,7 +82,7 @@ describe('useAgentStore', () => {
 
   it('sendMessage appends the user message and calls the API', async () => {
     const store = useAgentStore()
-    await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')
+    await store.ensureThread('project-1')
     await store.sendMessage('Hello')
 
     expect(store.messages).toContainEqual({ role: 'user', content: 'Hello' })
@@ -94,7 +94,7 @@ describe('useAgentStore', () => {
 
   it('sendMessage marks the store busy until the stream ends', async () => {
     const store = useAgentStore()
-    await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')
+    await store.ensureThread('project-1')
     await store.sendMessage('Hello')
 
     expect(store.busy).toBe(true)
@@ -108,7 +108,7 @@ describe('useAgentStore', () => {
     // SSE 只推订阅后的新事件，订阅空窗内可能漏事件；
     // agent_end 时必须同步一次最终状态保证收敛。
     const store = useAgentStore()
-    await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')
+    await store.ensureThread('project-1')
     await store.sendMessage('Hello')
     vi.mocked(client.get).mockClear()
 
@@ -120,7 +120,7 @@ describe('useAgentStore', () => {
 
   it('refreshes the thread list when the stream ends so generated titles show up', async () => {
     const store = useAgentStore()
-    await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')
+    await store.ensureThread('project-1')
     await store.sendMessage('Hello')
     const listSpy = vi.spyOn(agentApi, 'listThreads').mockResolvedValue({ threads: [] })
 
@@ -132,7 +132,7 @@ describe('useAgentStore', () => {
 
   it('sendMessage rolls back the optimistic message and clears busy on API failure', async () => {
     const store = useAgentStore()
-    await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')
+    await store.ensureThread('project-1')
     vi.mocked(client.post).mockRejectedValueOnce({
       response: { data: { detail: '智能体正在处理中' } },
     })
@@ -144,7 +144,7 @@ describe('useAgentStore', () => {
 
   it('keeps existing messages when an error payload arrives over SSE', async () => {
     const store = useAgentStore()
-    await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')
+    await store.ensureThread('project-1')
     const es = MockEventSource.instances[0]
     es.emit('agent', mockState({ messages: [{ role: 'user', content: 'Hello' }] }))
     expect(store.messages).toHaveLength(1)
@@ -160,7 +160,7 @@ describe('useAgentStore', () => {
     // execute_confirmed 清除），但 running=true 表示运行仍在继续，
     // busy 必须保持——否则停止按钮会在工具执行期间消失。
     const store = useAgentStore()
-    await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')
+    await store.ensureThread('project-1')
     await store.sendMessage('Hello')
     expect(store.busy).toBe(true)
 
@@ -173,7 +173,7 @@ describe('useAgentStore', () => {
 
   it('clears busy when a snapshot reports running false', async () => {
     const store = useAgentStore()
-    await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')
+    await store.ensureThread('project-1')
     await store.sendMessage('Hello')
     expect(store.busy).toBe(true)
 
@@ -186,7 +186,7 @@ describe('useAgentStore', () => {
 
   it('stop calls the stop API and clears busy', async () => {
     const store = useAgentStore()
-    await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')
+    await store.ensureThread('project-1')
     await store.sendMessage('Hello')
     expect(store.busy).toBe(true)
 
@@ -198,7 +198,7 @@ describe('useAgentStore', () => {
 
   it('stop clears busy even when the API fails', async () => {
     const store = useAgentStore()
-    await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')
+    await store.ensureThread('project-1')
     await store.sendMessage('Hello')
     expect(store.busy).toBe(true)
     vi.mocked(client.post).mockRejectedValueOnce(new Error('network error'))
@@ -209,7 +209,7 @@ describe('useAgentStore', () => {
 
   it('applies state from SSE events', async () => {
     const store = useAgentStore()
-    await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')
+    await store.ensureThread('project-1')
     const es = MockEventSource.instances[0]
 
     es.emit('agent', mockState({
@@ -223,7 +223,7 @@ describe('useAgentStore', () => {
 
   it('reconnect syncs state and reopens the event stream', async () => {
     const store = useAgentStore()
-    await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')
+    await store.ensureThread('project-1')
     store.disconnect()
     MockEventSource.instances = []
 
@@ -253,7 +253,6 @@ describe('useAgentStore', () => {
       id: 't1',
       project_id: 'p1',
       title: 'T1',
-      llm_model: 'deepseek-v4-flash',
       created_at: '2024-01-01T00:00:00Z',
       updated_at: '2024-01-01T00:00:00Z',
     }
@@ -270,7 +269,6 @@ describe('useAgentStore', () => {
       id: 't2',
       project_id: 'p2',
       title: 'T2',
-      llm_model: 'deepseek-v4-flash',
       created_at: '2024-01-01T00:00:00Z',
       updated_at: '2024-01-01T00:00:00Z',
     }
@@ -283,20 +281,12 @@ describe('useAgentStore', () => {
     expect(store.threads).toEqual([])
   })
 
-  it('exposes selectedModel with the default agent model', () => {
-    const store = useAgentStore()
-    expect(store.selectedModel).toBe(agentApi.DEFAULT_AGENT_MODEL)
-    store.selectedModel = 'deepseek-v4-pro'
-    expect(store.selectedModel).toBe('deepseek-v4-pro')
-  })
-
   it('resetThread clears the flat list but keeps the per-project cache', async () => {
     const store = useAgentStore()
     const thread = {
       id: 't1',
       project_id: 'p1',
       title: 'T1',
-      llm_model: 'deepseek-v4-flash',
       created_at: '2024-01-01T00:00:00Z',
       updated_at: '2024-01-01T00:00:00Z',
     }
@@ -315,7 +305,6 @@ describe('useAgentStore', () => {
       id: 't-cur',
       project_id: 'p1',
       title: 'Current',
-      llm_model: 'deepseek-v4-flash',
       created_at: '2024-01-01T00:00:00Z',
       updated_at: '2024-01-01T00:00:00Z',
     }
@@ -343,19 +332,16 @@ describe('useAgentStore', () => {
           id: 'thread-new',
           project_id: 'project-1',
           title: 'New Thread',
-          llm_model: 'deepseek-v4-flash',
           created_at: '2024-01-01T00:00:00Z',
           updated_at: '2024-01-01T00:00:00Z',
         },
       ],
     })
 
-    const id = await store.createThread('project-1', 'sk-test', 'deepseek-v4-flash')
+    const id = await store.createThread('project-1')
 
     expect(id).toBe('thread-new')
     expect(agentApi.createThread).toHaveBeenCalledWith('project-1', {
-      api_key: 'sk-test',
-      llm_model: 'deepseek-v4-flash',
       auto_approve: false,
     })
     expect(store.threadId).toBe('thread-new')
@@ -363,7 +349,6 @@ describe('useAgentStore', () => {
       id: 'thread-new',
       project_id: 'project-1',
       title: 'New Thread',
-      llm_model: 'deepseek-v4-flash',
       created_at: '2024-01-01T00:00:00Z',
       updated_at: '2024-01-01T00:00:00Z',
     })
@@ -378,7 +363,6 @@ describe('useAgentStore', () => {
         id: 'thread-load',
         project_id: 'project-1',
         title: 'Loaded Thread',
-        llm_model: 'deepseek-v4-flash',
         created_at: '2024-01-01T00:00:00Z',
         updated_at: '2024-01-01T00:00:00Z',
       },
@@ -391,11 +375,9 @@ describe('useAgentStore', () => {
       }),
     })
 
-    await store.loadThread('thread-load', 'sk-test', 'deepseek-v4-flash')
+    await store.loadThread('thread-load')
 
     expect(agentApi.resumeThread).toHaveBeenCalledWith('thread-load', {
-      api_key: 'sk-test',
-      llm_model: 'deepseek-v4-flash',
       auto_approve: false,
     })
     expect(store.threadId).toBe('thread-load')
@@ -403,7 +385,6 @@ describe('useAgentStore', () => {
       id: 'thread-load',
       project_id: 'project-1',
       title: 'Loaded Thread',
-      llm_model: 'deepseek-v4-flash',
       created_at: '2024-01-01T00:00:00Z',
       updated_at: '2024-01-01T00:00:00Z',
     })
@@ -418,7 +399,6 @@ describe('useAgentStore', () => {
       id: 'thread-cached',
       project_id: 'project-9',
       title: 'Cached Thread',
-      llm_model: 'deepseek-v4-flash',
       created_at: '2024-01-01T00:00:00Z',
       updated_at: '2024-01-01T00:00:00Z',
     }
@@ -428,7 +408,7 @@ describe('useAgentStore', () => {
       ...mockState(),
     })
 
-    await store.loadThread('thread-cached', 'sk-test', 'deepseek-v4-flash')
+    await store.loadThread('thread-cached')
 
     expect(store.currentThread?.project_id).toBe('project-9')
     expect(store.currentThread?.title).toBe('Cached Thread')
@@ -436,7 +416,7 @@ describe('useAgentStore', () => {
 
   it('tracks radiomics progress from SSE and clears it on stream end', async () => {
     const store = useAgentStore()
-    await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')
+    await store.ensureThread('project-1')
     await store.sendMessage('提取特征')
     const es = MockEventSource.instances[0]
 
@@ -469,7 +449,7 @@ describe('useAgentStore', () => {
 
   it('stop clears radiomics progress', async () => {
     const store = useAgentStore()
-    await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')
+    await store.ensureThread('project-1')
     await store.sendMessage('提取特征')
     const es = MockEventSource.instances[0]
     es.emit('agent', {
@@ -486,7 +466,7 @@ describe('useAgentStore', () => {
 
   it('tracks thinking stream from SSE and clears it on stream end', async () => {
     const store = useAgentStore()
-    await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')
+    await store.ensureThread('project-1')
     await store.sendMessage('你好')
     const es = MockEventSource.instances[0]
 
@@ -506,7 +486,7 @@ describe('useAgentStore', () => {
 
   it('clears current thinking when an error payload arrives', async () => {
     const store = useAgentStore()
-    await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')
+    await store.ensureThread('project-1')
     await store.sendMessage('你好')
     const es = MockEventSource.instances[0]
 
@@ -520,7 +500,7 @@ describe('useAgentStore', () => {
 
   it('stop clears current thinking', async () => {
     const store = useAgentStore()
-    await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')
+    await store.ensureThread('project-1')
     await store.sendMessage('你好')
     const es = MockEventSource.instances[0]
     es.emit('agent', { thinking: { text: '思考中', done: false }, running: true })
@@ -534,7 +514,7 @@ describe('useAgentStore', () => {
 
   it('clears current thinking when the event stream errors', async () => {
     const store = useAgentStore()
-    await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')
+    await store.ensureThread('project-1')
     await store.sendMessage('你好')
     const es = MockEventSource.instances[0]
     es.emit('agent', { thinking: { text: '思考中', done: false }, running: true })
@@ -547,7 +527,7 @@ describe('useAgentStore', () => {
 
   it('tracks pending radiomics plan/execution from SSE state', async () => {
     const store = useAgentStore()
-    await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')
+    await store.ensureThread('project-1')
     const es = MockEventSource.instances[0]
 
     const execution = {
@@ -577,7 +557,7 @@ describe('useAgentStore', () => {
 
   it('tracks pending radiomics analysis from SSE state', async () => {
     const store = useAgentStore()
-    await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')
+    await store.ensureThread('project-1')
     const es = MockEventSource.instances[0]
 
     es.emit('agent', mockState({
@@ -598,7 +578,7 @@ describe('useAgentStore', () => {
 
   it('resetThread clears pending radiomics analysis', async () => {
     const store = useAgentStore()
-    await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')
+    await store.ensureThread('project-1')
     const es = MockEventSource.instances[0]
 
     es.emit('agent', mockState({
@@ -620,13 +600,12 @@ describe('useAgentStore', () => {
           id: 'thread-del',
           project_id: 'project-1',
           title: 'To Delete',
-          llm_model: 'deepseek-v4-flash',
           created_at: '2024-01-01T00:00:00Z',
           updated_at: '2024-01-01T00:00:00Z',
         },
       ],
     })
-    await store.createThread('project-1', 'sk-test', 'deepseek-v4-flash')
+    await store.createThread('project-1')
 
     vi.spyOn(agentApi, 'deleteThread').mockResolvedValueOnce(undefined)
     const listSpy = vi.spyOn(agentApi, 'listThreads').mockResolvedValueOnce({ threads: [] })
@@ -650,7 +629,6 @@ describe('useAgentStore', () => {
           id: 'thread-current',
           project_id: 'project-1',
           title: 'Current',
-          llm_model: 'deepseek-v4-flash',
           created_at: '2024-01-01T00:00:00Z',
           updated_at: '2024-01-01T00:00:00Z',
         },
@@ -658,13 +636,12 @@ describe('useAgentStore', () => {
           id: 'thread-other',
           project_id: 'project-1',
           title: 'Other',
-          llm_model: 'deepseek-v4-flash',
           created_at: '2024-01-01T00:00:00Z',
           updated_at: '2024-01-01T00:00:00Z',
         },
       ],
     })
-    await store.createThread('project-1', 'sk-test', 'deepseek-v4-flash')
+    await store.createThread('project-1')
 
     vi.spyOn(agentApi, 'deleteThread').mockResolvedValueOnce(undefined)
     const listSpy = vi.spyOn(agentApi, 'listThreads').mockResolvedValueOnce({
@@ -673,7 +650,6 @@ describe('useAgentStore', () => {
           id: 'thread-current',
           project_id: 'project-1',
           title: 'Current',
-          llm_model: 'deepseek-v4-flash',
           created_at: '2024-01-01T00:00:00Z',
           updated_at: '2024-01-01T00:00:00Z',
         },
@@ -697,20 +673,18 @@ describe('useAgentStore', () => {
           id: 'thread-ren',
           project_id: 'project-1',
           title: 'Old Title',
-          llm_model: 'deepseek-v4-flash',
           created_at: '2024-01-01T00:00:00Z',
           updated_at: '2024-01-01T00:00:00Z',
         },
       ],
     })
-    await store.createThread('project-1', 'sk-test', 'deepseek-v4-flash')
+    await store.createThread('project-1')
 
     vi.spyOn(agentApi, 'renameThread').mockResolvedValueOnce({
       thread: {
         id: 'thread-ren',
         project_id: 'project-1',
         title: 'Renamed Title',
-        llm_model: 'deepseek-v4-flash',
         created_at: '2024-01-01T00:00:00Z',
         updated_at: '2024-01-02T00:00:00Z',
       },
@@ -721,7 +695,6 @@ describe('useAgentStore', () => {
           id: 'thread-ren',
           project_id: 'project-1',
           title: 'Renamed Title',
-          llm_model: 'deepseek-v4-flash',
           created_at: '2024-01-01T00:00:00Z',
           updated_at: '2024-01-02T00:00:00Z',
         },
@@ -742,7 +715,6 @@ describe('useAgentStore', () => {
         id: 'thread-current',
         project_id: 'project-1',
         title: 'Current',
-        llm_model: 'deepseek-v4-flash',
         created_at: '2024-01-01T00:00:00Z',
         updated_at: '2024-01-01T00:00:00Z',
       },
@@ -750,7 +722,6 @@ describe('useAgentStore', () => {
         id: 'thread-other',
         project_id: 'project-1',
         title: 'Other',
-        llm_model: 'deepseek-v4-flash',
         created_at: '2024-01-01T00:00:00Z',
         updated_at: '2024-01-01T00:00:00Z',
       },
@@ -762,7 +733,6 @@ describe('useAgentStore', () => {
         id: 'thread-other',
         project_id: 'project-1',
         title: 'Renamed Other',
-        llm_model: 'deepseek-v4-flash',
         created_at: '2024-01-01T00:00:00Z',
         updated_at: '2024-01-02T00:00:00Z',
       },
@@ -773,7 +743,6 @@ describe('useAgentStore', () => {
           id: 'thread-current',
           project_id: 'project-1',
           title: 'Current',
-          llm_model: 'deepseek-v4-flash',
           created_at: '2024-01-01T00:00:00Z',
           updated_at: '2024-01-01T00:00:00Z',
         },
@@ -781,7 +750,6 @@ describe('useAgentStore', () => {
           id: 'thread-other',
           project_id: 'project-1',
           title: 'Renamed Other',
-          llm_model: 'deepseek-v4-flash',
           created_at: '2024-01-01T00:00:00Z',
           updated_at: '2024-01-02T00:00:00Z',
         },
@@ -806,7 +774,7 @@ describe('useAgentStore', () => {
 
     it('sends the flag to the backend when a thread is active', async () => {
       const store = useAgentStore()
-      await store.ensureThread('project-1', '', 'deepseek-v4-flash')
+      await store.ensureThread('project-1')
       vi.mocked(client.put).mockResolvedValue({ data: { auto_approve: true } })
 
       await store.setAutoApprove(true)
@@ -819,7 +787,7 @@ describe('useAgentStore', () => {
 
     it('rolls back on API failure', async () => {
       const store = useAgentStore()
-      await store.ensureThread('project-1', '', 'deepseek-v4-flash')
+      await store.ensureThread('project-1')
       vi.mocked(client.put).mockRejectedValue(new Error('boom'))
 
       await expect(store.setAutoApprove(true)).rejects.toThrow('boom')
@@ -831,18 +799,18 @@ describe('useAgentStore', () => {
       const store = useAgentStore()
       await store.setAutoApprove(true)
 
-      await store.createThread('project-1', 'sk-test', 'deepseek-v4-flash')
+      await store.createThread('project-1')
 
       expect(client.post).toHaveBeenCalledWith(
         '/agent/threads',
-        { api_key: 'sk-test', llm_model: 'deepseek-v4-flash', auto_approve: true },
+        { auto_approve: true },
         { params: { project_id: 'project-1' } }
       )
     })
 
     it('exposes syncing state during the API call', async () => {
       const store = useAgentStore()
-      await store.ensureThread('project-1', '', 'deepseek-v4-flash')
+      await store.ensureThread('project-1')
       let resolvePut: (value: { data: { auto_approve: boolean } }) => void = () => {}
       vi.mocked(client.put).mockImplementation(
         () =>
@@ -868,18 +836,16 @@ describe('useAgentStore', () => {
         ...mockState(),
       })
 
-      await store.loadThread('thread-load', 'sk-test', 'deepseek-v4-flash')
+      await store.loadThread('thread-load')
 
       expect(agentApi.resumeThread).toHaveBeenCalledWith('thread-load', {
-        api_key: 'sk-test',
-        llm_model: 'deepseek-v4-flash',
         auto_approve: true,
       })
     })
 
     it('keeps autoApprove across thread switches', async () => {
       const store = useAgentStore()
-      await store.ensureThread('project-1', '', 'deepseek-v4-flash')
+      await store.ensureThread('project-1')
       vi.mocked(client.put).mockResolvedValue({ data: { auto_approve: true } })
       await store.setAutoApprove(true)
 
@@ -887,7 +853,7 @@ describe('useAgentStore', () => {
         thread_id: 'thread-load',
         ...mockState(),
       })
-      await store.loadThread('thread-load', 'sk-test', 'deepseek-v4-flash')
+      await store.loadThread('thread-load')
 
       expect(store.autoApprove).toBe(true)
     })
@@ -898,7 +864,6 @@ describe('useAgentStore', () => {
       id: 't-1',
       project_id: 'p-1',
       title: '',
-      llm_model: 'deepseek-v4-flash',
       created_at: '',
       updated_at: '',
       ...overrides,
@@ -957,14 +922,14 @@ describe('useAgentStore', () => {
         ...mockState(),
       })
 
-      await store.loadThread('t-1', 'sk-test', 'deepseek-v4-flash')
+      await store.loadThread('t-1')
 
       expect(store.finishedThreadIds.has('t-1')).toBe(false)
     })
 
     it('marks the current thread running on sendMessage and clears it on stream end', async () => {
       const store = useAgentStore()
-      await store.ensureThread('project-1', 'sk-test', 'deepseek-v4-flash')
+      await store.ensureThread('project-1')
       await store.sendMessage('Hello')
 
       expect(store.runningThreadIds.has('thread-1')).toBe(true)

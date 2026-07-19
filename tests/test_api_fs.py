@@ -52,7 +52,8 @@ def test_list_directory_navigates_into_subdir(client, folder_tree):
     assert data["parent"] == str(folder_tree.resolve())
 
 
-def test_list_directory_defaults_to_home(client):
+def test_list_directory_defaults_to_home(client, monkeypatch, tmp_path):
+    monkeypatch.setattr("app.api.fs.Path.home", lambda: tmp_path)
     response = client.get("/api/fs/list")
     assert response.status_code == 200, response.text
     assert response.json()["path"]

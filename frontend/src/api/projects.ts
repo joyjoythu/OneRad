@@ -8,7 +8,6 @@ export interface AnalysisConfig {
   covariates: string
   model: string
   analysis_model: string
-  api_key: string
 }
 
 export interface Project {

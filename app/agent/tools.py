@@ -11,18 +11,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from app.agent.safety import Sandbox, validate_plan
 from app.code_runner import classify_risk, prepare_script, execute_script_if_safe
 from app.radiomics_discovery import discover_pairs
-
-
-SYSTEM_PLAN_PROMPT = """你是一个医学影像项目文件整理助手。
-请根据用户需求，返回一段 JSON 数组格式的操作计划。
-仅允许以下 action：move、copy、rename、mkdir。严禁 delete。
-所有 source/target 都应是相对于项目根目录的相对路径。
-
-返回格式：
-[
-  {"action": "move", "source": "...", "target": "...", "reason": "..."}
-]
-"""
+from app.skills import load_skill
 
 
 def build_tools(project_path: str, llm, allow_subagent: bool = False):
@@ -49,7 +38,10 @@ def build_tools(project_path: str, llm, allow_subagent: bool = False):
         """根据用户需求生成文件操作计划。仅生成计划，不实际执行。"""
         snapshot = _directory_snapshot(sandbox.root)
         prompt = f"项目目录结构快照：\n{snapshot}\n\n用户需求：{instruction}"
-        response = llm.invoke([SystemMessage(content=SYSTEM_PLAN_PROMPT), HumanMessage(content=prompt)])
+        response = llm.invoke([
+            SystemMessage(content=load_skill("file-operations")),
+            HumanMessage(content=prompt),
+        ])
         plan = _extract_json(response.content)
         validated = validate_plan(plan, sandbox)
         return json.dumps(validated)

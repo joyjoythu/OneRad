@@ -10,9 +10,8 @@
       <div class="agent-chat-wrapper">
         <AgentChat
           ref="agentChatRef"
-          :model="selectedModel"
-          @update:model="selectedModel = $event"
           @send-message="handleSendMessage"
+          @quick-action="handleQuickAction"
           @stop="handleStop"
         />
       </div>
@@ -80,12 +79,6 @@ import { vAutoHideScrollbar } from '@/directives/autoHideScrollbar'
 const agentStore = useAgentStore()
 const projectStore = useProjectStore()
 
-const selectedModel = computed({
-  get: () => agentStore.selectedModel,
-  set: (value: string) => {
-    agentStore.selectedModel = value
-  },
-})
 const agentChatRef = ref<InstanceType<typeof AgentChat> | null>(null)
 
 const SIDE_PANEL_COLLAPSED_KEY = 'onerad:agent:sidePanelCollapsed'
@@ -152,18 +145,28 @@ const interruptTag = computed(() => {
 })
 
 async function handleSendMessage(content: string): Promise<void> {
+  const sent = await sendContent(content)
+  if (sent) agentChatRef.value?.clearInput()
+}
+
+async function handleQuickAction(content: string): Promise<void> {
+  await sendContent(content)
+}
+
+async function sendContent(content: string): Promise<boolean> {
   const projectId = projectStore.currentProject?.id
-  if (!projectId) return
+  if (!projectId) return false
   const config = projectStore.currentConfig
-  if (!config) return
+  if (!config) return false
   if (!agentStore.threadId) {
-    await agentStore.ensureThread(projectId, config.api_key, selectedModel.value)
+    await agentStore.ensureThread(projectId)
   }
   try {
     await agentStore.sendMessage(content, 'user')
-    agentChatRef.value?.clearInput()
+    return true
   } catch {
     // errors handled by axios interceptor
+    return false
   }
 }
 
@@ -201,8 +204,7 @@ watch(
     const target =
       agentStore.threads.find((t) => t.id === preferred) ?? agentStore.threads[0]
     if (target) {
-      await agentStore.loadThread(target.id, config.api_key, target.llm_model)
-      agentStore.selectedModel = target.llm_model
+      await agentStore.loadThread(target.id)
     }
   },
   { immediate: true }
@@ -212,9 +214,11 @@ watch(
 <style scoped>
 .agent-view {
   display: flex;
+  min-width: 0;
+  min-height: 0;
   flex-direction: column;
   height: 100%;
-  gap: 1rem;
+  gap: 0.75rem;
 }
 
 .agent-header {
@@ -234,22 +238,30 @@ watch(
 .agent-chat-wrapper {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }
 
 .agent-side-panel {
   width: 420px;
+  min-width: 0;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0.875rem;
+  padding: 0.75rem;
   overflow-y: auto;
-  transition: width 0.2s ease;
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-lg);
+  background: var(--app-bg-panel);
+  box-shadow: var(--app-shadow-sm);
+  transition: width 0.2s ease, padding 0.2s ease;
 }
 
 .agent-side-panel--collapsed {
-  width: 40px;
+  width: 48px;
+  padding-inline: 0.375rem;
   align-items: center;
 }
 
@@ -282,7 +294,7 @@ watch(
   color: var(--app-text-muted);
   font-size: 0.875rem;
   border: 1px dashed var(--app-border-strong);
-  border-radius: var(--app-radius-md);
+  border-radius: var(--app-radius-lg);
 }
 
 .operation-log {
@@ -305,5 +317,38 @@ watch(
 
 .operation-log-entry + .operation-log-entry {
   margin-top: 0.25rem;
+}
+
+@media (max-width: 1200px) {
+  .agent-side-panel:not(.agent-side-panel--collapsed) {
+    width: 340px;
+  }
+}
+
+@media (max-width: 820px) {
+  .agent-workspace {
+    flex-direction: column;
+  }
+
+  .agent-chat-wrapper {
+    flex: 1 1 58%;
+  }
+
+  .agent-side-panel,
+  .agent-side-panel:not(.agent-side-panel--collapsed) {
+    width: 100%;
+    max-height: 42%;
+  }
+
+  .agent-side-panel--collapsed {
+    width: 100%;
+    min-height: 48px;
+    max-height: 48px;
+    align-items: stretch;
+  }
+
+  .agent-side-panel--collapsed .side-panel-header {
+    justify-content: flex-end;
+  }
 }
 </style>

@@ -1,9 +1,12 @@
 <template>
   <div class="onerad-app">
     <header class="app-header">
-      <h1>OneRad</h1>
+      <div class="app-brand" aria-label="OneRad">
+        <span class="app-brand__mark" aria-hidden="true">R</span>
+        <h1>OneRad</h1>
+      </div>
       <nav class="app-nav">
-        <router-link to="/" exact-active-class="active">Agent</router-link>
+        <router-link to="/" exact-active-class="active">任务</router-link>
         <router-link to="/settings" exact-active-class="active">设置</router-link>
       </nav>
     </header>
@@ -68,7 +71,8 @@ function handleToggleSidebar(): void {
 .onerad-app {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
   background-color: var(--app-bg);
   color: var(--app-text);
 }
@@ -76,10 +80,32 @@ function handleToggleSidebar(): void {
 .app-header {
   display: flex;
   align-items: center;
-  gap: 1.5rem;
-  padding: 0.75rem 1.5rem;
+  min-height: 58px;
+  flex: 0 0 auto;
+  gap: 1.75rem;
+  padding: 0.625rem 1.25rem;
   border-bottom: 1px solid var(--app-border);
-  background-color: var(--app-bg);
+  background-color: color-mix(in srgb, var(--app-bg-panel) 94%, transparent);
+  box-shadow: 0 1px 0 rgba(22, 119, 255, 0.03);
+}
+
+.app-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.app-brand__mark {
+  display: inline-grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 10px;
+  background: linear-gradient(145deg, var(--app-accent-hover), var(--app-accent-active));
+  box-shadow: 0 6px 16px var(--app-focus-ring);
+  color: #ffffff;
+  font-size: 1rem;
+  font-weight: 750;
 }
 
 .app-header h1 {
@@ -87,42 +113,57 @@ function handleToggleSidebar(): void {
   font-size: 1.125rem;
   font-weight: 700;
   letter-spacing: 0.02em;
-  color: var(--app-text);
+  color: var(--app-accent-active);
 }
 
 .app-nav {
   display: flex;
-  gap: 1rem;
+  align-items: center;
+  gap: 0.25rem;
 }
 
 .app-nav a {
   color: var(--app-text-secondary);
   text-decoration: none;
   font-size: 0.9375rem;
-  padding: 0.25rem 0;
-  border-bottom: 2px solid transparent;
-  transition: color 0.2s, border-color 0.2s;
+  min-height: 36px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid transparent;
+  border-radius: var(--app-radius-md);
+  transition: color 0.16s ease, background-color 0.16s ease,
+    border-color 0.16s ease;
 }
 
 .app-nav a:hover {
-  color: var(--app-text);
+  background: var(--app-bg-hover);
+  color: var(--app-accent-active);
+}
+
+.app-nav a:focus-visible {
+  outline: 3px solid var(--app-focus-ring);
+  outline-offset: 1px;
 }
 
 .app-nav a.active {
-  color: var(--app-text);
-  border-bottom-color: var(--app-accent);
+  border-color: var(--app-border);
+  background: var(--app-sidebar-active);
+  color: var(--app-accent-active);
+  font-weight: 600;
 }
 
 .app-body {
   display: flex;
   flex: 1;
+  min-height: 0;
   overflow: hidden;
 }
 
 .app-sidebar {
-  width: 320px;
+  width: 288px;
+  min-height: 0;
+  flex: 0 0 auto;
   border-right: 1px solid var(--app-border);
-  background-color: var(--app-bg-panel);
+  background-color: var(--app-sidebar-bg);
   overflow-y: auto;
   transition: width 0.2s ease;
 }
@@ -130,6 +171,8 @@ function handleToggleSidebar(): void {
 .sidebar-toggle-bar {
   display: flex;
   justify-content: flex-end;
+  min-height: 44px;
+  align-items: center;
   padding: 0.25rem 0.5rem;
 }
 
@@ -145,7 +188,59 @@ function handleToggleSidebar(): void {
 
 .app-main {
   flex: 1;
-  padding: 1.25rem 1.5rem;
+  min-width: 0;
+  min-height: 0;
+  padding: 1rem 1.25rem;
+  overflow-x: hidden;
   overflow-y: auto;
+}
+
+@media (max-width: 1050px) {
+  .app-sidebar {
+    width: 248px;
+  }
+
+  .app-main {
+    padding: 0.875rem;
+  }
+}
+
+@media (max-width: 720px) {
+  .app-header {
+    min-height: 54px;
+    gap: 0.75rem;
+    padding-inline: 0.75rem;
+  }
+
+  .app-brand__mark {
+    width: 32px;
+    height: 32px;
+  }
+
+  .app-body {
+    flex-direction: column;
+  }
+
+  .app-sidebar {
+    width: 100%;
+    height: min(30dvh, 220px);
+    border-right: 0;
+    border-bottom: 1px solid var(--app-border);
+    transition: height 0.2s ease;
+  }
+
+  .app-sidebar--collapsed {
+    width: 100%;
+    height: 44px;
+  }
+
+  .app-sidebar--collapsed .sidebar-toggle-bar {
+    justify-content: flex-end;
+    padding-right: 0.5rem;
+  }
+
+  .app-main {
+    padding: 0.75rem;
+  }
 }
 </style>

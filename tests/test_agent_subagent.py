@@ -40,7 +40,9 @@ def test_dispatch_subagent_runs_nested_graph(tmp_path):
     子 agent 在隔离上下文中自主运行 → 结论作为工具结果回到主对话。"""
     state = _make_state(tmp_path)
     graph = create_agent_graph()
-    config = {"configurable": {"thread_id": "test-subagent"}}
+    config = {
+        "configurable": {"thread_id": "test-subagent", "api_key": "fake"}
+    }
 
     with patch("app.agent.nodes._stream_chat_completion") as mock_stream:
         mock_stream.side_effect = [
@@ -64,8 +66,11 @@ def test_dispatch_subagent_runs_nested_graph(tmp_path):
     # 子 agent 的调用特征：以子任务系统提示开头，工具集中没有 dispatch_subagent（深度限 1 层）
     sub_call = mock_stream.call_args_list[1]
     sub_messages = sub_call.kwargs["messages"]
-    assert isinstance(sub_messages[0], SystemMessage)
-    assert sub_messages[0].content == SUBAGENT_SYSTEM_PROMPT
+    assert any(
+        isinstance(message, SystemMessage)
+        and message.content == SUBAGENT_SYSTEM_PROMPT
+        for message in sub_messages
+    )
     sub_tool_names = {t.name for t in sub_call.kwargs["tools"]}
     assert "dispatch_subagent" not in sub_tool_names
     assert "list_directory" in sub_tool_names
@@ -87,7 +92,9 @@ def test_dispatch_subagent_inner_tools_auto_approved(tmp_path):
     (tmp_path / "a.txt").write_text("x")
     state = _make_state(tmp_path)
     graph = create_agent_graph()
-    config = {"configurable": {"thread_id": "test-subagent-auto"}}
+    config = {
+        "configurable": {"thread_id": "test-subagent-auto", "api_key": "fake"}
+    }
 
     with patch("app.agent.nodes._stream_chat_completion") as mock_stream:
         mock_stream.side_effect = [
@@ -119,7 +126,9 @@ def test_dispatch_subagent_cancel_skips_run(tmp_path):
     """取消分派：子 agent 不运行，返回取消标记。"""
     state = _make_state(tmp_path)
     graph = create_agent_graph()
-    config = {"configurable": {"thread_id": "test-subagent-cancel"}}
+    config = {
+        "configurable": {"thread_id": "test-subagent-cancel", "api_key": "fake"}
+    }
 
     with patch("app.agent.nodes._stream_chat_completion") as mock_stream:
         mock_stream.side_effect = [
@@ -141,7 +150,9 @@ def test_dispatch_subagent_failure_returns_error(tmp_path):
     """子 agent 运行异常：错误作为工具结果返回，主 agent 继续。"""
     state = _make_state(tmp_path)
     graph = create_agent_graph()
-    config = {"configurable": {"thread_id": "test-subagent-fail"}}
+    config = {
+        "configurable": {"thread_id": "test-subagent-fail", "api_key": "fake"}
+    }
 
     with patch("app.agent.nodes._stream_chat_completion") as mock_stream:
         mock_stream.side_effect = [
@@ -212,7 +223,9 @@ def test_dispatch_subagent_under_async_parent_with_sqlite_saver(tmp_path):
 
         async with AsyncSqliteSaver.from_conn_string(str(tmp_path / "cp.db")) as saver:
             graph = create_agent_graph(saver)
-            config = {"configurable": {"thread_id": "parent-thread"}}
+            config = {
+                "configurable": {"thread_id": "parent-thread", "api_key": "fake"}
+            }
             agent_runtime.register(
                 "parent-thread", loop=asyncio.get_running_loop(), bridge=FakeBridge()
             )
@@ -257,7 +270,9 @@ def test_dispatch_subagent_recursion_limit_returns_partial(tmp_path, monkeypatch
     monkeypatch.setattr("app.agent.nodes._SUBAGENT_RECURSION_LIMIT", 5)
     state = _make_state(tmp_path)
     graph = create_agent_graph()
-    config = {"configurable": {"thread_id": "test-subagent-limit"}}
+    config = {
+        "configurable": {"thread_id": "test-subagent-limit", "api_key": "fake"}
+    }
 
     counter = {"n": 0, "dispatched": False}
 
