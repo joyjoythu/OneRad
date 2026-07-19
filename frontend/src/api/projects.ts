@@ -60,3 +60,16 @@ export const renameProject = async (projectId: string, name: string): Promise<Pr
   const res = await client.patch(`/projects/${encodeURIComponent(projectId)}`, { name })
   return res.data
 }
+
+/** 项目内文件/目录索引（聊天输入框 @ 引用补全），返回 POSIX 分隔的相对路径，
+ * 目录条目以 / 结尾。 */
+export const listProjectEntries = async (
+  projectId: string,
+  q = '',
+  limit = 200
+): Promise<string[]> => {
+  const res = await client.get(`/projects/${encodeURIComponent(projectId)}/files`, {
+    params: { q, limit },
+  })
+  return res.data.entries
+}

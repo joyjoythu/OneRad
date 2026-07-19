@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, flushPromises, VueWrapper } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import ElementPlus from 'element-plus'
@@ -6,7 +6,16 @@ import AgentChat from '../AgentChat.vue'
 import { DEFAULT_AGENT_MODEL } from '@/api/agent'
 import { useAgentStore } from '@/stores/agent'
 import { useProjectStore } from '@/stores/project'
+import { listProjectEntries } from '@/api/projects'
 import type { Project } from '@/api/projects'
+
+vi.mock('@/api/projects', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/api/projects')>()
+  return {
+    ...actual,
+    listProjectEntries: vi.fn().mockResolvedValue(['data/', 'data/image.nii.gz']),
+  }
+})
 
 const mockProject = (): Project => ({
   id: 'proj-1',
@@ -41,6 +50,7 @@ function setupWrapper() {
 describe('AgentChat', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
+    vi.mocked(listProjectEntries).mockClear()
   })
 
   it('renders placeholder when no project is selected', async () => {
@@ -146,6 +156,110 @@ describe('AgentChat', () => {
     await flushPromises()
 
     expect(wrapper.emitted('send-message')).toBeUndefined()
+  })
+
+  it('renders el-mention as the input and queries project files on @ search', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    const mention = wrapper.findComponent({ name: 'ElMention' })
+    expect(mention.exists()).toBe(true)
+
+    vi.useFakeTimers()
+    try {
+      mention.vm.$emit('search', 'image', '@')
+      await vi.advanceTimersByTimeAsync(250)
+      await flushPromises()
+
+      expect(listProjectEntries).toHaveBeenCalledWith('proj-1', 'image')
+      // 目录条目以 / 结尾，与文件一起作为候选
+      expect(mention.props('options')).toEqual([
+        { value: 'data/' },
+        { value: 'data/image.nii.gz' },
+      ])
+      // 服务端已按关键词过滤，本地不再二次过滤
+      expect(mention.props('filterOption')).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('does not query files on @ search when no project is selected', async () => {
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    // 无项目时输入区不渲染（显示空状态），mention 无从触发；
+    // 这里直接验证 mock 未被调用即可。
+    expect(wrapper.find('.el-empty').exists()).toBe(true)
+    expect(listProjectEntries).not.toHaveBeenCalled()
+  })
+
+  /** 真实触发 @ 补全弹层：输入 @关键词、移动光标到末尾、派发 input，
+   * 等待防抖查询完成。返回 textarea 元素。 */
+  async function openMentionDropdown(wrapper: VueWrapper<any>, text = '分析 @im') {
+    vi.useFakeTimers()
+    const el = wrapper.find('textarea').element as HTMLTextAreaElement
+    el.value = text
+    el.setSelectionRange(el.value.length, el.value.length)
+    // el-mention 只在 textarea 获得焦点时才显示弹层（jsdom 需显式聚焦）
+    el.focus()
+    el.dispatchEvent(new Event('input', { bubbles: true }))
+    await vi.advanceTimersByTimeAsync(250)
+    await flushPromises()
+    return el
+  }
+
+  it('selects the highlighted mention candidate with Tab', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    try {
+      const el = await openMentionDropdown(wrapper)
+
+      const tabEvent = new KeyboardEvent('keydown', {
+        key: 'Tab',
+        bubbles: true,
+        cancelable: true,
+      })
+      el.dispatchEvent(tabEvent)
+      await flushPromises()
+
+      // Tab 被选中所消费（不移动焦点），候选（首个为目录）写入输入框
+      expect(tabEvent.defaultPrevented).toBe(true)
+      expect(el.value).toContain('@data/')
+      expect(wrapper.emitted('send-message')).toBeUndefined()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('does not send on Enter while the mention dropdown is open', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    try {
+      const el = await openMentionDropdown(wrapper)
+
+      el.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+      )
+      await flushPromises()
+
+      // Enter 用于选中候选而非发送消息
+      expect(wrapper.emitted('send-message')).toBeUndefined()
+      expect(el.value).toContain('@data/')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('enables the input and model selector when a project is selected without a thread', async () => {

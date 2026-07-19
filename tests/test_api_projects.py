@@ -308,3 +308,101 @@ def test_rename_project_duplicate_name(client, temp_db):
     p2 = store.create_project("B", str(root / "b"), "")
     response = client.patch(f"/api/projects/{p2['id']}", json={"name": "A"})
     assert response.status_code == 400
+
+
+def test_list_project_files_returns_relative_paths(client, temp_db):
+    store, root = temp_db
+    project = store.create_project("A", str(root / "a"), "")
+    proj_root = Path(project["path"])
+    (proj_root / "data").mkdir()
+    (proj_root / "data" / "image.nii.gz").write_text("x")
+    (proj_root / "notes.txt").write_text("x")
+
+    response = client.get(f"/api/projects/{project['id']}/files")
+    assert response.status_code == 200
+    entries = response.json()["entries"]
+    assert "data/" in entries  # 目录以 / 结尾
+    assert "data/image.nii.gz" in entries
+    assert "notes.txt" in entries
+    # 相对路径必须使用 POSIX 分隔符（Windows 下也不能出现反斜杠）
+    assert all("\\" not in e for e in entries)
+
+
+def test_list_project_files_includes_nested_dirs(client, temp_db):
+    store, root = temp_db
+    project = store.create_project("A", str(root / "a"), "")
+    proj_root = Path(project["path"])
+    (proj_root / "data" / "raw").mkdir(parents=True)
+    (proj_root / "data" / "raw" / "img.nii.gz").write_text("x")
+
+    response = client.get(f"/api/projects/{project['id']}/files")
+    entries = response.json()["entries"]
+    assert "data/" in entries
+    assert "data/raw/" in entries
+    assert "data/raw/img.nii.gz" in entries
+
+
+def test_list_project_files_excludes_noise_dirs(client, temp_db):
+    store, root = temp_db
+    project = store.create_project("A", str(root / "a"), "")
+    proj_root = Path(project["path"])
+    for noise in (".git", "__pycache__", "node_modules", ".venv"):
+        (proj_root / noise).mkdir()
+        (proj_root / noise / "junk.py").write_text("x")
+    (proj_root / "real.py").write_text("x")
+
+    response = client.get(f"/api/projects/{project['id']}/files")
+    entries = response.json()["entries"]
+    assert "real.py" in entries
+    # 噪音目录既不列出也不递归进入
+    assert not any(
+        e.startswith((".git", "__pycache__", "node_modules", ".venv")) for e in entries
+    )
+
+
+def test_list_project_files_query_filter(client, temp_db):
+    store, root = temp_db
+    project = store.create_project("A", str(root / "a"), "")
+    proj_root = Path(project["path"])
+    (proj_root / "data").mkdir()
+    (proj_root / "data" / "image.nii.gz").write_text("x")
+    (proj_root / "notes.txt").write_text("x")
+
+    response = client.get(f"/api/projects/{project['id']}/files", params={"q": "IMAGE"})
+    entries = response.json()["entries"]
+    assert entries == ["data/image.nii.gz"]
+
+    # 目录名同样参与过滤
+    response = client.get(f"/api/projects/{project['id']}/files", params={"q": "dat"})
+    entries = response.json()["entries"]
+    assert "data/" in entries
+    assert "data/image.nii.gz" in entries
+    assert "notes.txt" not in entries
+
+
+def test_list_project_files_limit(client, temp_db):
+    store, root = temp_db
+    project = store.create_project("A", str(root / "a"), "")
+    proj_root = Path(project["path"])
+    for i in range(10):
+        (proj_root / f"f{i:02d}.txt").write_text("x")
+
+    response = client.get(f"/api/projects/{project['id']}/files", params={"limit": 3})
+    entries = response.json()["entries"]
+    assert len(entries) == 3
+    assert entries == sorted(entries)
+
+
+def test_list_project_files_missing_dir_returns_empty(client, temp_db):
+    store, root = temp_db
+    project = store.create_project("A", str(root / "a"), "")
+    shutil.rmtree(project["path"])
+
+    response = client.get(f"/api/projects/{project['id']}/files")
+    assert response.status_code == 200
+    assert response.json()["entries"] == []
+
+
+def test_list_project_files_not_found(client):
+    response = client.get("/api/projects/non-existent-id/files")
+    assert response.status_code == 404

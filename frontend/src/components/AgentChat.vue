@@ -144,14 +144,20 @@
       </div>
 
       <div class="input-container">
-        <el-input
+        <el-mention
+          ref="mentionRef"
           v-model="input"
           type="textarea"
           :rows="3"
           resize="none"
+          :options="mentionOptions"
+          :loading="mentionLoading"
+          :filter-option="false"
+          whole
           :placeholder="inputPlaceholder"
           aria-label="消息输入"
           :disabled="inputDisabled"
+          @search="handleMentionSearch"
           @keydown="handleKeydown"
         />
         <div class="input-toolbar">
@@ -211,6 +217,7 @@ import { useAgentStore } from '@/stores/agent'
 import { useProjectStore } from '@/stores/project'
 import { DEFAULT_AGENT_MODEL } from '@/api/agent'
 import type { AgentMessage } from '@/api/agent'
+import { listProjectEntries } from '@/api/projects'
 import AgentAvatar from './AgentAvatar.vue'
 import ApprovalPanel from './ApprovalPanel.vue'
 import { formatMessageTime } from '@/utils/time'
@@ -231,6 +238,39 @@ const props = defineProps<{
 }>()
 
 const input = ref('')
+const mentionRef = ref<{ dropdownVisible?: boolean } | null>(null)
+
+// @ 文件引用：el-mention 触发 search 后防抖查询项目文件列表，
+// 选项已由后端按关键词过滤，故本地 filter-option 关闭。
+const mentionOptions = ref<{ value: string }[]>([])
+const mentionLoading = ref(false)
+let mentionTimer: ReturnType<typeof setTimeout> | undefined
+// 响应乱序保护：只有最后一次查询允许写回选项。
+let mentionSeq = 0
+
+function handleMentionSearch(pattern: string): void {
+  const projectId = projectStore.currentProject?.id
+  if (!projectId) {
+    mentionOptions.value = []
+    return
+  }
+  clearTimeout(mentionTimer)
+  mentionTimer = setTimeout(async () => {
+    const seq = ++mentionSeq
+    mentionLoading.value = true
+    try {
+      const entries = await listProjectEntries(projectId, pattern)
+      if (seq === mentionSeq) {
+        mentionOptions.value = entries.map((e) => ({ value: e }))
+      }
+    } catch {
+      // 索引失败不阻断输入：仅清空候选，错误已由 axios 拦截器统一提示。
+      if (seq === mentionSeq) mentionOptions.value = []
+    } finally {
+      if (seq === mentionSeq) mentionLoading.value = false
+    }
+  }, 200)
+}
 const messageContainer = ref<HTMLDivElement | null>(null)
 const selectedModel = computed({
   get: () => props.model ?? DEFAULT_AGENT_MODEL,
@@ -407,6 +447,23 @@ function scrollToBottom(): void {
 
 function handleKeydown(event: KeyboardEvent): void {
   if (event.isComposing) return
+  if (mentionRef.value?.dropdownVisible) {
+    // 补全弹层打开时：Enter 由 el-mention 自己用于选中候选（不能发送）；
+    // Tab 同样映射为选中。el-mention 未暴露选中方法，向其 Enter
+    // 处理路径转发一个合成 Enter 事件完成选中。
+    if (event.key === 'Tab') {
+      event.preventDefault()
+      ;(event.target as HTMLElement | null)?.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'Enter',
+          bubbles: true,
+          cancelable: true,
+        })
+      )
+    }
+    return
+  }
+  if (event.defaultPrevented) return
   if (event.key === 'Enter' && !event.shiftKey) {
     event.preventDefault()
     handleSend()

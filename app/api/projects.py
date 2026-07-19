@@ -171,6 +171,53 @@ async def start_run(
     return {"run_id": run_id}
 
 
+# @mention 文件索引时排除的目录名：版本控制、依赖与缓存目录
+# 文件多且对用户无引用价值，遍历时直接跳过整棵子树。
+_FILE_INDEX_EXCLUDED_DIRS = frozenset(
+    {".git", "__pycache__", "node_modules", ".venv", "venv", ".idea", ".pytest_cache"}
+)
+
+
+@router.get("/{project_id}/files", response_model=Dict[str, Any])
+def list_project_files(
+    project_id: str,
+    q: str = "",
+    limit: int = 200,
+    store: ProjectStore = Depends(get_project_store),
+):
+    """List files and directories under the project root for @mention completion.
+
+    Returns a single sorted ``entries`` list of relative paths (POSIX
+    separators); directory entries carry a trailing ``/`` so the chat input can
+    insert them as ``@data/`` and the agent can resolve them with
+    ``list_directory``. Noise directories are neither listed nor descended.
+    ``q`` filters by case-insensitive substring; ``limit`` caps the result
+    (clamped to [1, 500]). Unreadable subtrees are skipped so a permission
+    error never fails the whole request.
+    """
+    project = store.load_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="项目不存在")
+
+    root = Path(project["path"])
+    limit = max(1, min(limit, 500))
+    entries: List[str] = []
+    if root.is_dir():
+        query = q.strip().lower()
+        for dirpath, dirnames, filenames in os.walk(root):
+            dirnames[:] = [d for d in dirnames if d not in _FILE_INDEX_EXCLUDED_DIRS]
+            for dirname in dirnames:
+                rel = (Path(dirpath) / dirname).relative_to(root).as_posix()
+                if not query or query in rel.lower():
+                    entries.append(rel + "/")
+            for name in filenames:
+                rel = (Path(dirpath) / name).relative_to(root).as_posix()
+                if not query or query in rel.lower():
+                    entries.append(rel)
+        entries.sort()
+    return {"entries": entries[:limit]}
+
+
 @router.get("/{project_id}/runs", response_model=List[Dict[str, Any]])
 def list_project_runs(
     project_id: str,
