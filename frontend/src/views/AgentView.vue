@@ -159,7 +159,7 @@ async function sendContent(content: string): Promise<boolean> {
   const config = projectStore.currentConfig
   if (!config) return false
   if (!agentStore.threadId) {
-    await agentStore.ensureThread(projectId, config.api_key)
+    await agentStore.ensureThread(projectId)
   }
   try {
     await agentStore.sendMessage(content, 'user')
@@ -204,7 +204,7 @@ watch(
     const target =
       agentStore.threads.find((t) => t.id === preferred) ?? agentStore.threads[0]
     if (target) {
-      await agentStore.loadThread(target.id, config.api_key)
+      await agentStore.loadThread(target.id)
     }
   },
   { immediate: true }

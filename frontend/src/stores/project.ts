@@ -7,7 +7,6 @@ export const useProjectStore = defineStore('project', () => {
   const projects = ref<Project[]>([])
   const currentProject = ref<Project | null>(null)
   const currentConfig = ref<AnalysisConfig | null>(null)
-  const apiKeyRequiredProjectId = ref<string | null>(null)
   const loading = ref(false)
 
   async function loadProjects(): Promise<void> {
@@ -23,16 +22,6 @@ export const useProjectStore = defineStore('project', () => {
     const project = projects.value.find((p) => p.id === projectId) || null
     currentProject.value = project
     currentConfig.value = project ? { ...project.analysis } : null
-  }
-
-  function requestApiKey(projectId: string): void {
-    apiKeyRequiredProjectId.value = projectId
-  }
-
-  function clearApiKeyRequest(projectId?: string): void {
-    if (!projectId || apiKeyRequiredProjectId.value === projectId) {
-      apiKeyRequiredProjectId.value = null
-    }
   }
 
   async function createProject(payload: api.CreateProjectRequest): Promise<Project> {
@@ -56,7 +45,6 @@ export const useProjectStore = defineStore('project', () => {
         currentProject.value = null
         currentConfig.value = null
       }
-      clearApiKeyRequest(projectId)
     } finally {
       loading.value = false
     }
@@ -75,7 +63,6 @@ export const useProjectStore = defineStore('project', () => {
       }
       if (currentProject.value?.id === projectId) {
         currentProject.value = updated
-        // api_key 已随 project.yaml 持久化，直接使用后端返回的配置。
         currentConfig.value = { ...updated.analysis }
       }
       return updated
@@ -101,12 +88,9 @@ export const useProjectStore = defineStore('project', () => {
     projects,
     currentProject,
     currentConfig,
-    apiKeyRequiredProjectId,
     loading,
     loadProjects,
     selectProject,
-    requestApiKey,
-    clearApiKeyRequest,
     createProject,
     deleteProject,
     saveConfig,

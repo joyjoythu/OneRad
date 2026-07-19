@@ -265,6 +265,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { useProjectStore } from '@/stores/project'
 import { useAgentStore } from '@/stores/agent'
+import { useSettingsStore } from '@/stores/settings'
 import type { Project } from '@/api/projects'
 import type { ThreadSummary } from '@/api/agent'
 import { vAutoHideScrollbar } from '@/directives/autoHideScrollbar'
@@ -272,6 +273,7 @@ import PathPickerDialog from '@/components/PathPickerDialog.vue'
 
 const projectStore = useProjectStore()
 const agentStore = useAgentStore()
+const settingsStore = useSettingsStore()
 const route = useRoute()
 const router = useRouter()
 
@@ -363,7 +365,8 @@ function toggleThreadPin(threadId: string): void {
 }
 
 onMounted(() => {
-  loadProjects()
+  void loadProjects()
+  void settingsStore.ensureLoaded()
 })
 
 async function loadProjects(): Promise<void> {
@@ -426,7 +429,7 @@ async function handleThreadClick(project: Project, thread: ThreadSummary): Promi
     agentStore.preferredThreadId = thread.id
     projectStore.selectProject(project.id)
   } else if (thread.id !== agentStore.currentThread?.id) {
-    await agentStore.loadThread(thread.id, project.analysis.api_key)
+    await agentStore.loadThread(thread.id)
   }
   if (route.path !== '/') {
     void router.push('/')
@@ -434,9 +437,14 @@ async function handleThreadClick(project: Project, thread: ThreadSummary): Promi
 }
 
 async function handleNewThread(project: Project): Promise<void> {
-  if (!project.analysis.api_key.trim()) {
+  try {
+    await settingsStore.ensureLoaded()
+  } catch {
+    return
+  }
+  if (!settingsStore.apiKeyConfigured) {
     projectStore.selectProject(project.id)
-    projectStore.requestApiKey(project.id)
+    settingsStore.requestApiKey()
     if (route.path !== '/settings') {
       await router.push('/settings')
     }
@@ -445,7 +453,7 @@ async function handleNewThread(project: Project): Promise<void> {
 
   const isCurrent = projectStore.currentProject?.id === project.id
   try {
-    await agentStore.createThread(project.id, project.analysis.api_key)
+    await agentStore.createThread(project.id)
   } catch {
     // axios 拦截器统一 toast；创建失败不切换项目
     return

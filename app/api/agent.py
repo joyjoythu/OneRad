@@ -21,10 +21,11 @@ from starlette.responses import StreamingResponse
 
 from app.agent import build_initial_state, create_agent_graph
 from app.agent import runtime as agent_runtime
-from app.api.deps import get_project_store
+from app.api.deps import get_general_settings_store, get_project_store
 from app.api.runner import get_bridge
 from app.llm import LLMClient, build_thread_title_prompt
 from app.projects import ProjectStore
+from app.settings import GeneralSettingsStore
 from app.skills import SkillLoadError
 
 router = APIRouter()
@@ -44,7 +45,6 @@ class CreateThreadRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    api_key: str = ""
     auto_approve: bool = False
 
 
@@ -71,7 +71,6 @@ class LoadThreadRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    api_key: str = ""
     auto_approve: bool = False
 
 
@@ -398,6 +397,7 @@ async def create_thread(
     project_id: str = Query(..., description="Project to associate with the new thread"),
     graph=Depends(get_agent_graph),
     store: ProjectStore = Depends(get_project_store),
+    settings_store: GeneralSettingsStore = Depends(get_general_settings_store),
 ) -> Dict[str, Any]:
     """Create a new agent thread and seed it with the project's initial state."""
     project = await _run_store_sync(store.load_project, project_id)
@@ -408,10 +408,15 @@ async def create_thread(
 
     payload = payload or CreateThreadRequest()
     thread_id = str(uuid.uuid4())
-    api_key = payload.api_key
+    api_key = settings_store.resolve_api_key()
+    if not api_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="尚未配置 DeepSeek API 密钥",
+        )
     request.app.state.agent_api_keys[thread_id] = api_key
     request.app.state.agent_auto_approve[thread_id] = payload.auto_approve
-    initial_state = build_initial_state(project, api_key=api_key)
+    initial_state = build_initial_state(project)
     await graph.aupdate_state(await _agent_config(thread_id, request.app), initial_state)
     await _run_store_sync(store.record_thread, project_id, thread_id, "")
     return {"thread_id": thread_id}
@@ -514,13 +519,14 @@ async def resume_thread(
     payload: LoadThreadRequest,
     graph=Depends(get_agent_graph),
     store: ProjectStore = Depends(get_project_store),
+    settings_store: GeneralSettingsStore = Depends(get_general_settings_store),
 ) -> Dict[str, Any]:
     """Resume an existing thread, refreshing its API key in memory."""
     if await _run_store_sync(store.get_thread_meta, thread_id) is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="thread not found"
         )
-    request.app.state.agent_api_keys[thread_id] = payload.api_key
+    request.app.state.agent_api_keys[thread_id] = settings_store.resolve_api_key()
     request.app.state.agent_auto_approve[thread_id] = payload.auto_approve
     snapshot = await graph.aget_state(await _agent_config(thread_id, request.app))
     payload_out = _sync_payload(

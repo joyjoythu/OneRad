@@ -200,10 +200,7 @@ export const useAgentStore = defineStore('agent', () => {
     contextWindow.value = null
   }
 
-  async function ensureThread(
-    projectId: string,
-    apiKey: string
-  ): Promise<string> {
+  async function ensureThread(projectId: string): Promise<string> {
     if (threadId.value) {
       if (!currentThread.value) {
         currentThread.value =
@@ -218,7 +215,6 @@ export const useAgentStore = defineStore('agent', () => {
       return threadId.value
     }
     const { thread_id } = await api.createThread(projectId, {
-      api_key: apiKey,
       auto_approve: autoApprove.value,
     })
     threadId.value = thread_id
@@ -261,15 +257,11 @@ export const useAgentStore = defineStore('agent', () => {
     delete threadsByProject.value[projectId]
   }
 
-  async function loadThread(
-    threadIdToLoad: string,
-    apiKey: string
-  ): Promise<void> {
+  async function loadThread(threadIdToLoad: string): Promise<void> {
     resetInternalState()
     // 点进对话即视为已读：清除完成提示点。
     finishedThreadIds.value.delete(threadIdToLoad)
     const state = await api.resumeThread(threadIdToLoad, {
-      api_key: apiKey,
       auto_approve: autoApprove.value,
     })
     threadId.value = state.thread_id
@@ -288,13 +280,9 @@ export const useAgentStore = defineStore('agent', () => {
     connect()
   }
 
-  async function createThread(
-    projectId: string,
-    apiKey: string
-  ): Promise<string> {
+  async function createThread(projectId: string): Promise<string> {
     resetInternalState()
     const { thread_id } = await api.createThread(projectId, {
-      api_key: apiKey,
       auto_approve: autoApprove.value,
     })
     threadId.value = thread_id

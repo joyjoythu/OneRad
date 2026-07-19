@@ -90,11 +90,17 @@ npm run test:unit  # 运行前端单元测试
 
 ## 运行
 
-### 设置 API Key（可选，用于 LLM 列名识别与报告润色）
+### 设置 DeepSeek API Key
+
+UI 用户可在“设置 → 通用设置”中填写。密钥应用于所有项目与会话，并以明文保存到 OneRad 数据目录下的 `settings.yaml`（Windows 默认 `%USERPROFILE%\.onerad\settings.yaml`，Docker 默认 `/app/data/settings.yaml`）；请勿提交或分享该文件。新版本不再把密钥写入各项目的 `project.yaml`，首次启动时会把已有项目中的旧密钥迁移到通用配置。
+
+也可以使用环境变量，此时无需在 UI 中重复填写：
 
 ```bash
 export DEEPSEEK_API_KEY=your_key
 ```
+
+若 `settings.yaml` 与环境变量同时存在，通用设置中的密钥优先。
 
 ### CLI
 

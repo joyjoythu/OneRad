@@ -3,7 +3,6 @@ import tempfile
 from pathlib import Path
 
 import pytest
-import yaml
 from fastapi.testclient import TestClient
 
 from app.api import create_app
@@ -70,7 +69,6 @@ def test_list_projects_includes_analysis_config(client, temp_db):
             "covariates": "age,gender",
             "model": "random_forest",
             "analysis_model": "random_forest",
-            "api_key": "secret",
         },
     )
 
@@ -111,7 +109,6 @@ def test_update_config(client, temp_db):
             "covariates": "age,gender",
             "model": "logistic",
             "analysis_model": "logistic",
-            "api_key": "secret",
         },
     )
     assert response.status_code == 200
@@ -195,8 +192,7 @@ def test_get_missing_project_returns_404(client, temp_db):
     assert response.status_code == 404
 
 
-def test_update_config_persists_api_key(client, temp_db):
-    """api_key 明文持久化到 project.yaml，重开项目后自动带回，无需重复粘贴。"""
+def test_update_config_rejects_project_scoped_api_key(client, temp_db):
     store, root = temp_db
     project = store.create_project("A", str(root / "a"), "")
     response = client.put(
@@ -212,16 +208,7 @@ def test_update_config_persists_api_key(client, temp_db):
             "api_key": "super-secret",
         },
     )
-    assert response.status_code == 200
-    yaml_path = Path(project["path"]) / "project.yaml"
-    with open(yaml_path, "r", encoding="utf-8") as f:
-        data = yaml.safe_load(f)
-    assert data["analysis"]["api_key"] == "super-secret"
-
-    # 重新加载项目（等价于刷新页面）后 api_key 仍然可见。
-    reload = client.get(f"/api/projects/{project['id']}")
-    assert reload.status_code == 200
-    assert reload.json()["analysis"]["api_key"] == "super-secret"
+    assert response.status_code == 422
 
 
 def test_update_config_unifies_model_and_analysis_model(client, temp_db):
@@ -237,7 +224,6 @@ def test_update_config_unifies_model_and_analysis_model(client, temp_db):
             "covariates": "age,gender",
             "model": "logistic",
             "analysis_model": "random_forest",
-            "api_key": "secret",
         },
     )
     assert response.status_code == 200
@@ -256,7 +242,6 @@ def test_update_config_unifies_model_and_analysis_model(client, temp_db):
             "covariates": "age,gender",
             "model": "xgboost",
             "analysis_model": "",
-            "api_key": "secret",
         },
     )
     assert response.status_code == 200

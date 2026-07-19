@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from app.api.deps import get_project_store
 from app.api.runner import RunConfig, get_bridge, start_pipeline_task
@@ -53,6 +53,8 @@ class CreateProjectRequest(BaseModel):
 class UpdateConfigRequest(BaseModel):
     """Request body for updating a project's analysis configuration."""
 
+    model_config = ConfigDict(extra="forbid")
+
     image_dir: str = ""
     clinical_path: str = ""
     output_dir: str = "./outputs"
@@ -60,7 +62,15 @@ class UpdateConfigRequest(BaseModel):
     covariates: str = ""
     model: str = "logistic"
     analysis_model: str = "logistic"
-    api_key: str = ""
+
+
+def _public_project(project: Dict[str, Any]) -> Dict[str, Any]:
+    """Remove legacy project-scoped secrets from API responses."""
+    result = dict(project)
+    analysis = dict(result.get("analysis") or {})
+    analysis.pop("api_key", None)
+    result["analysis"] = analysis
+    return result
 
 
 class UpdateProjectRequest(BaseModel):
@@ -72,7 +82,7 @@ class UpdateProjectRequest(BaseModel):
 @router.get("", response_model=List[Dict[str, Any]])
 def list_projects(store: ProjectStore = Depends(get_project_store)):
     """List all projects ordered by most recently updated."""
-    return store.list_projects()
+    return [_public_project(project) for project in store.list_projects()]
 
 
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=Dict[str, Any])
@@ -91,7 +101,7 @@ def get_project(project_id: str, store: ProjectStore = Depends(get_project_store
     project = store.load_project(project_id)
     if project is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="项目不存在")
-    return project
+    return _public_project(project)
 
 
 @router.patch("/{project_id}", response_model=Dict[str, Any])
@@ -109,7 +119,7 @@ def update_project(
             status_code=status.HTTP_400_BAD_REQUEST, detail="项目名不能为空"
         )
     try:
-        return store.update_project_name(project_id, name)
+        return _public_project(store.update_project_name(project_id, name))
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
@@ -124,7 +134,7 @@ def update_config(
     if store.load_project(project_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="项目不存在")
     try:
-        return store.save_project_config(project_id, payload.model_dump())
+        return _public_project(store.save_project_config(project_id, payload.model_dump()))
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
@@ -154,7 +164,12 @@ async def start_run(
             status_code=status.HTTP_409_CONFLICT, detail="项目已有正在运行的流水线"
         )
 
-    run_id = store.record_run_start(project_id, payload.model_dump())
+    run_config = payload.model_dump()
+    run_id = store.record_run_start(project_id, run_config)
+    runtime_config = {
+        **run_config,
+        "api_key": request.app.state.settings_store.resolve_api_key(),
+    }
     bridge = get_bridge(request)
     loop = asyncio.get_running_loop()
 
@@ -162,7 +177,7 @@ async def start_run(
         request.app,
         project_id,
         run_id,
-        payload.model_dump(),
+        runtime_config,
         bridge,
         store,
         loop,

@@ -44,7 +44,10 @@ def test_graph_runs_to_end_without_tools(tmp_path):
     with patch("app.agent.nodes._stream_chat_completion") as mock_stream:
         mock_stream.return_value = AIMessage(content="Hi there")
 
-        final = graph.invoke(state, {"configurable": {"thread_id": "test-thread"}})
+        final = graph.invoke(
+            state,
+            {"configurable": {"thread_id": "test-thread", "api_key": "fake"}},
+        )
         assert final["messages"][-1].content == "Hi there"
 
 
@@ -54,7 +57,9 @@ def test_graph_interrupts_on_system_command(tmp_path):
     state["messages"] = [HumanMessage(content="list files")]
 
     graph = create_agent_graph()
-    config = {"configurable": {"thread_id": "test-system-command"}}
+    config = {
+        "configurable": {"thread_id": "test-system-command", "api_key": "fake"}
+    }
 
     with patch("app.agent.nodes._stream_chat_completion") as mock_stream:
         mock_stream.side_effect = [
@@ -83,7 +88,9 @@ def test_graph_interrupts_on_file_plan(tmp_path):
     state["messages"] = [HumanMessage(content="organize files")]
 
     graph = create_agent_graph()
-    config = {"configurable": {"thread_id": "test-file-plan"}}
+    config = {
+        "configurable": {"thread_id": "test-file-plan", "api_key": "fake"}
+    }
 
     with patch("app.agent.nodes.ChatOpenAI") as mock_llm_class, \
          patch("app.agent.nodes._stream_chat_completion") as mock_stream:
@@ -124,7 +131,7 @@ def test_graph_cancel_operation(tmp_path):
     state["messages"] = [HumanMessage(content="list files")]
 
     graph = create_agent_graph()
-    config = {"configurable": {"thread_id": "test-cancel"}}
+    config = {"configurable": {"thread_id": "test-cancel", "api_key": "fake"}}
 
     with patch("app.agent.nodes._stream_chat_completion") as mock_stream:
         mock_stream.side_effect = [
@@ -152,7 +159,9 @@ def test_graph_cancel_file_plan_does_not_execute(tmp_path):
     state["messages"] = [HumanMessage(content="organize files")]
 
     graph = create_agent_graph()
-    config = {"configurable": {"thread_id": "test-cancel-file-plan"}}
+    config = {
+        "configurable": {"thread_id": "test-cancel-file-plan", "api_key": "fake"}
+    }
 
     with patch("app.agent.nodes.ChatOpenAI") as mock_llm_class, \
          patch("app.agent.nodes._stream_chat_completion") as mock_stream:
@@ -194,7 +203,9 @@ def test_graph_interrupts_on_python_script(tmp_path):
     state["messages"] = [HumanMessage(content="write a file")]
 
     graph = create_agent_graph()
-    config = {"configurable": {"thread_id": "test-python-script"}}
+    config = {
+        "configurable": {"thread_id": "test-python-script", "api_key": "fake"}
+    }
 
     with patch("app.agent.nodes._stream_chat_completion") as mock_stream, \
          patch("app.agent.nodes.execute_script_if_safe") as mock_execute:
@@ -234,7 +245,12 @@ def test_graph_interrupts_on_low_risk_python_script(tmp_path):
     state["messages"] = [HumanMessage(content="say hello")]
 
     graph = create_agent_graph()
-    config = {"configurable": {"thread_id": "test-low-risk-python-script"}}
+    config = {
+        "configurable": {
+            "thread_id": "test-low-risk-python-script",
+            "api_key": "fake",
+        }
+    }
 
     with patch("app.agent.nodes._stream_chat_completion") as mock_stream:
         mock_stream.side_effect = [
@@ -271,7 +287,9 @@ def test_graph_non_dict_resume_defaults_to_cancel(tmp_path):
     state["messages"] = [HumanMessage(content="list files")]
 
     graph = create_agent_graph()
-    config = {"configurable": {"thread_id": "test-non-dict-resume"}}
+    config = {
+        "configurable": {"thread_id": "test-non-dict-resume", "api_key": "fake"}
+    }
 
     with patch("app.agent.nodes._stream_chat_completion") as mock_stream:
         mock_stream.side_effect = [
@@ -327,7 +345,13 @@ def test_graph_auto_approve_skips_interrupt(tmp_path):
     state["messages"] = [HumanMessage(content="list files")]
 
     graph = create_agent_graph()
-    config = {"configurable": {"thread_id": "test-auto-approve", "auto_approve": True}}
+    config = {
+        "configurable": {
+            "thread_id": "test-auto-approve",
+            "auto_approve": True,
+            "api_key": "fake",
+        }
+    }
 
     with patch("app.agent.nodes._stream_chat_completion") as mock_stream:
         mock_stream.side_effect = [

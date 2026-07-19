@@ -23,7 +23,6 @@ const mockProject = (id: string): Project => ({
     covariates: '',
     model: 'logistic',
     analysis_model: 'logistic',
-    api_key: '',
   },
 })
 
@@ -90,7 +89,7 @@ describe('AgentView', () => {
     wrapper.findComponent(AgentChat).vm.$emit('quick-action', '快捷分析指令')
     await flushPromises()
 
-    expect(ensureSpy).toHaveBeenCalledWith('1', '')
+    expect(ensureSpy).toHaveBeenCalledWith('1')
     expect(sendSpy).toHaveBeenCalledWith('快捷分析指令', 'user')
   })
 
@@ -188,7 +187,7 @@ describe('AgentView', () => {
     projectStore.selectProject('2')
     await flushPromises()
 
-    expect(loadSpy).toHaveBeenCalledWith('t2', expect.any(String))
+    expect(loadSpy).toHaveBeenCalledWith('t2')
     expect(agentStore.preferredThreadId).toBeNull()
   })
 

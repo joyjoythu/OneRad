@@ -125,7 +125,6 @@ export interface AgentState {
 }
 
 export interface CreateThreadRequest {
-  api_key: string
   auto_approve: boolean
 }
 
@@ -153,7 +152,6 @@ export interface ThreadSummary {
 }
 
 export interface LoadThreadRequest {
-  api_key: string
   auto_approve: boolean
 }
 
