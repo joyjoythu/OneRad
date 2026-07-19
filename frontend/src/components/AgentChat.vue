@@ -151,9 +151,10 @@
           </div>
         </div>
         <div
-          v-if="showSubagentPanel"
+          v-for="sub in subagentPanels"
+          :key="sub.id"
           class="subagent-stage"
-          :class="`subagent-stage--${agentStore.subagentStatus?.status}`"
+          :class="`subagent-stage--${sub.status}`"
           data-testid="subagent-stage"
           role="status"
         >
@@ -162,38 +163,38 @@
             <div class="subagent-header">
               <div class="subagent-heading">
                 <span class="subagent-eyebrow">内部执行阶段</span>
-                <span class="subagent-title">{{ agentStore.subagentStatus?.task }}</span>
+                <span class="subagent-title">{{ sub.task }}</span>
               </div>
               <el-icon
-                v-if="subagentRunning"
+                v-if="sub.status === 'running'"
                 class="is-loading subagent-spinner"
               ><Loading /></el-icon>
               <el-tag
                 size="small"
-                :type="subagentTagType"
+                :type="subagentTagType(sub.status)"
                 effect="plain"
               >
-                {{ subagentStatusLabel }}
+                {{ subagentStatusLabel(sub.status) }}
               </el-tag>
               <el-button
                 link
                 size="small"
                 class="subagent-toggle"
-                :aria-label="subagentExpanded ? '收起子任务过程' : '展开子任务过程'"
-                @click="subagentExpanded = !subagentExpanded"
+                :aria-label="subagentExpanded[sub.id] !== false ? '收起子任务过程' : '展开子任务过程'"
+                @click="toggleSubagent(sub.id)"
               >
-                {{ subagentExpanded ? '收起' : '展开' }}过程
+                {{ subagentExpanded[sub.id] !== false ? '收起' : '展开' }}过程
               </el-button>
             </div>
-            <p v-if="subagentStatusHint" class="subagent-status-hint">
-              {{ subagentStatusHint }}
+            <p v-if="subagentStatusHint(sub.status)" class="subagent-status-hint">
+              {{ subagentStatusHint(sub.status) }}
             </p>
             <div
-              v-show="subagentExpanded"
+              v-show="subagentExpanded[sub.id] !== false"
               class="subagent-entries"
             >
               <div
-                v-for="(entry, i) in agentStore.subagentStatus?.entries ?? []"
+                v-for="(entry, i) in sub.entries"
                 :key="i"
                 class="subagent-entry"
                 :class="`subagent-entry--${entry.role}`"
@@ -201,7 +202,7 @@
                 {{ entry.text }}
               </div>
               <div
-                v-if="!(agentStore.subagentStatus?.entries.length)"
+                v-if="!sub.entries.length"
                 class="subagent-entry subagent-entry--muted"
               >
                 等待子任务输出…
@@ -322,7 +323,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, watchEffect, nextTick } from 'vue'
+import { ref, computed, watchEffect, nextTick } from 'vue'
 import {
   ArrowUp,
   CircleClose,
@@ -498,19 +499,17 @@ const showThinkingStream = computed(() => {
 })
 
 // 子任务面板：仅在父 agent 运行期间展示（结束后结论在历史消息的
-// 工具结果里，面板随之收起）。新分派到达时自动展开过程列表。
-const subagentExpanded = ref(true)
+// 工具结果里，面板随之收起）。并行分派时每个子 agent 一个面板，
+// 展开/收起状态按子线程 id 分别记录，新子任务默认展开。
+const subagentExpanded = ref<Record<string, boolean>>({})
 
-const showSubagentPanel = computed(() => {
-  return agentStore.busy && agentStore.subagentStatus !== null
+const subagentPanels = computed(() => {
+  if (!agentStore.busy) return []
+  return Object.values(agentStore.subagentStatuses)
 })
 
-const subagentRunning = computed(() => {
-  return agentStore.subagentStatus?.status === 'running'
-})
-
-const subagentStatusLabel = computed(() => {
-  switch (agentStore.subagentStatus?.status) {
+function subagentStatusLabel(status: string): string {
+  switch (status) {
     case 'running':
       return '运行中'
     case 'done':
@@ -522,10 +521,10 @@ const subagentStatusLabel = computed(() => {
     default:
       return ''
   }
-})
+}
 
-const subagentStatusHint = computed(() => {
-  switch (agentStore.subagentStatus?.status) {
+function subagentStatusHint(status: string): string {
+  switch (status) {
     case 'done':
       return '该内部子任务已经返回结果，主任务仍在整理结果或继续执行。'
     case 'failed':
@@ -535,25 +534,22 @@ const subagentStatusHint = computed(() => {
     default:
       return ''
   }
-})
+}
 
-const subagentTagType = computed(() => {
-  switch (agentStore.subagentStatus?.status) {
+function subagentTagType(status: string): 'success' | 'danger' | 'warning' | 'info' {
+  switch (status) {
     case 'failed':
-      return 'danger' as const
+      return 'danger'
     case 'cancelled':
-      return 'warning' as const
+      return 'warning'
     default:
-      return 'info' as const
+      return 'info'
   }
-})
+}
 
-watch(
-  () => agentStore.subagentStatus?.task,
-  (task) => {
-    if (task) subagentExpanded.value = true
-  }
-)
+function toggleSubagent(id: string): void {
+  subagentExpanded.value[id] = subagentExpanded.value[id] === false
+}
 
 function shouldCollapseTool(content?: string): boolean {
   if (!content) return false

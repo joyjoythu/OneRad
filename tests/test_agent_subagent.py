@@ -17,12 +17,14 @@ def _make_state(tmp_path):
     return state
 
 
-def _dispatch_call(task="统计项目根目录下的文件数量"):
+def _dispatch_call(tasks=None):
+    if tasks is None:
+        tasks = ["统计项目根目录下的文件数量"]
     return AIMessage(
         content="",
         tool_calls=[{
             "name": "dispatch_subagent",
-            "args": {"task": task},
+            "args": {"tasks": tasks},
             "id": "call_sub",
         }],
     )
@@ -56,7 +58,7 @@ def test_dispatch_subagent_runs_nested_graph(tmp_path):
 
         snapshot = graph.get_state(config)
         assert snapshot.values["interrupt_type"] == "subagent_dispatch"
-        assert snapshot.values["pending_subagent"]["task"] == "统计项目根目录下的文件数量"
+        assert snapshot.values["pending_subagent"]["tasks"] == ["统计项目根目录下的文件数量"]
 
         final = graph.invoke(Command(resume={"action": "confirm"}), config)
 
@@ -82,7 +84,10 @@ def test_dispatch_subagent_runs_nested_graph(tmp_path):
     assert "子任务结论" in tool_msg.content
     parsed = json.loads(tool_msg.content)
     assert parsed["success"] is True
-    assert "子任务结论" in parsed["result"]
+    assert len(parsed["results"]) == 1
+    assert parsed["results"][0]["success"] is True
+    assert "子任务结论" in parsed["results"][0]["result"]
+    assert parsed["results"][0]["task"] == "统计项目根目录下的文件数量"
     assert final["messages"][-1].content == "主 agent 总结"
     # 中断状态已清理
     assert final["interrupt_type"] is None
@@ -121,7 +126,7 @@ def test_dispatch_subagent_inner_tools_auto_approved(tmp_path):
     tool_msg = _find_tool_message(final["messages"], "call_sub")
     parsed = json.loads(tool_msg.content)
     assert parsed["success"] is True
-    assert "a.txt" in parsed["result"]
+    assert "a.txt" in parsed["results"][0]["result"]
 
 
 def test_dispatch_subagent_cancel_skips_run(tmp_path):
@@ -169,7 +174,8 @@ def test_dispatch_subagent_failure_returns_error(tmp_path):
     tool_msg = _find_tool_message(final["messages"], "call_sub")
     parsed = json.loads(tool_msg.content)
     assert parsed["success"] is False
-    assert "boom" in parsed["error"]
+    assert parsed["results"][0]["success"] is False
+    assert "boom" in parsed["results"][0]["error"]
     assert final["messages"][-1].content == "子任务失败了，换个方式"
 
 
@@ -200,10 +206,58 @@ def test_summarize_subagent_entries():
 
 def test_sync_payload_includes_pending_subagent():
     payload = _sync_payload(
-        {"pending_subagent": {"tool_call_id": "c1", "task": "做件事"}},
+        {"pending_subagent": {"tool_call_id": "c1", "tasks": ["做件事"]}},
         running=False,
     )
-    assert payload["pending_subagent"] == {"tool_call_id": "c1", "task": "做件事"}
+    assert payload["pending_subagent"] == {"tool_call_id": "c1", "tasks": ["做件事"]}
+
+
+def test_dispatch_multiple_subagents_in_parallel(tmp_path):
+    """一次分派多个子任务：并行运行，结果按任务逐个汇总。"""
+    state = _make_state(tmp_path)
+    graph = create_agent_graph()
+    config = {"configurable": {"thread_id": "test-subagent-parallel"}}
+
+    def route_response(*args, **kwargs):
+        messages = kwargs["messages"]
+        for m in messages:
+            if isinstance(m, SystemMessage) and m.content == SUBAGENT_SYSTEM_PROMPT:
+                # 子 agent：根据任务内容给出不同结论
+                task_text = next(
+                    x.content for x in messages if isinstance(x, HumanMessage)
+                )
+                return AIMessage(content=f"结论：{task_text} 已完成")
+        return AIMessage(content="主 agent 总结")
+
+    with patch("app.agent.nodes._stream_chat_completion") as mock_stream:
+        first_call = {"done": False}
+
+        def first_then_route(*args, **kwargs):
+            if not first_call["done"]:
+                first_call["done"] = True
+                return _dispatch_call(tasks=["统计数据文件", "检查掩膜目录"])
+            return route_response(*args, **kwargs)
+
+        mock_stream.side_effect = first_then_route
+
+        events = list(graph.stream(state, config))
+        assert any("__interrupt__" in e for e in events)
+
+        snapshot = graph.get_state(config)
+        assert snapshot.values["pending_subagent"]["tasks"] == ["统计数据文件", "检查掩膜目录"]
+
+        final = graph.invoke(Command(resume={"action": "confirm"}), config)
+
+    tool_msg = _find_tool_message(final["messages"], "call_sub")
+    parsed = json.loads(tool_msg.content)
+    assert parsed["success"] is True
+    assert len(parsed["results"]) == 2
+    by_task = {r["task"]: r for r in parsed["results"]}
+    assert "统计数据文件 已完成" in by_task["统计数据文件"]["result"]
+    assert "检查掩膜目录 已完成" in by_task["检查掩膜目录"]["result"]
+    assert final["messages"][-1].content == "主 agent 总结"
+    # 主 agent 2 次（分派 + 收尾）+ 每个子任务各 1 次
+    assert mock_stream.call_count == 4
 
 
 def test_dispatch_subagent_under_async_parent_with_sqlite_saver(tmp_path):
@@ -255,11 +309,12 @@ def test_dispatch_subagent_under_async_parent_with_sqlite_saver(tmp_path):
         )
         parsed = json.loads(tool_msg.content)
         assert parsed.get("success") is True, f"子 agent 失败: {parsed}"
-        assert "子任务结论" in parsed["result"]
+        assert "子任务结论" in parsed["results"][0]["result"]
         # 子 agent 状态事件应推送到父线程的 bridge
         subagent_events = [p for p in published if "subagent" in p]
         assert subagent_events, "未收到任何 subagent 状态推送"
         assert subagent_events[-1]["subagent"]["status"] == "done"
+        assert subagent_events[-1]["subagent"]["id"]
 
     asyncio.run(main())
 
@@ -308,8 +363,9 @@ def test_dispatch_subagent_recursion_limit_returns_partial(tmp_path, monkeypatch
     tool_msg = _find_tool_message(final["messages"], "call_sub")
     assert tool_msg is not None
     parsed = json.loads(tool_msg.content)
-    assert parsed.get("partial") is True, f"触顶时应返回部分结论: {parsed}"
-    assert parsed["success"] is True
-    assert "探索进展" in parsed["result"]
-    assert "步数上限" in parsed["note"]
+    result = parsed["results"][0]
+    assert result.get("partial") is True, f"触顶时应返回部分结论: {parsed}"
+    assert result["success"] is True
+    assert "探索进展" in result["result"]
+    assert "步数上限" in result["note"]
     assert final["messages"][-1].content == "主 agent 总结"

@@ -114,31 +114,35 @@ describe('useAgentStore', () => {
     es.emit('agent', mockState({
       running: true,
       subagent: {
+        id: 'sub-1',
         task: '检查文件',
         status: 'done',
         entries: [{ role: 'assistant', text: '检查完成' }],
       },
     }))
-    expect(store.subagentStatus?.status).toBe('done')
+    expect(store.subagentStatuses['sub-1']?.status).toBe('done')
 
     es.emit('agent_end', {})
 
     expect(store.busy).toBe(false)
-    expect(store.subagentStatus).toBeNull()
+    expect(store.subagentStatuses).toEqual({})
   })
 
   it('does not show a previous subagent stage in a new run', async () => {
     const store = useAgentStore()
     await store.ensureThread('project-1')
-    store.subagentStatus = {
-      task: '上一轮任务',
-      status: 'running',
-      entries: [],
+    store.subagentStatuses = {
+      'sub-1': {
+        id: 'sub-1',
+        task: '上一轮任务',
+        status: 'running',
+        entries: [],
+      },
     }
 
     await store.sendMessage('开始下一轮')
 
-    expect(store.subagentStatus).toBeNull()
+    expect(store.subagentStatuses).toEqual({})
   })
 
   it('syncs the final state from the server when the stream ends', async () => {

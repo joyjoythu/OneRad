@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 
@@ -283,7 +284,7 @@ def process_tool_calls(state: AgentState, config: Optional[RunnableConfig] = Non
                 interrupt_type = "system_command"
                 updates["pending_command"] = {"tool_call_id": tool_call_id, **parsed}
             elif name == "dispatch_subagent":
-                if not isinstance(parsed, dict) or not parsed.get("task"):
+                if not isinstance(parsed, dict) or not parsed.get("tasks"):
                     updates["messages"].append(ToolMessage(
                         content=json.dumps({"error": f"Tool {name} returned invalid payload"}),
                         tool_call_id=tool_call_id,
@@ -292,7 +293,7 @@ def process_tool_calls(state: AgentState, config: Optional[RunnableConfig] = Non
                 interrupt_type = "subagent_dispatch"
                 updates["pending_subagent"] = {
                     "tool_call_id": tool_call_id,
-                    "task": parsed["task"],
+                    "tasks": parsed["tasks"],
                 }
             elif name == "plan_file_operations":
                 interrupt_type = "file_plan"
@@ -628,7 +629,7 @@ def execute_confirmed(state: AgentState, config: Optional[RunnableConfig] = None
             cancel_event=cancel_event,
         )
     elif itype == "subagent_dispatch":
-        results = _run_subagent(state["pending_subagent"], state, config, thread_id)
+        results = _run_subagents(state["pending_subagent"], state, config, thread_id)
     else:
         results = {"error": "unknown interrupt type"}
 
@@ -652,6 +653,45 @@ _SUBAGENT_ENTRY_WINDOW = 8
 # execute_confirmed），150 约等于 37 轮工具调用。主 agent 每次 resume 都是
 # 新的运行（步数预算独立），子 agent 没有这种天然分段，必须显式放宽。
 _SUBAGENT_RECURSION_LIMIT = 150
+# 并行子任务的最大并发数：约束 LLM API 并发与本地资源占用。
+_SUBAGENT_MAX_WORKERS = 4
+
+
+def _run_subagents(
+    pending: dict,
+    state: AgentState,
+    config: Optional[RunnableConfig],
+    parent_thread_id: Optional[str],
+) -> dict:
+    """并行运行一批子任务并汇总结果。
+
+    每个子任务由 _run_subagent 在独立线程中运行（各自的图、MemorySaver、
+    运行时上下文互不共享，线程安全）；单任务时直接在当前线程内联执行。
+    """
+    tasks = pending.get("tasks") or []
+    if not tasks:
+        return {"success": False, "error": "Missing subagent tasks"}
+
+    if len(tasks) == 1:
+        results = [_run_subagent(tasks[0], state, config, parent_thread_id)]
+    else:
+        workers = min(len(tasks), _SUBAGENT_MAX_WORKERS)
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = [
+                pool.submit(_run_subagent, task, state, config, parent_thread_id)
+                for task in tasks
+            ]
+            results = [f.result() for f in futures]
+
+    usage = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+    for r in results:
+        for key in usage:
+            usage[key] += (r.get("usage") or {}).get(key, 0)
+    return {
+        "success": all(r.get("success") for r in results),
+        "results": [{"task": task, **r} for task, r in zip(tasks, results)],
+        "usage": usage,
+    }
 
 
 def _publish_subagent(thread_id: Optional[str], payload: Dict[str, Any], persist: bool = True) -> None:
@@ -713,19 +753,18 @@ def _extract_subagent_result(messages: List[Any]) -> tuple:
 
 
 def _run_subagent(
-    pending: dict,
+    task: str,
     state: AgentState,
     config: Optional[RunnableConfig],
     parent_thread_id: Optional[str],
 ) -> dict:
-    """在隔离上下文中运行子 agent（嵌套深度限制为 1 层）。
+    """在隔离上下文中运行单个子 agent（嵌套深度限制为 1 层）。
 
     子 agent 使用新编译的同构图 + 独立 MemorySaver，thread_id 派生自父线程；
     auto_approve 使其内部工具自动批准（Python 脚本的 risk 分类不变，high 仍拒绝），
     工具集中不含 dispatch_subagent。中间过程经 _publish_subagent 滚动推送到
     父线程的 SSE 流，只有最终结论作为工具结果回到主对话上下文。
     """
-    task = pending.get("task", "")
     sub_thread_id = f"{parent_thread_id or 'thread'}:sub:{uuid.uuid4().hex[:8]}"
 
     parent_ctx = agent_runtime.get(parent_thread_id)
@@ -736,7 +775,12 @@ def _run_subagent(
     if parent_ctx is not None:
         sub_ctx.cancel_event = parent_ctx.cancel_event
 
-    status: Dict[str, Any] = {"task": task, "status": "running", "entries": []}
+    status: Dict[str, Any] = {
+        "id": sub_thread_id,
+        "task": task,
+        "status": "running",
+        "entries": [],
+    }
     _publish_subagent(parent_thread_id, status)
 
     try:

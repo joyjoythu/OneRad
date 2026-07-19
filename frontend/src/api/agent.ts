@@ -61,7 +61,7 @@ export interface ThinkingState {
 
 export interface PendingSubagent {
   tool_call_id: string
-  task: string
+  tasks: string[]
 }
 
 export interface SubagentEntry {
@@ -69,8 +69,10 @@ export interface SubagentEntry {
   text: string
 }
 
-/** 子 agent 运行状态（运行中经 SSE 滚动推送，结束时定格）。 */
+/** 单个子 agent 的运行状态（运行中经 SSE 滚动推送，结束时定格）。
+ * id 为派生的子线程 id，并行分派时用于区分多个子任务。 */
 export interface SubagentStatus {
+  id: string
   task: string
   status: 'running' | 'done' | 'failed' | 'cancelled'
   entries: SubagentEntry[]

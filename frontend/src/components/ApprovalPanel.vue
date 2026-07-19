@@ -139,10 +139,11 @@ const view = computed<ApprovalView | null>(() => {
     case 'subagent_dispatch': {
       const subagent = agentStore.pendingSubagent
       if (!subagent) return null
+      const n = subagent.tasks.length
       return {
         type: 'subagent_dispatch',
-        label: '分派子任务',
-        summary: subagent.task,
+        label: n > 1 ? `分派 ${n} 个子任务（并行）` : '分派子任务',
+        summary: subagent.tasks.map((t, i) => (n > 1 ? `${i + 1}. ${t}` : t)).join('\n'),
         confirmLabel: '确认分派',
       }
     }
@@ -290,6 +291,8 @@ async function handleOtherSubmit(): Promise<void> {
   gap: 0.5rem;
   color: var(--app-text-secondary);
   font-size: 0.875rem;
+  /* 子任务列表等多行摘要保留换行 */
+  white-space: pre-wrap;
 }
 
 .approval-actions {

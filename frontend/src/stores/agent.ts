@@ -49,10 +49,11 @@ export const useAgentStore = defineStore('agent', () => {
   const pendingRadiomicsExecution = ref<PendingRadiomicsExecution | null>(null)
   const pendingRadiomicsAnalysis = ref<PendingRadiomicsAnalysis | null>(null)
   const pendingSubagent = ref<PendingSubagent | null>(null)
-  // 子 agent 运行状态：运行中经 SSE 滚动推送（含中间过程条目）。
-  // 终态只用于说明父 agent 当前所处的内部阶段；父流程结束后立即清空，
-  // 避免它看起来像一条独立的最终回复。
-  const subagentStatus = ref<SubagentStatus | null>(null)
+  // 各子 agent 的运行状态（key 为派生子线程 id）：运行中经 SSE 滚动推送
+  // （含中间过程条目）。终态只用于说明父 agent 当前所处的内部阶段；
+  // 父流程结束或新一轮开始时清空，避免它看起来像一条独立的最终回复。
+  // 并行分派时会有多个。
+  const subagentStatuses = ref<Record<string, SubagentStatus>>({})
 
   const threads = ref<ThreadSummary[]>([])
   // 按项目分组的对话列表缓存，供合并侧边栏懒加载展示；
@@ -194,8 +195,12 @@ export const useAgentStore = defineStore('agent', () => {
     if (state.pending_subagent !== undefined) {
       pendingSubagent.value = state.pending_subagent
     }
-    if (state.subagent !== undefined) {
-      subagentStatus.value = state.subagent
+    if (state.subagent) {
+      // 并行分派时各子 agent 独立推送，按 id 归组；条目列表每次全量滚动替换。
+      subagentStatuses.value = {
+        ...subagentStatuses.value,
+        [state.subagent.id]: state.subagent,
+      }
     }
     if (state.radiomics_progress !== undefined) {
       radiomicsProgress.value = state.radiomics_progress
@@ -224,7 +229,7 @@ export const useAgentStore = defineStore('agent', () => {
     pendingRadiomicsExecution.value = null
     pendingRadiomicsAnalysis.value = null
     pendingSubagent.value = null
-    subagentStatus.value = null
+    subagentStatuses.value = {}
     currentThread.value = null
     busy.value = false
     radiomicsProgress.value = null
@@ -235,7 +240,7 @@ export const useAgentStore = defineStore('agent', () => {
 
   /** 新一轮父流程开始时清除上一轮残留的子任务阶段。 */
   function clearSubagentStatus(): void {
-    subagentStatus.value = null
+    subagentStatuses.value = {}
   }
 
   async function ensureThread(projectId: string): Promise<string> {
@@ -380,7 +385,7 @@ export const useAgentStore = defineStore('agent', () => {
       onEnd: () => {
         // 本轮流式运行结束（正常完成或在中断处暂停）。
         busy.value = false
-        subagentStatus.value = null
+        subagentStatuses.value = {}
         radiomicsProgress.value = null
         currentThinking.value = null
         // 当前线程的结束由用户实时看着，转入完成提示点集合无意义。
@@ -519,7 +524,7 @@ export const useAgentStore = defineStore('agent', () => {
       // 无论成功与否都复位忙碌；失败原因由 axios 拦截器 toast，
       // 若后端仍在运行，后续发送会被 409 兜底，状态自愈。
       busy.value = false
-      subagentStatus.value = null
+      subagentStatuses.value = {}
       radiomicsProgress.value = null
       currentThinking.value = null
     }
@@ -555,7 +560,7 @@ export const useAgentStore = defineStore('agent', () => {
     pendingRadiomicsExecution,
     pendingRadiomicsAnalysis,
     pendingSubagent,
-    subagentStatus,
+    subagentStatuses,
     radiomicsProgress,
     currentThinking,
     contextUsage,

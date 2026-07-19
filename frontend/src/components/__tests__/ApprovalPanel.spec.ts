@@ -255,7 +255,7 @@ describe('ApprovalPanel subagent_dispatch', () => {
     store.interrupt = 'subagent_dispatch'
     store.pendingSubagent = {
       tool_call_id: 'tc-sub-1',
-      task: '统计项目根目录下的文件数量',
+      tasks: ['统计项目根目录下的文件数量'],
     }
     const confirmSpy = vi.spyOn(store, 'confirm').mockResolvedValue(undefined)
 
@@ -269,6 +269,21 @@ describe('ApprovalPanel subagent_dispatch', () => {
       .find((b) => b.text().includes('确认分派'))
     await confirmBtn!.trigger('click')
     expect(confirmSpy).toHaveBeenCalled()
+  })
+
+  it('lists all tasks when dispatching multiple subagents in parallel', () => {
+    const store = useAgentStore()
+    store.interrupt = 'subagent_dispatch'
+    store.pendingSubagent = {
+      tool_call_id: 'tc-sub-2',
+      tasks: ['统计数据文件', '检查掩膜目录'],
+    }
+
+    const wrapper = setupWrapper()
+
+    expect(wrapper.text()).toContain('待确认：分派 2 个子任务（并行）')
+    expect(wrapper.text()).toContain('1. 统计数据文件')
+    expect(wrapper.text()).toContain('2. 检查掩膜目录')
   })
 
   it('renders nothing when pending_subagent is missing', () => {

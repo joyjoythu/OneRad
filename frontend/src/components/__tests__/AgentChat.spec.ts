@@ -935,8 +935,13 @@ describe('AgentChat subagent panel', () => {
     setActivePinia(createPinia())
   })
 
-  const mockSubagentStatus = (status: 'running' | 'done' | 'failed' | 'cancelled') => ({
-    task: '统计项目根目录下的文件数量',
+  const mockSubagentStatus = (
+    id: string,
+    status: 'running' | 'done' | 'failed' | 'cancelled',
+    task = '统计项目根目录下的文件数量'
+  ) => ({
+    id,
+    task,
     status,
     entries: [
       { role: 'assistant', text: '调用工具：list_directory' },
@@ -951,7 +956,9 @@ describe('AgentChat subagent panel', () => {
     const agentStore = useAgentStore()
     agentStore.threadId = 'thread-1'
     agentStore.busy = true
-    agentStore.subagentStatus = mockSubagentStatus('running')
+    agentStore.subagentStatuses = {
+      'sub-1': mockSubagentStatus('sub-1', 'running'),
+    }
 
     const wrapper = setupWrapper()
     await flushPromises()
@@ -965,6 +972,29 @@ describe('AgentChat subagent panel', () => {
     expect(panel.text()).toContain('{"result": "F a.txt"}')
   })
 
+  it('renders one panel per subagent when dispatching in parallel', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.threadId = 'thread-1'
+    agentStore.busy = true
+    agentStore.subagentStatuses = {
+      'sub-1': mockSubagentStatus('sub-1', 'running', '统计数据文件'),
+      'sub-2': mockSubagentStatus('sub-2', 'done', '检查掩膜目录'),
+    }
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    const panels = wrapper.findAll('.subagent-panel')
+    expect(panels).toHaveLength(2)
+    expect(panels[0].text()).toContain('统计数据文件')
+    expect(panels[0].text()).toContain('运行中')
+    expect(panels[1].text()).toContain('检查掩膜目录')
+    expect(panels[1].text()).toContain('结果已返回')
+  })
+
   it('hides the subagent panel when the agent is not busy', async () => {
     const projectStore = useProjectStore()
     projectStore.currentProject = mockProject()
@@ -972,7 +1002,9 @@ describe('AgentChat subagent panel', () => {
     const agentStore = useAgentStore()
     agentStore.threadId = 'thread-1'
     agentStore.busy = false
-    agentStore.subagentStatus = mockSubagentStatus('done')
+    agentStore.subagentStatuses = {
+      'sub-1': mockSubagentStatus('sub-1', 'done'),
+    }
 
     const wrapper = setupWrapper()
     await flushPromises()
@@ -987,13 +1019,17 @@ describe('AgentChat subagent panel', () => {
     const agentStore = useAgentStore()
     agentStore.threadId = 'thread-1'
     agentStore.busy = true
-    agentStore.subagentStatus = mockSubagentStatus('failed')
+    agentStore.subagentStatuses = {
+      'sub-1': mockSubagentStatus('sub-1', 'failed'),
+    }
 
     const wrapper = setupWrapper()
     await flushPromises()
     expect(wrapper.find('.subagent-panel').text()).toContain('失败')
 
-    agentStore.subagentStatus = mockSubagentStatus('cancelled')
+    agentStore.subagentStatuses = {
+      'sub-1': mockSubagentStatus('sub-1', 'cancelled'),
+    }
     await flushPromises()
     expect(wrapper.find('.subagent-panel').text()).toContain('已停止')
   })
@@ -1005,7 +1041,9 @@ describe('AgentChat subagent panel', () => {
     const agentStore = useAgentStore()
     agentStore.threadId = 'thread-1'
     agentStore.busy = true
-    agentStore.subagentStatus = mockSubagentStatus('done')
+    agentStore.subagentStatuses = {
+      'sub-1': mockSubagentStatus('sub-1', 'done'),
+    }
 
     const wrapper = setupWrapper()
     await flushPromises()
@@ -1019,14 +1057,16 @@ describe('AgentChat subagent panel', () => {
     expect(stage.find('.el-tag').classes()).toContain('el-tag--info')
   })
 
-  it('collapses and re-expands the entries list', async () => {
+  it('collapses and re-expands the entries list per subagent', async () => {
     const projectStore = useProjectStore()
     projectStore.currentProject = mockProject()
 
     const agentStore = useAgentStore()
     agentStore.threadId = 'thread-1'
     agentStore.busy = true
-    agentStore.subagentStatus = mockSubagentStatus('running')
+    agentStore.subagentStatuses = {
+      'sub-1': mockSubagentStatus('sub-1', 'running'),
+    }
 
     const wrapper = setupWrapper()
     await flushPromises()
