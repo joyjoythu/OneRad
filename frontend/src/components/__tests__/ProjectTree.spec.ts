@@ -5,6 +5,7 @@ import ElementPlus, { ElMessageBox, ElMessage, MessageBoxData, MessageHandler } 
 import ProjectTree from '../ProjectTree.vue'
 import { useProjectStore } from '@/stores/project'
 import { useAgentStore } from '@/stores/agent'
+import { useSettingsStore } from '@/stores/settings'
 import type { Project } from '@/api/projects'
 import type { ThreadSummary } from '@/api/agent'
 
@@ -40,6 +41,11 @@ vi.mock('@/api/filesystem', () => ({
   listFilesystemEntries: vi.fn(),
 }))
 
+vi.mock('@/api/settings', () => ({
+  getSettings: vi.fn(),
+  updateSettings: vi.fn(),
+}))
+
 vi.mock('vue-router', () => ({
   useRoute: () => ({ path: '/' }),
   useRouter: () => ({ push: routerPush }),
@@ -48,6 +54,7 @@ vi.mock('vue-router', () => ({
 import * as projectsApi from '@/api/projects'
 import * as agentApi from '@/api/agent'
 import * as filesystemApi from '@/api/filesystem'
+import * as settingsApi from '@/api/settings'
 
 const mockAnalysis = (overrides: Record<string, string> = {}) => ({
   image_dir: '',
@@ -57,7 +64,6 @@ const mockAnalysis = (overrides: Record<string, string> = {}) => ({
   covariates: '',
   model: 'logistic',
   analysis_model: 'logistic',
-  api_key: '',
   ...overrides,
 })
 
@@ -119,6 +125,11 @@ describe('ProjectTree', () => {
     vi.spyOn(ElMessageBox, 'prompt').mockResolvedValue({ value: '新名称', action: 'confirm' } as any)
     vi.spyOn(ElMessage, 'error').mockImplementation(() => ({ close: () => {} }) as MessageHandler)
     vi.spyOn(ElMessage, 'warning').mockImplementation(() => ({ close: () => {} }) as MessageHandler)
+    vi.mocked(settingsApi.getSettings).mockResolvedValue({
+      api_key: 'sk-general',
+      api_key_configured: true,
+      api_key_source: 'settings',
+    })
   })
 
   afterEach(() => {
@@ -228,9 +239,7 @@ describe('ProjectTree', () => {
     await wrapper.find('[data-testid="thread-row"]').trigger('click')
     await flushPromises()
 
-    expect(agentApi.resumeThread).toHaveBeenCalledWith('t1', expect.objectContaining({
-      api_key: '',
-    }))
+    expect(agentApi.resumeThread).toHaveBeenCalledWith('t1', { auto_approve: false })
     const agentStore = useAgentStore()
     expect(agentStore.preferredThreadId).toBeNull()
   })
@@ -387,9 +396,7 @@ describe('ProjectTree', () => {
   })
 
   it('creates a thread in the clicked project via its plus action', async () => {
-    vi.mocked(projectsApi.listProjects).mockResolvedValue([
-      mockProject('1', { api_key: 'sk-test' }),
-    ])
+    vi.mocked(projectsApi.listProjects).mockResolvedValue([mockProject('1')])
     vi.mocked(agentApi.createThread).mockResolvedValue({ thread_id: 't-new' })
     vi.mocked(agentApi.listThreads).mockResolvedValue({ threads: [] })
 
@@ -399,13 +406,16 @@ describe('ProjectTree', () => {
     await wrapper.find('[data-testid="project-new-thread"]').trigger('click')
     await flushPromises()
 
-    expect(agentApi.createThread).toHaveBeenCalledWith('1', expect.objectContaining({
-      api_key: 'sk-test',
-    }))
+    expect(agentApi.createThread).toHaveBeenCalledWith('1', { auto_approve: false })
     expect(useProjectStore().currentProject?.id).toBe('1')
   })
 
   it('redirects to settings and requests an API key instead of silently failing', async () => {
+    vi.mocked(settingsApi.getSettings).mockResolvedValue({
+      api_key: '',
+      api_key_configured: false,
+      api_key_source: 'none',
+    })
     vi.mocked(projectsApi.listProjects).mockResolvedValue([mockProject('1')])
 
     const wrapper = setupWrapper()
@@ -414,9 +424,8 @@ describe('ProjectTree', () => {
     await wrapper.find('[data-testid="project-new-thread"]').trigger('click')
     await flushPromises()
 
-    const projectStore = useProjectStore()
-    expect(projectStore.currentProject?.id).toBe('1')
-    expect(projectStore.apiKeyRequiredProjectId).toBe('1')
+    expect(useProjectStore().currentProject?.id).toBe('1')
+    expect(useSettingsStore().apiKeyRequired).toBe(true)
     expect(routerPush).toHaveBeenCalledWith('/settings')
     expect(agentApi.createThread).not.toHaveBeenCalled()
   })
@@ -441,8 +450,8 @@ describe('ProjectTree', () => {
 
   it('creates the thread before switching project via another project\'s plus action', async () => {
     vi.mocked(projectsApi.listProjects).mockResolvedValue([
-      mockProject('1', { api_key: 'sk-one' }),
-      mockProject('2', { api_key: 'sk-two' }),
+      mockProject('1'),
+      mockProject('2'),
     ])
     let resolveCreate: (v: { thread_id: string }) => void = () => {}
     vi.mocked(agentApi.createThread).mockImplementation(
@@ -466,9 +475,7 @@ describe('ProjectTree', () => {
     resolveCreate({ thread_id: 't-new' })
     await flushPromises()
 
-    expect(agentApi.createThread).toHaveBeenCalledWith('2', expect.objectContaining({
-      api_key: 'sk-two',
-    }))
+    expect(agentApi.createThread).toHaveBeenCalledWith('2', { auto_approve: false })
     expect(projectStore.currentProject?.id).toBe('2')
   })
 

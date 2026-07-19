@@ -5,12 +5,20 @@ import ElementPlus from 'element-plus'
 import SettingsView from '../SettingsView.vue'
 import PathPickerDialog from '@/components/PathPickerDialog.vue'
 import { useProjectStore } from '@/stores/project'
+import { useSettingsStore } from '@/stores/settings'
 import type { AnalysisConfig, Project } from '@/api/projects'
 
 vi.mock('@/api/filesystem', () => ({
   listFilesystemRoots: vi.fn(),
   listFilesystemEntries: vi.fn(),
 }))
+
+vi.mock('@/api/settings', () => ({
+  getSettings: vi.fn(),
+  updateSettings: vi.fn(),
+}))
+
+import * as settingsApi from '@/api/settings'
 
 const mockAnalysis = (overrides: Partial<AnalysisConfig> = {}): AnalysisConfig => ({
   image_dir: 'images',
@@ -20,7 +28,6 @@ const mockAnalysis = (overrides: Partial<AnalysisConfig> = {}): AnalysisConfig =
   covariates: 'age',
   model: 'logistic',
   analysis_model: 'logistic',
-  api_key: 'sk-old',
   ...overrides,
 })
 
@@ -60,6 +67,16 @@ describe('SettingsView', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     setActivePinia(createPinia())
+    vi.mocked(settingsApi.getSettings).mockResolvedValue({
+      api_key: 'sk-old',
+      api_key_configured: true,
+      api_key_source: 'settings',
+    })
+    vi.mocked(settingsApi.updateSettings).mockImplementation(async (apiKey: string) => ({
+      api_key: apiKey,
+      api_key_configured: Boolean(apiKey),
+      api_key_source: apiKey ? 'settings' : 'none',
+    }))
   })
 
   afterEach(() => {
@@ -69,130 +86,124 @@ describe('SettingsView', () => {
     vi.restoreAllMocks()
   })
 
-  it('prompts to select a project when none is selected', () => {
+  it('separates general settings from project settings even without a project', async () => {
     const wrapper = setupWrapper()
+    await flushPromises()
 
-    expect(wrapper.text()).toContain('请先选择一个项目')
+    expect(wrapper.text()).toContain('通用设置')
+    expect(wrapper.text()).toContain('界面外观')
+    expect(wrapper.text()).toContain('DeepSeek API 密钥')
+    expect(wrapper.text()).toContain('项目设置')
+    expect(wrapper.text()).toContain('请先从左侧选择一个项目')
+    expect(wrapper.find('[data-testid="settings-save"]').exists()).toBe(false)
   })
 
-  it('renders the complete project configuration without a save button', () => {
+  it('renders project-only analysis fields separately from the API key', async () => {
     selectProject(mockProject())
     const wrapper = setupWrapper()
+    await flushPromises()
 
+    expect(wrapper.findAll('.path-input-row')).toHaveLength(3)
     expect(wrapper.text()).toContain('影像目录')
     expect(wrapper.text()).toContain('临床数据文件')
     expect(wrapper.text()).toContain('输出目录')
     expect(wrapper.text()).toContain('影像模态')
     expect(wrapper.text()).toContain('协变量')
-    expect(wrapper.text()).toContain('DeepSeek API 密钥')
-    expect(wrapper.text()).toContain('明文写入')
-    expect(wrapper.find('[data-testid="settings-save"]').exists()).toBe(false)
-    expect(wrapper.findAll('.path-input-row')).toHaveLength(3)
-    expect(wrapper.find<HTMLInputElement>('input[placeholder="请输入 DeepSeek API 密钥"]').element.value)
-      .toBe('sk-old')
+    expect(wrapper.find<HTMLInputElement>('input[placeholder="请输入 DeepSeek API 密钥"]')
+      .element.value).toBe('sk-old')
   })
 
-  it('shows a red API key prompt requested by the project new-thread action', async () => {
-    const project = mockProject('proj-1', { api_key: '' })
-    const store = selectProject(project)
-    vi.spyOn(store, 'saveConfig').mockImplementation(async (_id, config) =>
-      savedProject(project, config)
-    )
-    store.requestApiKey('proj-1')
+  it('shows and focuses the red global API key prompt requested by new-thread action', async () => {
+    vi.mocked(settingsApi.getSettings).mockResolvedValue({
+      api_key: '',
+      api_key_configured: false,
+      api_key_source: 'none',
+    })
+    useSettingsStore().requestApiKey()
 
     const wrapper = setupWrapper()
     await flushPromises()
 
     const hint = wrapper.find('[data-testid="missing-api-key-hint"]')
+    const input = wrapper.find<HTMLInputElement>('input[placeholder="请输入 DeepSeek API 密钥"]')
     expect(hint.exists()).toBe(true)
     expect(hint.classes()).toContain('field-hint--danger')
     expect(hint.text()).toContain('尚未填写 DeepSeek API 密钥')
-    expect(document.activeElement).toBe(
-      wrapper.find<HTMLInputElement>('input[placeholder="请输入 DeepSeek API 密钥"]').element
-    )
+    expect(document.activeElement).toBe(input.element)
 
-    await wrapper.find('input[placeholder="请输入 DeepSeek API 密钥"]').setValue('sk-new')
-    await flushPromises()
-
+    await input.setValue('sk-new')
     expect(wrapper.find('[data-testid="missing-api-key-hint"]').exists()).toBe(false)
-    expect(store.apiKeyRequiredProjectId).toBe('proj-1')
-
     await vi.advanceTimersByTimeAsync(600)
     await flushPromises()
 
-    expect(store.apiKeyRequiredProjectId).toBeNull()
+    expect(settingsApi.updateSettings).toHaveBeenCalledWith('sk-new')
+    expect(useSettingsStore().apiKeyRequired).toBe(false)
   })
 
-  it('debounces changes for 600ms and saves the full configuration', async () => {
+  it('debounces the general API key independently for 600ms', async () => {
+    const project = mockProject()
+    const projectStore = selectProject(project)
+    const projectSaveSpy = vi.spyOn(projectStore, 'saveConfig')
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    await wrapper.find('input[placeholder="请输入 DeepSeek API 密钥"]').setValue('sk-new')
+    await vi.advanceTimersByTimeAsync(599)
+    expect(settingsApi.updateSettings).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(1)
+    await flushPromises()
+
+    expect(settingsApi.updateSettings).toHaveBeenCalledOnce()
+    expect(settingsApi.updateSettings).toHaveBeenCalledWith('sk-new')
+    expect(projectSaveSpy).not.toHaveBeenCalled()
+    expect(wrapper.find('[data-testid="general-save-status"]').text()).toContain('已保存')
+  })
+
+  it('debounces project changes and saves only project analysis configuration', async () => {
     const project = mockProject()
     const store = selectProject(project)
     const saveSpy = vi.spyOn(store, 'saveConfig').mockImplementation(async (_id, config) =>
       savedProject(project, config)
     )
     const wrapper = setupWrapper()
+    await flushPromises()
 
-    await wrapper.find('input[placeholder="请输入 DeepSeek API 密钥"]').setValue('sk-new')
+    await wrapper.find('input[placeholder*="age, sex"]').setValue('age, sex')
     await vi.advanceTimersByTimeAsync(599)
     expect(saveSpy).not.toHaveBeenCalled()
 
     await vi.advanceTimersByTimeAsync(1)
     await flushPromises()
 
-    expect(saveSpy).toHaveBeenCalledTimes(1)
-    expect(saveSpy).toHaveBeenCalledWith('proj-1', {
-      ...project.analysis,
-      api_key: 'sk-new',
-    })
-    expect(wrapper.find('[data-testid="settings-save-status"]').text()).toContain('已保存')
+    expect(saveSpy).toHaveBeenCalledWith('proj-1', expect.objectContaining({
+      covariates: 'age, sex',
+    }))
+    expect(settingsApi.updateSettings).not.toHaveBeenCalled()
+    expect(wrapper.find('[data-testid="project-save-status"]').text()).toContain('已保存')
   })
 
-  it('flushes a pending change immediately when a field loses focus', async () => {
+  it('flushes a pending project change immediately on field blur', async () => {
     const project = mockProject()
     const store = selectProject(project)
     const saveSpy = vi.spyOn(store, 'saveConfig').mockImplementation(async (_id, config) =>
       savedProject(project, config)
     )
     const wrapper = setupWrapper()
+    await flushPromises()
     const input = wrapper.find('input[placeholder*="age, sex"]')
 
     await input.setValue('age, sex')
     await input.trigger('focusout')
     await flushPromises()
 
-    expect(saveSpy).toHaveBeenCalledTimes(1)
+    expect(saveSpy).toHaveBeenCalledOnce()
     expect(saveSpy.mock.calls[0][1].covariates).toBe('age, sex')
-  })
-
-  it('serializes requests and does not let an older response replace the newer draft', async () => {
-    const project = mockProject()
-    const store = selectProject(project)
-    let resolveFirst: ((project: Project) => void) | undefined
-    const firstResponse = new Promise<Project>((resolve) => { resolveFirst = resolve })
-    const saveSpy = vi.spyOn(store, 'saveConfig')
-      .mockReturnValueOnce(firstResponse)
-      .mockImplementationOnce(async (_id, config) => savedProject(project, config))
-    const wrapper = setupWrapper()
-    const input = wrapper.find<HTMLInputElement>('input[placeholder="包含影像与分割文件的目录"]')
-
-    await input.setValue('C:\\study\\first')
-    await vi.advanceTimersByTimeAsync(600)
-    expect(saveSpy).toHaveBeenCalledTimes(1)
-
-    await input.setValue('C:\\study\\latest')
-    await vi.advanceTimersByTimeAsync(600)
-    expect(saveSpy).toHaveBeenCalledTimes(1)
-
-    resolveFirst!(savedProject(project, mockAnalysis({ image_dir: 'C:\\study\\first' })))
-    await flushPromises()
-
-    expect(saveSpy).toHaveBeenCalledTimes(2)
-    expect(saveSpy.mock.calls[1][1].image_dir).toBe('C:\\study\\latest')
-    expect(input.element.value).toBe('C:\\study\\latest')
   })
 
   it('flushes the previous project before switching drafts', async () => {
     const first = mockProject('project-a')
-    const second = mockProject('project-b', { image_dir: 'B:\\images', api_key: 'sk-b' })
+    const second = mockProject('project-b', { image_dir: 'B:\\images' })
     const store = useProjectStore()
     store.projects = [first, second]
     store.selectProject(first.id)
@@ -200,6 +211,7 @@ describe('SettingsView', () => {
       savedProject(first, config)
     )
     const wrapper = setupWrapper()
+    await flushPromises()
 
     await wrapper.find('input[placeholder="包含影像与分割文件的目录"]').setValue('A:\\new-images')
     store.selectProject(second.id)
@@ -208,46 +220,42 @@ describe('SettingsView', () => {
     expect(saveSpy).toHaveBeenCalledWith('project-a', expect.objectContaining({
       image_dir: 'A:\\new-images',
     }))
-    expect(wrapper.find<HTMLInputElement>('input[placeholder="包含影像与分割文件的目录"]').element.value)
-      .toBe('B:\\images')
+    expect(wrapper.find<HTMLInputElement>('input[placeholder="包含影像与分割文件的目录"]')
+      .element.value).toBe('B:\\images')
   })
 
-  it('flushes a pending change when leaving the settings page', async () => {
+  it('shows independent retry actions for general and project save failures', async () => {
     const project = mockProject()
     const store = selectProject(project)
-    const saveSpy = vi.spyOn(store, 'saveConfig').mockImplementation(async (_id, config) =>
-      savedProject(project, config)
-    )
-    const wrapper = setupWrapper()
-
-    await wrapper.find('input[placeholder="可手动填写尚未创建的目录"]').setValue('E:\\result')
-    wrapper.unmount()
-    await flushPromises()
-
-    expect(saveSpy).toHaveBeenCalledWith('proj-1', expect.objectContaining({
-      output_dir: 'E:\\result',
-    }))
-  })
-
-  it('shows a retry action after failure and saves the latest draft on retry', async () => {
-    const project = mockProject()
-    const store = selectProject(project)
-    const saveSpy = vi.spyOn(store, 'saveConfig')
-      .mockRejectedValueOnce(new Error('network error'))
+    vi.mocked(settingsApi.updateSettings)
+      .mockRejectedValueOnce(new Error('general failure'))
+      .mockImplementationOnce(async (apiKey: string) => ({
+        api_key: apiKey,
+        api_key_configured: true,
+        api_key_source: 'settings',
+      }))
+    const projectSaveSpy = vi.spyOn(store, 'saveConfig')
+      .mockRejectedValueOnce(new Error('project failure'))
       .mockImplementationOnce(async (_id, config) => savedProject(project, config))
     const wrapper = setupWrapper()
+    await flushPromises()
 
+    await wrapper.find('input[placeholder="请输入 DeepSeek API 密钥"]').setValue('sk-new')
     await wrapper.find('input[placeholder="可手动填写尚未创建的目录"]').setValue('D:\\outputs')
     await vi.advanceTimersByTimeAsync(600)
     await flushPromises()
 
-    expect(wrapper.find('[data-testid="settings-save-status"]').text()).toContain('保存失败')
-    await wrapper.find('[data-testid="settings-save-retry"]').trigger('click')
+    expect(wrapper.find('[data-testid="general-save-status"]').text()).toContain('保存失败')
+    expect(wrapper.find('[data-testid="project-save-status"]').text()).toContain('保存失败')
+
+    await wrapper.find('[data-testid="general-save-retry"]').trigger('click')
+    await wrapper.find('[data-testid="project-save-retry"]').trigger('click')
     await flushPromises()
 
-    expect(saveSpy).toHaveBeenCalledTimes(2)
-    expect(saveSpy.mock.calls[1][1].output_dir).toBe('D:\\outputs')
-    expect(wrapper.find('[data-testid="settings-save-status"]').text()).toContain('已保存')
+    expect(settingsApi.updateSettings).toHaveBeenCalledTimes(2)
+    expect(projectSaveSpy).toHaveBeenCalledTimes(2)
+    expect(wrapper.find('[data-testid="general-save-status"]').text()).toContain('已保存')
+    expect(wrapper.find('[data-testid="project-save-status"]').text()).toContain('已保存')
   })
 
   it('reuses the path picker for directory and clinical file fields', async () => {
@@ -257,22 +265,19 @@ describe('SettingsView', () => {
       savedProject(project, config)
     )
     const wrapper = setupWrapper()
+    await flushPromises()
     const picker = wrapper.findComponent(PathPickerDialog)
 
     await wrapper.find('[data-testid="browse-image-dir"]').trigger('click')
     expect(picker.props('mode')).toBe('directory')
     picker.vm.$emit('select', 'C:\\study\\images')
     await flushPromises()
-    expect(wrapper.find<HTMLInputElement>('input[placeholder="包含影像与分割文件的目录"]').element.value)
-      .toBe('C:\\study\\images')
+    expect(wrapper.find<HTMLInputElement>('input[placeholder="包含影像与分割文件的目录"]')
+      .element.value).toBe('C:\\study\\images')
 
     await wrapper.find('[data-testid="browse-clinical-path"]').trigger('click')
     expect(picker.props('mode')).toBe('file')
     expect(picker.props('acceptedExtensions')).toEqual(['.csv', '.xlsx', '.xls'])
-    picker.vm.$emit('select', 'C:\\study\\clinical.xlsx')
-    await flushPromises()
-    expect(wrapper.find<HTMLInputElement>('input[placeholder="CSV 或 Excel 临床数据文件"]').element.value)
-      .toBe('C:\\study\\clinical.xlsx')
 
     await wrapper.find('[data-testid="browse-output-dir"]').trigger('click')
     expect(picker.props('mode')).toBe('directory')

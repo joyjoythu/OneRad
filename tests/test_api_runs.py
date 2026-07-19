@@ -60,8 +60,17 @@ def _run_config():
         "covariates": "",
         "model": "logistic",
         "analysis_model": "logistic",
-        "api_key": "",
     }
+
+
+def test_start_run_rejects_project_scoped_api_key(client, temp_db):
+    store, root = temp_db
+    project = store.create_project("A", str(root / "a"), "")
+    response = client.post(
+        f"/api/projects/{project['id']}/runs",
+        json={**_run_config(), "api_key": "legacy-secret"},
+    )
+    assert response.status_code == 422
 
 
 def test_start_run_idempotency(client, temp_db):

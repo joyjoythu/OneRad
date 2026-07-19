@@ -145,7 +145,6 @@ class ProjectStore:
                 "covariates": "",
                 "model": "logistic",
                 "analysis_model": "logistic",
-                "api_key": "",
             },
         }
         with open(project_yaml_path, "w", encoding="utf-8") as f:
@@ -236,7 +235,6 @@ class ProjectStore:
             "covariates": "",
             "model": "logistic",
             "analysis_model": "logistic",
-            "api_key": "",
         }
 
     def delete_project(self, project_id: str) -> None:
@@ -384,9 +382,6 @@ class ProjectStore:
                 "covariates": analysis_config.get("covariates", ""),
                 "model": analysis_model,
                 "analysis_model": analysis_model,
-                # api_key 明文持久化：本地单用户工具，保存后免重复粘贴。
-                # 注意 project.yaml 随项目目录分享/备份时会泄露 key。
-                "api_key": analysis_config.get("api_key", ""),
             },
         }
         with open(yaml_path, "w", encoding="utf-8") as f:

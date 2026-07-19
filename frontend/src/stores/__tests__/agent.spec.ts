@@ -82,7 +82,7 @@ describe('useAgentStore', () => {
 
   it('sendMessage appends the user message and calls the API', async () => {
     const store = useAgentStore()
-    await store.ensureThread('project-1', 'sk-test')
+    await store.ensureThread('project-1')
     await store.sendMessage('Hello')
 
     expect(store.messages).toContainEqual({ role: 'user', content: 'Hello' })
@@ -94,7 +94,7 @@ describe('useAgentStore', () => {
 
   it('sendMessage marks the store busy until the stream ends', async () => {
     const store = useAgentStore()
-    await store.ensureThread('project-1', 'sk-test')
+    await store.ensureThread('project-1')
     await store.sendMessage('Hello')
 
     expect(store.busy).toBe(true)
@@ -108,7 +108,7 @@ describe('useAgentStore', () => {
     // SSE 只推订阅后的新事件，订阅空窗内可能漏事件；
     // agent_end 时必须同步一次最终状态保证收敛。
     const store = useAgentStore()
-    await store.ensureThread('project-1', 'sk-test')
+    await store.ensureThread('project-1')
     await store.sendMessage('Hello')
     vi.mocked(client.get).mockClear()
 
@@ -120,7 +120,7 @@ describe('useAgentStore', () => {
 
   it('refreshes the thread list when the stream ends so generated titles show up', async () => {
     const store = useAgentStore()
-    await store.ensureThread('project-1', 'sk-test')
+    await store.ensureThread('project-1')
     await store.sendMessage('Hello')
     const listSpy = vi.spyOn(agentApi, 'listThreads').mockResolvedValue({ threads: [] })
 
@@ -132,7 +132,7 @@ describe('useAgentStore', () => {
 
   it('sendMessage rolls back the optimistic message and clears busy on API failure', async () => {
     const store = useAgentStore()
-    await store.ensureThread('project-1', 'sk-test')
+    await store.ensureThread('project-1')
     vi.mocked(client.post).mockRejectedValueOnce({
       response: { data: { detail: '智能体正在处理中' } },
     })
@@ -144,7 +144,7 @@ describe('useAgentStore', () => {
 
   it('keeps existing messages when an error payload arrives over SSE', async () => {
     const store = useAgentStore()
-    await store.ensureThread('project-1', 'sk-test')
+    await store.ensureThread('project-1')
     const es = MockEventSource.instances[0]
     es.emit('agent', mockState({ messages: [{ role: 'user', content: 'Hello' }] }))
     expect(store.messages).toHaveLength(1)
@@ -160,7 +160,7 @@ describe('useAgentStore', () => {
     // execute_confirmed 清除），但 running=true 表示运行仍在继续，
     // busy 必须保持——否则停止按钮会在工具执行期间消失。
     const store = useAgentStore()
-    await store.ensureThread('project-1', 'sk-test')
+    await store.ensureThread('project-1')
     await store.sendMessage('Hello')
     expect(store.busy).toBe(true)
 
@@ -173,7 +173,7 @@ describe('useAgentStore', () => {
 
   it('clears busy when a snapshot reports running false', async () => {
     const store = useAgentStore()
-    await store.ensureThread('project-1', 'sk-test')
+    await store.ensureThread('project-1')
     await store.sendMessage('Hello')
     expect(store.busy).toBe(true)
 
@@ -186,7 +186,7 @@ describe('useAgentStore', () => {
 
   it('stop calls the stop API and clears busy', async () => {
     const store = useAgentStore()
-    await store.ensureThread('project-1', 'sk-test')
+    await store.ensureThread('project-1')
     await store.sendMessage('Hello')
     expect(store.busy).toBe(true)
 
@@ -198,7 +198,7 @@ describe('useAgentStore', () => {
 
   it('stop clears busy even when the API fails', async () => {
     const store = useAgentStore()
-    await store.ensureThread('project-1', 'sk-test')
+    await store.ensureThread('project-1')
     await store.sendMessage('Hello')
     expect(store.busy).toBe(true)
     vi.mocked(client.post).mockRejectedValueOnce(new Error('network error'))
@@ -209,7 +209,7 @@ describe('useAgentStore', () => {
 
   it('applies state from SSE events', async () => {
     const store = useAgentStore()
-    await store.ensureThread('project-1', 'sk-test')
+    await store.ensureThread('project-1')
     const es = MockEventSource.instances[0]
 
     es.emit('agent', mockState({
@@ -223,7 +223,7 @@ describe('useAgentStore', () => {
 
   it('reconnect syncs state and reopens the event stream', async () => {
     const store = useAgentStore()
-    await store.ensureThread('project-1', 'sk-test')
+    await store.ensureThread('project-1')
     store.disconnect()
     MockEventSource.instances = []
 
@@ -338,11 +338,10 @@ describe('useAgentStore', () => {
       ],
     })
 
-    const id = await store.createThread('project-1', 'sk-test')
+    const id = await store.createThread('project-1')
 
     expect(id).toBe('thread-new')
     expect(agentApi.createThread).toHaveBeenCalledWith('project-1', {
-      api_key: 'sk-test',
       auto_approve: false,
     })
     expect(store.threadId).toBe('thread-new')
@@ -376,10 +375,9 @@ describe('useAgentStore', () => {
       }),
     })
 
-    await store.loadThread('thread-load', 'sk-test')
+    await store.loadThread('thread-load')
 
     expect(agentApi.resumeThread).toHaveBeenCalledWith('thread-load', {
-      api_key: 'sk-test',
       auto_approve: false,
     })
     expect(store.threadId).toBe('thread-load')
@@ -410,7 +408,7 @@ describe('useAgentStore', () => {
       ...mockState(),
     })
 
-    await store.loadThread('thread-cached', 'sk-test')
+    await store.loadThread('thread-cached')
 
     expect(store.currentThread?.project_id).toBe('project-9')
     expect(store.currentThread?.title).toBe('Cached Thread')
@@ -418,7 +416,7 @@ describe('useAgentStore', () => {
 
   it('tracks radiomics progress from SSE and clears it on stream end', async () => {
     const store = useAgentStore()
-    await store.ensureThread('project-1', 'sk-test')
+    await store.ensureThread('project-1')
     await store.sendMessage('提取特征')
     const es = MockEventSource.instances[0]
 
@@ -451,7 +449,7 @@ describe('useAgentStore', () => {
 
   it('stop clears radiomics progress', async () => {
     const store = useAgentStore()
-    await store.ensureThread('project-1', 'sk-test')
+    await store.ensureThread('project-1')
     await store.sendMessage('提取特征')
     const es = MockEventSource.instances[0]
     es.emit('agent', {
@@ -468,7 +466,7 @@ describe('useAgentStore', () => {
 
   it('tracks thinking stream from SSE and clears it on stream end', async () => {
     const store = useAgentStore()
-    await store.ensureThread('project-1', 'sk-test')
+    await store.ensureThread('project-1')
     await store.sendMessage('你好')
     const es = MockEventSource.instances[0]
 
@@ -488,7 +486,7 @@ describe('useAgentStore', () => {
 
   it('clears current thinking when an error payload arrives', async () => {
     const store = useAgentStore()
-    await store.ensureThread('project-1', 'sk-test')
+    await store.ensureThread('project-1')
     await store.sendMessage('你好')
     const es = MockEventSource.instances[0]
 
@@ -502,7 +500,7 @@ describe('useAgentStore', () => {
 
   it('stop clears current thinking', async () => {
     const store = useAgentStore()
-    await store.ensureThread('project-1', 'sk-test')
+    await store.ensureThread('project-1')
     await store.sendMessage('你好')
     const es = MockEventSource.instances[0]
     es.emit('agent', { thinking: { text: '思考中', done: false }, running: true })
@@ -516,7 +514,7 @@ describe('useAgentStore', () => {
 
   it('clears current thinking when the event stream errors', async () => {
     const store = useAgentStore()
-    await store.ensureThread('project-1', 'sk-test')
+    await store.ensureThread('project-1')
     await store.sendMessage('你好')
     const es = MockEventSource.instances[0]
     es.emit('agent', { thinking: { text: '思考中', done: false }, running: true })
@@ -529,7 +527,7 @@ describe('useAgentStore', () => {
 
   it('tracks pending radiomics plan/execution from SSE state', async () => {
     const store = useAgentStore()
-    await store.ensureThread('project-1', 'sk-test')
+    await store.ensureThread('project-1')
     const es = MockEventSource.instances[0]
 
     const execution = {
@@ -559,7 +557,7 @@ describe('useAgentStore', () => {
 
   it('tracks pending radiomics analysis from SSE state', async () => {
     const store = useAgentStore()
-    await store.ensureThread('project-1', 'sk-test')
+    await store.ensureThread('project-1')
     const es = MockEventSource.instances[0]
 
     es.emit('agent', mockState({
@@ -580,7 +578,7 @@ describe('useAgentStore', () => {
 
   it('resetThread clears pending radiomics analysis', async () => {
     const store = useAgentStore()
-    await store.ensureThread('project-1', 'sk-test')
+    await store.ensureThread('project-1')
     const es = MockEventSource.instances[0]
 
     es.emit('agent', mockState({
@@ -607,7 +605,7 @@ describe('useAgentStore', () => {
         },
       ],
     })
-    await store.createThread('project-1', 'sk-test')
+    await store.createThread('project-1')
 
     vi.spyOn(agentApi, 'deleteThread').mockResolvedValueOnce(undefined)
     const listSpy = vi.spyOn(agentApi, 'listThreads').mockResolvedValueOnce({ threads: [] })
@@ -643,7 +641,7 @@ describe('useAgentStore', () => {
         },
       ],
     })
-    await store.createThread('project-1', 'sk-test')
+    await store.createThread('project-1')
 
     vi.spyOn(agentApi, 'deleteThread').mockResolvedValueOnce(undefined)
     const listSpy = vi.spyOn(agentApi, 'listThreads').mockResolvedValueOnce({
@@ -680,7 +678,7 @@ describe('useAgentStore', () => {
         },
       ],
     })
-    await store.createThread('project-1', 'sk-test')
+    await store.createThread('project-1')
 
     vi.spyOn(agentApi, 'renameThread').mockResolvedValueOnce({
       thread: {
@@ -776,7 +774,7 @@ describe('useAgentStore', () => {
 
     it('sends the flag to the backend when a thread is active', async () => {
       const store = useAgentStore()
-      await store.ensureThread('project-1', '')
+      await store.ensureThread('project-1')
       vi.mocked(client.put).mockResolvedValue({ data: { auto_approve: true } })
 
       await store.setAutoApprove(true)
@@ -789,7 +787,7 @@ describe('useAgentStore', () => {
 
     it('rolls back on API failure', async () => {
       const store = useAgentStore()
-      await store.ensureThread('project-1', '')
+      await store.ensureThread('project-1')
       vi.mocked(client.put).mockRejectedValue(new Error('boom'))
 
       await expect(store.setAutoApprove(true)).rejects.toThrow('boom')
@@ -801,18 +799,18 @@ describe('useAgentStore', () => {
       const store = useAgentStore()
       await store.setAutoApprove(true)
 
-      await store.createThread('project-1', 'sk-test')
+      await store.createThread('project-1')
 
       expect(client.post).toHaveBeenCalledWith(
         '/agent/threads',
-        { api_key: 'sk-test', auto_approve: true },
+        { auto_approve: true },
         { params: { project_id: 'project-1' } }
       )
     })
 
     it('exposes syncing state during the API call', async () => {
       const store = useAgentStore()
-      await store.ensureThread('project-1', '')
+      await store.ensureThread('project-1')
       let resolvePut: (value: { data: { auto_approve: boolean } }) => void = () => {}
       vi.mocked(client.put).mockImplementation(
         () =>
@@ -838,17 +836,16 @@ describe('useAgentStore', () => {
         ...mockState(),
       })
 
-      await store.loadThread('thread-load', 'sk-test')
+      await store.loadThread('thread-load')
 
       expect(agentApi.resumeThread).toHaveBeenCalledWith('thread-load', {
-        api_key: 'sk-test',
         auto_approve: true,
       })
     })
 
     it('keeps autoApprove across thread switches', async () => {
       const store = useAgentStore()
-      await store.ensureThread('project-1', '')
+      await store.ensureThread('project-1')
       vi.mocked(client.put).mockResolvedValue({ data: { auto_approve: true } })
       await store.setAutoApprove(true)
 
@@ -856,7 +853,7 @@ describe('useAgentStore', () => {
         thread_id: 'thread-load',
         ...mockState(),
       })
-      await store.loadThread('thread-load', 'sk-test')
+      await store.loadThread('thread-load')
 
       expect(store.autoApprove).toBe(true)
     })
@@ -925,14 +922,14 @@ describe('useAgentStore', () => {
         ...mockState(),
       })
 
-      await store.loadThread('t-1', 'sk-test')
+      await store.loadThread('t-1')
 
       expect(store.finishedThreadIds.has('t-1')).toBe(false)
     })
 
     it('marks the current thread running on sendMessage and clears it on stream end', async () => {
       const store = useAgentStore()
-      await store.ensureThread('project-1', 'sk-test')
+      await store.ensureThread('project-1')
       await store.sendMessage('Hello')
 
       expect(store.runningThreadIds.has('thread-1')).toBe(true)

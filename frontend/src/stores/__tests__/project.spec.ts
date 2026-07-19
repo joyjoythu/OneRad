@@ -22,7 +22,6 @@ const mockAnalysis = () => ({
   covariates: '',
   model: 'logistic',
   analysis_model: 'logistic',
-  api_key: '',
 })
 
 const mockProject = (id: string): Project => ({
@@ -105,22 +104,6 @@ describe('useProjectStore', () => {
     expect(result.analysis.modality).toBe('CT')
     expect(store.currentProject?.analysis.modality).toBe('CT')
     expect(store.currentConfig?.modality).toBe('CT')
-  })
-
-  it('uses the persisted api_key from the server response after saving', async () => {
-    // api_key 现在随 project.yaml 持久化，保存后直接使用后端返回的配置。
-    const persisted = mockProject('1')
-    persisted.analysis = { ...persisted.analysis, api_key: 'secret-key' }
-    vi.mocked(api.updateConfig).mockResolvedValue(persisted)
-
-    const store = useProjectStore()
-    store.projects = [mockProject('1')]
-    store.selectProject('1')
-    const cfg = { ...store.currentConfig!, api_key: 'secret-key' }
-
-    await store.saveConfig('1', cfg)
-
-    expect(store.currentConfig?.api_key).toBe('secret-key')
   })
 
   it('deletes a project and clears the current selection', async () => {

@@ -22,7 +22,6 @@ const mockProject = (): Project => ({
     covariates: '',
     model: 'logistic',
     analysis_model: 'logistic',
-    api_key: '',
   },
 })
 

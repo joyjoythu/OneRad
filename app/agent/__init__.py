@@ -8,13 +8,11 @@ def create_agent_graph(checkpointer=None):
     return _create_agent_graph(checkpointer=checkpointer)
 
 
-def build_initial_state(project: dict, api_key: str = "") -> AgentState:
-    analysis = project.get("analysis", {})
+def build_initial_state(project: dict) -> AgentState:
     return {
         "messages": [],
         "project_path": project["path"],
         "base_url": "https://api.deepseek.com/v1",
-        "api_key": api_key or analysis.get("api_key", ""),
         "model": DEEPSEEK_MODEL,
         "interrupt_type": None,
         "pending_plan": None,
