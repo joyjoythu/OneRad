@@ -417,14 +417,12 @@ defineExpose({ clearInput })
 <style scoped>
 .agent-chat {
   display: flex;
+  min-width: 0;
+  min-height: 0;
   flex-direction: column;
   height: 100%;
-  gap: 1rem;
-  /* 聊天列限宽居中：消息区、状态栏、输入框对齐同一列，
-     侧边栏折叠时不再铺满全宽或贴边 */
+  gap: 0.75rem;
   width: 100%;
-  max-width: 48rem;
-  margin-inline: auto;
 }
 
 .chat-empty {
@@ -438,7 +436,11 @@ defineExpose({ clearInput })
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 1rem;
+  padding: clamp(0.75rem, 2vw, 1.25rem);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-lg);
+  background: var(--app-bg-panel);
+  box-shadow: var(--app-shadow-sm);
 }
 
 .message-row {
@@ -498,8 +500,9 @@ defineExpose({ clearInput })
 }
 
 .message-bubble--user {
-  background-color: var(--app-bg-bubble);
-  color: var(--app-text);
+  background-color: var(--app-accent);
+  color: #ffffff;
+  box-shadow: 0 4px 12px var(--app-focus-ring);
 }
 
 .message-bubble--assistant {
@@ -705,7 +708,8 @@ defineExpose({ clearInput })
   border: 1px solid var(--app-border-strong);
   border-radius: var(--app-radius-lg);
   background-color: var(--app-bg-panel);
-  transition: border-color 0.2s;
+  box-shadow: var(--app-shadow-sm);
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
   /* 容器内输入控件去边框去底色：边框由容器统一提供 */
   --el-input-border-color: transparent;
   --el-input-hover-border-color: transparent;
@@ -717,7 +721,8 @@ defineExpose({ clearInput })
 }
 
 .input-container:focus-within {
-  border-color: var(--app-text-muted);
+  border-color: var(--app-accent);
+  box-shadow: 0 0 0 3px var(--app-focus-ring), var(--app-shadow-sm);
 }
 
 .input-container :deep(.el-textarea__inner) {
@@ -769,5 +774,28 @@ defineExpose({ clearInput })
 
 .context-usage--danger {
   color: var(--app-danger);
+}
+
+@media (max-width: 680px) {
+  .message-main {
+    max-width: 90%;
+  }
+
+  .message-list {
+    padding: 0.75rem;
+  }
+
+  .input-toolbar {
+    gap: 0.5rem;
+    padding-inline: 0.625rem;
+  }
+
+  .context-usage {
+    font-size: 0;
+  }
+
+  .context-usage :deep(.el-icon) {
+    font-size: 0.875rem;
+  }
 }
 </style>

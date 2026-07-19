@@ -3,8 +3,21 @@
 
 html,
 body {
+  width: 100%;
+  height: 100%;
   margin: 0;
   padding: 0;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+#app {
+  width: 100%;
+  height: 100%;
 }
 
 body {
@@ -14,17 +27,26 @@ body {
     'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial,
     sans-serif;
   -webkit-font-smoothing: antialiased;
+  overflow: hidden;
 }
 
-/* 主按钮：强调色底 + 对比色文字（深主题白按钮黑字，浅主题反之） */
+button,
+a,
+input,
+textarea,
+[role='button'] {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Primary actions use the shared blue interaction language. */
 .el-button--primary {
   --el-button-text-color: var(--app-accent-text);
   --el-button-hover-text-color: var(--app-accent-text);
   --el-button-active-text-color: var(--app-accent-text);
-  --el-button-hover-bg-color: var(--el-color-primary-light-3);
-  --el-button-hover-border-color: var(--el-color-primary-light-3);
-  --el-button-active-bg-color: var(--el-color-primary-dark-2);
-  --el-button-active-border-color: var(--el-color-primary-dark-2);
+  --el-button-hover-bg-color: var(--app-accent-hover);
+  --el-button-hover-border-color: var(--app-accent-hover);
+  --el-button-active-bg-color: var(--app-accent-active);
+  --el-button-active-border-color: var(--app-accent-active);
   --el-button-disabled-text-color: var(--app-accent-text);
 }
 
@@ -34,16 +56,93 @@ body {
   --el-button-active-text-color: var(--app-accent-text);
 }
 
+.el-button {
+  min-height: 36px;
+  border-radius: var(--app-radius-md);
+  transition: color 0.16s ease, background-color 0.16s ease,
+    border-color 0.16s ease, box-shadow 0.16s ease, transform 0.12s ease;
+}
+
+.el-button:not(.is-disabled):active {
+  transform: translateY(1px);
+}
+
+.el-button:focus-visible,
+.el-input__wrapper:focus-within,
+.el-select__wrapper.is-focused,
+.el-textarea__inner:focus-visible,
+.el-radio-button__inner:focus-visible,
+.el-switch:focus-visible {
+  outline: 3px solid var(--app-focus-ring);
+  outline-offset: 1px;
+}
+
+.el-input__wrapper,
+.el-select__wrapper {
+  min-height: 36px;
+  border-radius: var(--app-radius-md);
+}
+
+.el-textarea__inner {
+  border-radius: var(--app-radius-md);
+}
+
+.el-input-group__append,
+.el-input-group__prepend {
+  border-radius: var(--app-radius-md);
+}
+
+.el-input-group__append .el-button,
+.el-input-group__prepend .el-button {
+  min-height: 34px;
+}
+
 /* 卡片统一为令牌边框 / 圆角 / 底色 */
 .el-card {
   --el-card-border-color: var(--app-border);
-  --el-card-border-radius: var(--app-radius-md);
+  --el-card-border-radius: var(--app-radius-lg);
   --el-card-bg-color: var(--app-bg-panel);
 }
 
 /* 浅色主题卡片轻微投影；深色主题靠边框分层，不用阴影 */
 html:not(.dark) .el-card {
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--app-shadow-sm);
+}
+
+.el-dialog {
+  max-width: calc(100vw - 2rem);
+  overflow: hidden;
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-xl);
+  background: var(--app-bg-panel);
+  box-shadow: var(--app-shadow-md);
+}
+
+.el-dialog__header {
+  margin-right: 0;
+  padding: 1.125rem 1.25rem 0.875rem;
+  border-bottom: 1px solid var(--app-border);
+}
+
+.el-dialog__title {
+  color: var(--app-text);
+  font-size: 1rem;
+  font-weight: 650;
+}
+
+.el-dialog__body {
+  padding: 1.125rem 1.25rem;
+}
+
+.el-dialog__footer {
+  padding: 0.875rem 1.25rem 1.125rem;
+  border-top: 1px solid var(--app-border);
+}
+
+.el-message-box {
+  max-width: calc(100vw - 2rem);
+  border-radius: var(--app-radius-xl);
+  box-shadow: var(--app-shadow-md);
 }
 
 /* 隐形滚动条：默认透明，仅在滚动中（.is-scrolling，由 v-auto-hide-scrollbar
@@ -79,7 +178,7 @@ html:not(.dark) .el-card {
   color: var(--app-danger);
 }
 
-/* 深色主题下开关开启态：轨道为近白强调色，滑块改用对比色 */
+/* Dark theme keeps switches and segmented controls legible on blue surfaces. */
 html.dark .el-switch.is-checked .el-switch__action {
   background-color: var(--app-accent-text);
 }
@@ -89,4 +188,12 @@ html.dark .el-switch.is-checked .el-switch__action {
    写在 html.dark 上会被遮蔽。 */
 html.dark .el-radio-button {
   --el-radio-button-checked-text-color: var(--app-accent-text);
+}
+
+@media (max-width: 680px) {
+  .el-dialog__header,
+  .el-dialog__body,
+  .el-dialog__footer {
+    padding-inline: 1rem;
+  }
 }
