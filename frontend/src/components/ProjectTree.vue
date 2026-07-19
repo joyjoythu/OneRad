@@ -178,10 +178,16 @@
           <el-input v-model="form.name" placeholder="请输入项目名称" />
         </el-form-item>
         <el-form-item label="路径" prop="path">
-          <el-input
-            v-model="form.path"
-            placeholder="相对路径（如 demo）或本机绝对路径（如 D:\project）"
-          />
+          <div class="path-input-row">
+            <el-input
+              v-model="form.path"
+              data-testid="project-path-input"
+              placeholder="相对路径（如 demo）或本机绝对路径（如 D:\project）"
+            />
+            <el-button data-testid="browse-folder" @click="openFolderBrowser">
+              选择文件夹
+            </el-button>
+          </div>
         </el-form-item>
         <el-form-item label="描述" prop="description">
           <el-input
@@ -195,6 +201,74 @@
         <el-button @click="dialogVisible = false">取消</el-button>
         <el-button type="primary" :loading="projectStore.loading" @click="handleCreate">
           创建
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog
+      v-model="browserVisible"
+      title="选择文件夹"
+      width="520px"
+      append-to-body
+    >
+      <div class="folder-browser">
+        <div class="folder-browser-bar">
+          <el-button
+            link
+            size="small"
+            :icon="ArrowUp"
+            :disabled="!browserParent"
+            title="上一级"
+            data-testid="browser-up"
+            @click="navigateTo(browserParent ?? undefined)"
+          />
+          <span class="folder-browser-path" :title="browserPath">
+            {{ browserPath }}
+          </span>
+        </div>
+        <div v-if="browserDrives.length > 0" class="folder-browser-drives">
+          <el-button
+            v-for="drive in browserDrives"
+            :key="drive"
+            size="small"
+            data-testid="browser-drive"
+            @click="navigateTo(drive)"
+          >
+            {{ drive }}
+          </el-button>
+        </div>
+        <div
+          v-loading="browserLoading"
+          v-auto-hide-scrollbar
+          class="folder-browser-list auto-hide-scrollbar"
+        >
+          <div
+            v-if="!browserLoading && browserDirs.length === 0"
+            class="folder-browser-empty"
+          >
+            无子文件夹
+          </div>
+          <div
+            v-for="dir in browserDirs"
+            :key="dir.path"
+            class="folder-browser-item"
+            data-testid="browser-dir"
+            @click="navigateTo(dir.path)"
+          >
+            <el-icon><Folder /></el-icon>
+            <span class="folder-browser-item-name">{{ dir.name }}</span>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="browserVisible = false">取消</el-button>
+        <el-button
+          type="primary"
+          :disabled="!browserPath"
+          data-testid="browser-confirm"
+          @click="confirmFolderSelection"
+        >
+          选择当前文件夹
         </el-button>
       </template>
     </el-dialog>
@@ -214,6 +288,7 @@ import {
   ChatDotRound,
   Loading,
   More,
+  ArrowUp,
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
@@ -221,6 +296,7 @@ import { useProjectStore } from '@/stores/project'
 import { useAgentStore } from '@/stores/agent'
 import type { Project } from '@/api/projects'
 import type { ThreadSummary } from '@/api/agent'
+import { listDirectory, type DirEntry } from '@/api/fs'
 import { vAutoHideScrollbar } from '@/directives/autoHideScrollbar'
 
 const projectStore = useProjectStore()
@@ -466,6 +542,52 @@ function resetForm(): void {
   form.description = ''
   formRef.value?.resetFields()
 }
+
+// ---- 文件夹浏览器 ----
+
+const browserVisible = ref(false)
+const browserLoading = ref(false)
+const browserPath = ref('')
+const browserParent = ref<string | null>(null)
+const browserDirs = ref<DirEntry[]>([])
+const browserDrives = ref<string[]>([])
+
+/** 粗略判断绝对路径（/ 或盘符开头），相对路径直接交给后端解析。 */
+function looksAbsolute(p: string): boolean {
+  return p.startsWith('/') || /^[A-Za-z]:[\\/]/.test(p)
+}
+
+function openFolderBrowser(): void {
+  browserVisible.value = true
+  // 已填绝对路径时从该处打开，否则从用户主目录开始
+  const current = form.path.trim()
+  void navigateTo(current && looksAbsolute(current) ? current : undefined)
+}
+
+async function navigateTo(path?: string): Promise<void> {
+  browserLoading.value = true
+  try {
+    const data = await listDirectory(path)
+    browserPath.value = data.path
+    browserParent.value = data.parent
+    browserDirs.value = data.dirs
+    browserDrives.value = data.drives
+  } catch {
+    // 错误由 axios 拦截器统一提示；停留在当前目录
+  } finally {
+    browserLoading.value = false
+  }
+}
+
+function confirmFolderSelection(): void {
+  form.path = browserPath.value
+  // 名称为空时用文件夹名兜底
+  if (!form.name.trim()) {
+    form.name =
+      browserPath.value.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? ''
+  }
+  browserVisible.value = false
+}
 </script>
 
 <style scoped>
@@ -522,6 +644,89 @@ function resetForm(): void {
 
 .tree-skeleton {
   padding: 1rem;
+}
+
+/* 创建项目对话框：路径输入与「选择文件夹」按钮同行 */
+.path-input-row {
+  display: flex;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.path-input-row .el-input {
+  flex: 1;
+}
+
+.folder-browser {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.folder-browser-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.folder-browser-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--app-text-secondary);
+  font-size: 0.8125rem;
+}
+
+.folder-browser-drives {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+
+.folder-browser-drives .el-button {
+  margin-left: 0;
+}
+
+.folder-browser-list {
+  height: 280px;
+  overflow-y: auto;
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-md);
+  padding: 0.25rem;
+}
+
+.folder-browser-empty {
+  padding: 2rem 1rem;
+  text-align: center;
+  color: var(--app-text-muted);
+  font-size: 0.875rem;
+}
+
+.folder-browser-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.625rem;
+  border-radius: var(--app-radius-sm);
+  cursor: pointer;
+  color: var(--app-text);
+  font-size: 0.875rem;
+}
+
+.folder-browser-item:hover {
+  background-color: var(--app-sidebar-hover);
+}
+
+.folder-browser-item .el-icon {
+  color: var(--app-text-muted);
+}
+
+.folder-browser-item-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .project-tree-items {

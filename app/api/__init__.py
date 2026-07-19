@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from starlette.responses import FileResponse
 
-from app.api import agent, projects, runs
+from app.api import agent, fs, projects, runs
 from app.api.sse import EventBridge
 from app.projects import ProjectStore
 from app.agent import create_agent_graph
@@ -64,6 +64,7 @@ def create_app() -> FastAPI:
     app.include_router(projects.router, prefix="/api/projects", tags=["projects"])
     app.include_router(runs.router, prefix="/api/runs", tags=["runs"])
     app.include_router(agent.router, prefix="/api/agent", tags=["agent"])
+    app.include_router(fs.router, prefix="/api/fs", tags=["fs"])
 
     dist_dir = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
     if dist_dir.exists():

@@ -34,6 +34,10 @@ vi.mock('@/api/agent', () => ({
   DEFAULT_AGENT_MODEL: 'deepseek-v4-flash',
 }))
 
+vi.mock('@/api/fs', () => ({
+  listDirectory: vi.fn(),
+}))
+
 vi.mock('vue-router', () => ({
   useRoute: () => ({ path: '/' }),
   useRouter: () => ({ push: vi.fn() }),
@@ -41,6 +45,7 @@ vi.mock('vue-router', () => ({
 
 import * as projectsApi from '@/api/projects'
 import * as agentApi from '@/api/agent'
+import * as fsApi from '@/api/fs'
 
 const mockAnalysis = () => ({
   image_dir: '',
@@ -342,6 +347,75 @@ describe('ProjectTree', () => {
       path: '/tmp/new',
       description: undefined,
     })
+  })
+
+  it('browses folders and fills the create form on confirm', async () => {
+    vi.mocked(projectsApi.listProjects).mockResolvedValue([])
+    vi.mocked(fsApi.listDirectory).mockImplementation(async (path?: string) => {
+      if (!path) {
+        return {
+          path: '/home',
+          parent: '/',
+          dirs: [{ name: 'data', path: '/home/data' }],
+          drives: [],
+        }
+      }
+      if (path === '/home/data') {
+        return { path: '/home/data', parent: '/home', dirs: [], drives: [] }
+      }
+      if (path === '/home') {
+        return {
+          path: '/home',
+          parent: '/',
+          dirs: [{ name: 'data', path: '/home/data' }],
+          drives: [],
+        }
+      }
+      return {
+        path: '/',
+        parent: null,
+        dirs: [{ name: 'home', path: '/home' }],
+        drives: [],
+      }
+    })
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    await wrapper.find('[data-testid="new-project"]').trigger('click')
+    await flushPromises()
+    await wrapper.find('[data-testid="browse-folder"]').trigger('click')
+    await flushPromises()
+
+    // 浏览器对话框 append-to-body：内部元素走 document 查询
+    const docFind = (testid: string): HTMLElement => {
+      const el = document.querySelector<HTMLElement>(`[data-testid="${testid}"]`)
+      expect(el, `未找到元素：${testid}`).toBeTruthy()
+      return el!
+    }
+
+    // 初始列出主目录，点击进入 data
+    expect(fsApi.listDirectory).toHaveBeenCalledWith(undefined)
+    docFind('browser-dir').click()
+    await flushPromises()
+    expect(fsApi.listDirectory).toHaveBeenCalledWith('/home/data')
+
+    // 无子目录时显示空态；返回上一级
+    expect(document.body.textContent).toContain('无子文件夹')
+    docFind('browser-up').click()
+    await flushPromises()
+    expect(fsApi.listDirectory).toHaveBeenCalledWith('/home')
+
+    // 回到 data 并确认：路径填入、名称为空时取文件夹名
+    docFind('browser-dir').click()
+    await flushPromises()
+    docFind('browser-confirm').click()
+    await flushPromises()
+
+    const pathInput = wrapper.find('input[data-testid="project-path-input"]')
+    expect((pathInput.element as HTMLInputElement).value).toBe('/home/data')
+    const nameInput = wrapper.find('input[placeholder="请输入项目名称"]')
+    expect((nameInput.element as HTMLInputElement).value).toBe('data')
   })
 
   it('creates a thread in the clicked project via its plus action', async () => {
