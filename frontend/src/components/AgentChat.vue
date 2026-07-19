@@ -438,6 +438,11 @@ defineExpose({ clearInput })
   flex-direction: column;
   height: 100%;
   gap: 1rem;
+  /* 聊天列限宽居中：消息区、状态栏、输入框对齐同一列，
+     侧边栏折叠时不再铺满全宽或贴边 */
+  width: 100%;
+  max-width: 48rem;
+  margin-inline: auto;
 }
 
 .chat-empty {
