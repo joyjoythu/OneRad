@@ -155,6 +155,37 @@ html:not(.dark) .el-card {
   line-height: 1.55;
 }
 
+.quick-actions-menu {
+  min-width: 220px;
+  overflow: hidden;
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-lg);
+  background: var(--app-bg-panel);
+  box-shadow: var(--app-shadow-md);
+}
+
+.quick-actions-menu .el-dropdown-menu {
+  padding: 0.375rem;
+}
+
+.quick-actions-menu .el-dropdown-menu__item {
+  min-height: 38px;
+  gap: 0.5rem;
+  border-radius: var(--app-radius-md);
+  color: var(--app-text-secondary);
+}
+
+.quick-actions-menu .el-dropdown-menu__item:not(.is-disabled):hover,
+.quick-actions-menu .el-dropdown-menu__item:not(.is-disabled):focus {
+  background: var(--app-sidebar-hover);
+  color: var(--app-accent-active);
+}
+
+.quick-actions-menu .el-dropdown-menu__item.quick-action--danger,
+.quick-actions-menu .el-dropdown-menu__item.quick-action--danger:hover {
+  color: var(--app-danger);
+}
+
 /* 隐形滚动条：默认透明，仅在滚动中（.is-scrolling，由 v-auto-hide-scrollbar
    指令维护）或光标悬停在滑块上时显现。
    Firefox 用 scrollbar-color，WebKit/Blink 用 ::-webkit-scrollbar。 */

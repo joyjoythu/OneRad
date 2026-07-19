@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
-import ElementPlus from 'element-plus'
+import ElementPlus, { ElDropdown, ElMessageBox, type MessageBoxData } from 'element-plus'
 import AgentChat from '../AgentChat.vue'
 import { useAgentStore } from '@/stores/agent'
 import { useProjectStore } from '@/stores/project'
@@ -40,6 +40,10 @@ function setupWrapper() {
 describe('AgentChat', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
   })
 
   it('renders placeholder when no project is selected', async () => {
@@ -115,6 +119,51 @@ describe('AgentChat', () => {
 
     expect(wrapper.emitted('send-message')).toHaveLength(1)
     expect(wrapper.emitted('send-message')![0]).toEqual(['Enter message'])
+  })
+
+  it('starts a quick action immediately while preserving the input draft', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    const textarea = wrapper.find('textarea')
+    await textarea.setValue('尚未发送的草稿')
+
+    const dropdown = wrapper.findComponent(ElDropdown)
+    expect(dropdown.exists()).toBe(true)
+    dropdown.vm.$emit('command', 'start-analysis')
+    await flushPromises()
+
+    expect(wrapper.emitted('quick-action')).toEqual([
+      ['请检查当前项目配置与数据完整性，并开始执行完整的影像组学分析流程。'],
+    ])
+    expect((textarea.element as HTMLTextAreaElement).value).toBe('尚未发送的草稿')
+  })
+
+  it('confirms before clearing the current task and keeps history untouched', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.threadId = 'thread-1'
+    agentStore.messages = [{ role: 'user', content: '保留的历史内容' }]
+    const resetSpy = vi.spyOn(agentStore, 'resetThread')
+    vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm' as MessageBoxData)
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    wrapper.findComponent(ElDropdown).vm.$emit('command', 'clear-task')
+    await flushPromises()
+
+    expect(ElMessageBox.confirm).toHaveBeenCalledWith(
+      '清除当前任务上下文并开始新对话？历史对话仍会保留。',
+      '清除当前任务',
+      expect.objectContaining({ customClass: 'compact-confirm-box' })
+    )
+    expect(resetSpy).toHaveBeenCalledOnce()
   })
 
   it('does not emit send-message on Enter while IME is composing', async () => {
