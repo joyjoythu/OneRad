@@ -67,11 +67,11 @@ describe('App navigation', () => {
     localStorage.clear()
   })
 
-  it('shows Agent and 设置 links, no 分析 link', () => {
+  it('shows 任务 and 设置 links, no 分析 link', () => {
     const wrapper = setupWrapper()
     const nav = wrapper.find('.app-nav')
 
-    expect(nav.text()).toContain('Agent')
+    expect(nav.text()).toContain('任务')
     expect(nav.text()).toContain('设置')
     expect(nav.text()).not.toContain('分析')
   })
