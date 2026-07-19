@@ -220,6 +220,17 @@ export const cancel = async (threadId: string): Promise<{ thread_id: string }> =
   return res.data
 }
 
+export const other = async (
+  threadId: string,
+  instruction: string
+): Promise<{ thread_id: string }> => {
+  const res = await client.post(
+    `/agent/threads/${encodeURIComponent(threadId)}/other`,
+    { instruction }
+  )
+  return res.data
+}
+
 export const setAutoApprove = async (
   threadId: string,
   enabled: boolean

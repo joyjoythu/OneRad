@@ -375,6 +375,66 @@ def test_confirm_conflict_while_streaming(client, app):
         app.state.active_agent_streams.discard(thread_id)
 
 
+def test_other_resumes_with_instruction(client, app):
+    """other 动作以 action=other + 用户指令恢复挂起的 interrupt。"""
+    project = _create_project(client)
+    thread_id = _create_thread(client, project['id'])["thread_id"]
+
+    captured = {}
+
+    async def fake_astream(input_value=None, config=None, stream_mode=None):
+        captured["input"] = input_value
+        yield {
+            "messages": [],
+            "interrupt_type": None,
+            "operation_log": ["done"],
+        }
+
+    mock_graph = AsyncMock()
+    mock_graph.aget_state = AsyncMock(
+        return_value=SimpleNamespace(values={"interrupt_type": "file_plan"})
+    )
+    mock_graph.astream = fake_astream
+    app.dependency_overrides[get_agent_graph] = lambda: mock_graph
+
+    response = client.post(
+        f"/api/agent/threads/{thread_id}/other",
+        json={"instruction": "  改成只处理 T1 序列  "},
+    )
+    assert response.status_code == 202, response.text
+
+    # 等待后台流式任务消费恢复指令。
+    time.sleep(0.5)
+    resume = captured["input"].resume
+    assert resume["action"] == "other"
+    assert resume["instruction"] == "改成只处理 T1 序列"
+
+
+def test_other_conflict_without_pending_interrupt(client, app):
+    """无挂起 interrupt 时 other 应返回 409。"""
+    project = _create_project(client)
+    thread_id = _create_thread(client, project['id'])["thread_id"]
+
+    response = client.post(
+        f"/api/agent/threads/{thread_id}/other",
+        json={"instruction": "换个思路"},
+    )
+    assert response.status_code == 409, response.text
+
+
+@pytest.mark.parametrize("instruction", ["", "   \n\t  "])
+def test_other_rejects_blank_instruction(client, app, instruction):
+    """空或纯空白 instruction 应返回 400。"""
+    project = _create_project(client)
+    thread_id = _create_thread(client, project['id'])["thread_id"]
+
+    response = client.post(
+        f"/api/agent/threads/{thread_id}/other",
+        json={"instruction": instruction},
+    )
+    assert response.status_code == 400, response.text
+
+
 def test_unanswered_tool_call_ids_all_answered():
     messages = [
         AIMessage(

@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 
-from langchain_core.messages import AIMessage, ToolMessage, convert_to_openai_messages
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage, convert_to_openai_messages
 from langchain_core.runnables import RunnableConfig
 from langchain_core.utils.function_calling import convert_to_openai_tool
 from langchain_openai import ChatOpenAI
@@ -374,8 +374,10 @@ def human_review(state: AgentState) -> dict:
     if "radiomics_plan" in value and pending_radiomics_plan:
         pending_radiomics_plan = {"tool_call_id": pending_radiomics_plan["tool_call_id"], **value["radiomics_plan"]}
 
+    action = value.get("action")
     return {
-        "confirmed": value.get("action") == "confirm",
+        "confirmed": action == "confirm",
+        "other_instruction": value.get("instruction") if action == "other" else None,
         "pending_plan": pending_plan,
         "pending_radiomics_plan": pending_radiomics_plan,
         "pending_radiomics_execution": state.get("pending_radiomics_execution"),
@@ -536,8 +538,13 @@ def execute_confirmed(state: AgentState, config: Optional[RunnableConfig] = None
         })
 
     if not state.get("confirmed"):
-        content = json.dumps({"cancelled": True, "reason": "用户取消了操作"})
-        return _clear_interrupt({"messages": [ToolMessage(content=content, tool_call_id=tool_call_id)]})
+        instruction = state.get("other_instruction")
+        reason = "用户取消了操作并提供了替代指令" if instruction else "用户取消了操作"
+        content = json.dumps({"cancelled": True, "reason": reason})
+        messages: list = [ToolMessage(content=content, tool_call_id=tool_call_id)]
+        if instruction:
+            messages.append(HumanMessage(content=instruction))
+        return _clear_interrupt({"messages": messages})
 
     if itype == "file_plan":
         results = execute_plan(state["pending_plan"]["plan"], state["project_path"])
@@ -773,5 +780,6 @@ def _clear_interrupt(updates: dict) -> dict:
         "pending_radiomics_analysis": None,
         "script_risk_level": None,
         "confirmed": None,
+        "other_instruction": None,
     })
     return updates

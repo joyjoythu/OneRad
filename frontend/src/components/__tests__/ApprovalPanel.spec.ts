@@ -177,4 +177,69 @@ describe('ApprovalPanel', () => {
     expect(wrapper.text()).toContain('匹配 95 例')
     expect(wrapper.text()).toContain('确认分析')
   })
+
+  it('expands the custom instruction input when clicking the other button', async () => {
+    const store = useAgentStore()
+    store.interrupt = 'system_command'
+    store.pendingCommand = mockCommand
+
+    const wrapper = setupWrapper()
+    expect(wrapper.find('.approval-other').exists()).toBe(false)
+
+    const otherBtn = wrapper
+      .findAll('button')
+      .find((b) => b.text().trim() === '其他')
+    await otherBtn!.trigger('click')
+    expect(wrapper.find('.approval-other').exists()).toBe(true)
+    expect(wrapper.find('textarea').exists()).toBe(true)
+
+    // 再次点击收起
+    await otherBtn!.trigger('click')
+    expect(wrapper.find('.approval-other').exists()).toBe(false)
+  })
+
+  it('disables the other submit button for empty or whitespace input', async () => {
+    const store = useAgentStore()
+    store.interrupt = 'system_command'
+    store.pendingCommand = mockCommand
+
+    const wrapper = setupWrapper()
+    const otherBtn = wrapper
+      .findAll('button')
+      .find((b) => b.text().trim() === '其他')
+    await otherBtn!.trigger('click')
+
+    const submitBtn = () =>
+      wrapper.findAll('button').find((b) => b.text().trim() === '提交')!
+    expect(submitBtn().attributes('disabled')).toBeDefined()
+
+    await wrapper.find('textarea').setValue('   ')
+    expect(submitBtn().attributes('disabled')).toBeDefined()
+
+    await wrapper.find('textarea').setValue('换个目录')
+    expect(submitBtn().attributes('disabled')).toBeUndefined()
+  })
+
+  it('submits the custom instruction via store.other', async () => {
+    const store = useAgentStore()
+    store.interrupt = 'system_command'
+    store.pendingCommand = mockCommand
+    const otherSpy = vi.spyOn(store, 'other').mockResolvedValue(undefined)
+
+    const wrapper = setupWrapper()
+    const otherBtn = wrapper
+      .findAll('button')
+      .find((b) => b.text().trim() === '其他')
+    await otherBtn!.trigger('click')
+
+    await wrapper.find('textarea').setValue('  改用 bash 执行  ')
+    const submitBtn = wrapper
+      .findAll('button')
+      .find((b) => b.text().trim() === '提交')
+    await submitBtn!.trigger('click')
+
+    expect(otherSpy).toHaveBeenCalledWith('改用 bash 执行')
+    // 提交后收起输入区
+    expect(wrapper.find('.approval-other').exists()).toBe(false)
+  })
 })

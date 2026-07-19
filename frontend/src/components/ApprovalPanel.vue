@@ -34,6 +34,25 @@
             {{ view.confirmLabel }}
           </el-button>
           <el-button :icon="Close" @click="handleCancel">取消</el-button>
+          <el-button :icon="EditPen" @click="toggleOther">其他</el-button>
+        </div>
+        <div v-if="otherOpen" class="approval-other">
+          <el-input
+            v-model="otherInstruction"
+            type="textarea"
+            :rows="3"
+            placeholder="输入自定义指令…"
+          />
+          <div class="approval-other-actions">
+            <el-button
+              type="primary"
+              size="small"
+              :disabled="!otherInstruction.trim()"
+              @click="handleOtherSubmit"
+            >
+              提交
+            </el-button>
+          </div>
         </div>
       </template>
     </div>
@@ -42,7 +61,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { ArrowUp, ArrowDown, CircleCheck, Close } from '@element-plus/icons-vue'
+import { ArrowUp, ArrowDown, CircleCheck, Close, EditPen } from '@element-plus/icons-vue'
 import { useAgentStore } from '@/stores/agent'
 import PlanEditor from './PlanEditor.vue'
 
@@ -185,6 +204,29 @@ async function handleCancel(): Promise<void> {
     // 错误已由 axios 拦截器统一提示
   }
 }
+
+const otherOpen = ref(false)
+const otherInstruction = ref('')
+
+function toggleOther(): void {
+  otherOpen.value = !otherOpen.value
+  if (!otherOpen.value) {
+    otherInstruction.value = ''
+  }
+}
+
+async function handleOtherSubmit(): Promise<void> {
+  const instruction = otherInstruction.value.trim()
+  if (!instruction) return
+  try {
+    await agentStore.other(instruction)
+  } catch {
+    // 错误已由 axios 拦截器统一提示
+  } finally {
+    otherInstruction.value = ''
+    otherOpen.value = false
+  }
+}
 </script>
 
 <style scoped>
@@ -241,5 +283,16 @@ async function handleCancel(): Promise<void> {
 .approval-actions {
   display: flex;
   gap: 0.75rem;
+}
+
+.approval-other {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.approval-other-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 </style>

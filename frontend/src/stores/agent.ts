@@ -457,6 +457,22 @@ export const useAgentStore = defineStore('agent', () => {
     }
   }
 
+  async function other(instruction: string): Promise<void> {
+    if (!threadId.value) {
+      throw new Error('No active agent thread')
+    }
+    busy.value = true
+    connect()
+    try {
+      await api.other(threadId.value, instruction)
+      runningThreadIds.value.add(threadId.value)
+      updateRunningPolling()
+    } catch (err) {
+      busy.value = false
+      throw err
+    }
+  }
+
   async function setAutoApprove(enabled: boolean): Promise<void> {
     const previous = autoApprove.value
     autoApprove.value = enabled
@@ -538,6 +554,7 @@ export const useAgentStore = defineStore('agent', () => {
     updatePlan,
     confirm,
     cancel,
+    other,
     setAutoApprove,
     stop,
     disconnect,

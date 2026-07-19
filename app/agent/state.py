@@ -20,5 +20,6 @@ class AgentState(TypedDict):
 
     context_usage: Optional[Dict[str, Any]]      # 最近一次 LLM 调用的 token 用量
     confirmed: Optional[bool]
+    other_instruction: Optional[str]             # 审批 "other" 动作时用户给出的替代指令
     tool_outputs: Annotated[list, lambda x, y: (x or []) + y]
     operation_log: Annotated[list, lambda x, y: (x or []) + y]

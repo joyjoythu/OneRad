@@ -58,6 +58,12 @@ class AutoApproveRequest(BaseModel):
     enabled: bool
 
 
+class OtherRequest(BaseModel):
+    """Request body for resuming an interrupt with a custom instruction."""
+
+    instruction: str
+
+
 class ThreadPatchRequest(BaseModel):
     """Request body for renaming a thread."""
 
@@ -697,6 +703,50 @@ async def cancel_interrupt(
         bridge,
         request.app,
         Command(resume={"action": "cancel"}),
+    )
+    return {"thread_id": thread_id}
+
+
+@router.post(
+    "/threads/{thread_id}/other",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=Dict[str, Any],
+)
+async def other_interrupt(
+    thread_id: str,
+    payload: OtherRequest,
+    request: Request,
+    graph=Depends(get_agent_graph),
+) -> Dict[str, Any]:
+    """Resume a thread waiting on an interrupt: cancel the pending call and
+    pass the user's custom instruction on to the agent."""
+    instruction = payload.instruction.strip()
+    if not instruction:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="instruction 不能为空",
+        )
+
+    config = await _agent_config(thread_id, request.app)
+    try:
+        snapshot = await graph.aget_state(config)
+    except KeyError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="thread not found"
+        )
+    if not snapshot.values.get("interrupt_type"):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="当前没有待确认的操作",
+        )
+
+    bridge = get_bridge(request)
+    await _start_stream(
+        thread_id,
+        graph,
+        bridge,
+        request.app,
+        Command(resume={"action": "other", "instruction": instruction}),
     )
     return {"thread_id": thread_id}
 
