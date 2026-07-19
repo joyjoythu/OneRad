@@ -172,7 +172,13 @@
       </li>
     </ul>
 
-    <el-dialog v-model="dialogVisible" title="新建项目" width="480px" @closed="resetForm">
+    <el-dialog
+      v-model="dialogVisible"
+      class="project-create-dialog"
+      title="新建项目"
+      width="min(640px, calc(100vw - 32px))"
+      @closed="resetForm"
+    >
       <el-form ref="formRef" :model="form" :rules="rules" label-width="80px">
         <el-form-item label="名称" prop="name">
           <el-input v-model="form.name" placeholder="请输入项目名称" />
@@ -181,7 +187,13 @@
           <el-input
             v-model="form.path"
             placeholder="相对路径（如 demo）或本机绝对路径（如 D:\project）"
-          />
+          >
+            <template #append>
+              <el-button data-testid="browse-project-path" @click="pathPickerVisible = true">
+                浏览
+              </el-button>
+            </template>
+          </el-input>
         </el-form-item>
         <el-form-item label="描述" prop="description">
           <el-input
@@ -198,6 +210,14 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <PathPickerDialog
+      v-model:visible="pathPickerVisible"
+      :model-value="form.path"
+      mode="directory"
+      title="选择项目目录"
+      @select="form.path = $event"
+    />
   </div>
 </template>
 
@@ -222,6 +242,7 @@ import { useAgentStore } from '@/stores/agent'
 import type { Project } from '@/api/projects'
 import type { ThreadSummary } from '@/api/agent'
 import { vAutoHideScrollbar } from '@/directives/autoHideScrollbar'
+import PathPickerDialog from '@/components/PathPickerDialog.vue'
 
 const projectStore = useProjectStore()
 const agentStore = useAgentStore()
@@ -229,6 +250,7 @@ const route = useRoute()
 const router = useRouter()
 
 const dialogVisible = ref(false)
+const pathPickerVisible = ref(false)
 const formRef = ref<FormInstance>()
 const form = reactive({
   name: '',
@@ -465,6 +487,7 @@ function resetForm(): void {
   form.path = ''
   form.description = ''
   formRef.value?.resetFields()
+  pathPickerVisible.value = false
 }
 </script>
 
@@ -688,5 +711,24 @@ function resetForm(): void {
 
 .thread-retry:hover {
   background-color: var(--app-sidebar-hover);
+}
+
+:global(.project-create-dialog) {
+  max-width: calc(100vw - 2rem);
+  border-radius: 16px;
+}
+
+@media (max-width: 560px) {
+  :global(.project-create-dialog .el-dialog__body) {
+    padding-inline: 1rem;
+  }
+
+  :global(.project-create-dialog .el-form-item) {
+    display: block;
+  }
+
+  :global(.project-create-dialog .el-form-item__label) {
+    width: auto !important;
+  }
 }
 </style>
