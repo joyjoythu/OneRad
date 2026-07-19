@@ -776,6 +776,11 @@ function handleProjectPathSelected(path: string): void {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  /* el-icon 自带 height/width: 1em：绝对定位 + inset:0 时显式高度会
+     让盒子贴顶（over-constrained 时 top 生效、bottom 被忽略），
+     重置为 auto 才能随父盒拉伸、把图标真正居中到按钮位置 */
+  width: auto;
+  height: auto;
   color: var(--app-text-muted);
 }
 
