@@ -34,6 +34,11 @@ vi.mock('@/api/agent', () => ({
   DEFAULT_AGENT_MODEL: 'deepseek-v4-flash',
 }))
 
+vi.mock('@/api/filesystem', () => ({
+  listFilesystemRoots: vi.fn(),
+  listFilesystemEntries: vi.fn(),
+}))
+
 vi.mock('vue-router', () => ({
   useRoute: () => ({ path: '/' }),
   useRouter: () => ({ push: vi.fn() }),
@@ -41,6 +46,7 @@ vi.mock('vue-router', () => ({
 
 import * as projectsApi from '@/api/projects'
 import * as agentApi from '@/api/agent'
+import * as filesystemApi from '@/api/filesystem'
 
 const mockAnalysis = () => ({
   image_dir: '',
@@ -342,6 +348,32 @@ describe('ProjectTree', () => {
       path: '/tmp/new',
       description: undefined,
     })
+  })
+
+  it('browses a local directory and fills the project path', async () => {
+    vi.mocked(projectsApi.listProjects).mockResolvedValue([])
+    vi.mocked(filesystemApi.listFilesystemRoots).mockResolvedValue([
+      { name: '主目录', path: 'C:\\Users\\researcher' },
+    ])
+    vi.mocked(filesystemApi.listFilesystemEntries).mockResolvedValue({
+      path: 'C:\\Users\\researcher',
+      parent: 'C:\\Users',
+      breadcrumbs: [{ name: 'researcher', path: 'C:\\Users\\researcher' }],
+      entries: [],
+    })
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+    await wrapper.find('[data-testid="new-project"]').trigger('click')
+    await flushPromises()
+    await wrapper.find('[data-testid="browse-project-path"]').trigger('click')
+    await flushPromises()
+
+    document.querySelector<HTMLElement>('[data-testid="path-picker-confirm"]')!.click()
+    await flushPromises()
+
+    const pathInput = wrapper.find<HTMLInputElement>('input[placeholder*="本机绝对路径"]')
+    expect(pathInput.element.value).toBe('C:\\Users\\researcher')
   })
 
   it('creates a thread in the clicked project via its plus action', async () => {
