@@ -773,6 +773,14 @@ defineExpose({ clearInput })
   width: 100%;
 }
 
+/* 聊天列（会话标题、消息列表、状态栏、输入框、审批面板）统一限宽并水平
+ * 居中：两侧面板折叠/展开时列位置保持居中，输入框始终与消息列表同宽对齐。 */
+.agent-chat > * {
+  width: 100%;
+  max-width: 880px;
+  margin-inline: auto;
+}
+
 .chat-empty {
   flex: 1;
   display: flex;
@@ -818,10 +826,7 @@ defineExpose({ clearInput })
   min-height: 0;
   overflow-y: auto;
   padding: clamp(0.75rem, 2vw, 1.25rem);
-  border: 1px solid var(--app-border);
-  border-radius: var(--app-radius-lg);
-  background: var(--app-bg-panel);
-  box-shadow: var(--app-shadow-sm);
+  /* 无框设计：消息气泡直接落在页面背景上，依靠气泡自身的底色区分层次 */
 }
 
 .message-row {
