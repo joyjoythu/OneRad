@@ -4,17 +4,18 @@
       <h2>{{ pageTitle }}</h2>
     </header>
 
-    <div class="settings-section">
-      <h3 class="settings-section-title">外观</h3>
-      <el-radio-group
-        :model-value="currentTheme"
-        aria-label="主题外观"
-        @change="handleThemeChange"
-      >
-        <el-radio-button value="dark">深色</el-radio-button>
-        <el-radio-button value="light">浅色</el-radio-button>
-      </el-radio-group>
-    </div>
+    <el-form label-width="100px" class="settings-theme-form">
+      <el-form-item label="主题外观">
+        <el-radio-group
+          :model-value="currentTheme"
+          aria-label="主题外观"
+          @change="handleThemeChange"
+        >
+          <el-radio-button value="dark">深色</el-radio-button>
+          <el-radio-button value="light">浅色</el-radio-button>
+        </el-radio-group>
+      </el-form-item>
+    </el-form>
 
     <el-empty v-if="!projectStore.currentProject" description="请先选择一个项目" />
 
@@ -104,11 +105,8 @@ async function handleSave(): Promise<void> {
   color: var(--app-text);
 }
 
-.settings-section-title {
-  margin: 0 0 0.75rem;
-  font-size: 0.9375rem;
-  font-weight: 600;
-  color: var(--app-text);
+.settings-theme-form .el-form-item {
+  margin-bottom: 0;
 }
 
 .settings-form {
