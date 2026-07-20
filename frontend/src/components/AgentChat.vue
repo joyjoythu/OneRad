@@ -287,6 +287,23 @@
             </div>
           </div>
           <div class="input-toolbar-right">
+            <el-select
+              ref="modelSelectRef"
+              :model-value="agentStore.selectedModel"
+              class="model-select"
+              :style="{ width: modelSelectWidth }"
+              size="small"
+              aria-label="模型选择"
+              data-testid="model-select"
+              @change="(value: string) => agentStore.setModel(value)"
+            >
+              <el-option
+                v-for="model in AVAILABLE_MODELS"
+                :key="model"
+                :label="model"
+                :value="model"
+              />
+            </el-select>
             <el-tooltip :content="contextTooltip" placement="top">
               <span class="context-usage" :class="contextUsageLevel">
                 <el-icon><Odometer /></el-icon>
@@ -319,7 +336,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watchEffect, nextTick } from 'vue'
+import { ref, computed, watch, watchEffect, nextTick, onMounted } from 'vue'
 import {
   ArrowUp,
   CircleClose,
@@ -336,7 +353,7 @@ import {
   UploadFilled,
 } from '@element-plus/icons-vue'
 import { ElMessageBox } from 'element-plus'
-import { useAgentStore } from '@/stores/agent'
+import { useAgentStore, AVAILABLE_MODELS } from '@/stores/agent'
 import { useProjectStore } from '@/stores/project'
 import type { AgentMessage } from '@/api/agent'
 import { listProjectEntries } from '@/api/projects'
@@ -651,6 +668,32 @@ function formatTokens(n: number): string {
   }
   return String(n)
 }
+
+// 选择框宽度 = 选中文字的实际渲染宽度 + 固有部分（内边距与下拉箭头约 40px），
+// 避免估算宽度在文字与箭头之间留出空隙。jsdom 无布局，量不到时回退为 CSS 默认。
+const modelSelectRef = ref<{ $el?: HTMLElement } | null>(null)
+const modelTextWidth = ref(0)
+const modelSelectWidth = computed(() =>
+  modelTextWidth.value ? `${modelTextWidth.value + 40}px` : ''
+)
+
+async function measureModelSelectText(): Promise<void> {
+  await nextTick()
+  const root = modelSelectRef.value?.$el
+  const label = root?.querySelector('.el-select__selected-item')
+  modelTextWidth.value = label instanceof HTMLElement ? label.offsetWidth : 0
+}
+
+watch(
+  () => agentStore.selectedModel,
+  () => {
+    void measureModelSelectText()
+  },
+  { flush: 'post' }
+)
+onMounted(() => {
+  void measureModelSelectText()
+})
 
 /** badge 文案：当前上下文用量/窗口 · 百分比；无数据显示 --。 */
 const contextUsageText = computed(() => {

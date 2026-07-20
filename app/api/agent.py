@@ -23,6 +23,7 @@ from app.agent import build_initial_state, create_agent_graph
 from app.agent import runtime as agent_runtime
 from app.api.deps import get_general_settings_store, get_project_store
 from app.api.runner import get_bridge
+from app.constants import DEEPSEEK_MODELS
 from app.llm import LLMClient, build_thread_title_prompt
 from app.projects import ProjectStore
 from app.settings import GeneralSettingsStore
@@ -38,6 +39,8 @@ class MessageRequest(BaseModel):
 
     role: Literal["user", "assistant", "system"]
     content: str
+    # 本次运行使用的模型；缺省时沿用会话上次的选择。
+    model: Optional[str] = None
 
 
 class CreateThreadRequest(BaseModel):
@@ -127,8 +130,8 @@ async def _agent_config(thread_id: str, app) -> Dict[str, Any]:
     """Build the RunnableConfig for a thread.
 
     The API key is refreshed when the thread is created or resumed. The model
-    is fixed globally; legacy values stored in checkpoints or SQLite are
-    intentionally ignored.
+    comes from the thread's checkpointed state (updated per message request);
+    unsupported legacy values fall back to the default model in nodes.
     """
     api_key = getattr(app.state, "agent_api_keys", {}).get(thread_id, "")
     return {
@@ -573,6 +576,11 @@ async def send_message(
     store: ProjectStore = Depends(get_project_store),
 ) -> Dict[str, Any]:
     """Append a user message to a thread and start streaming the agent response."""
+    if payload.model is not None and payload.model not in DEEPSEEK_MODELS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"不支持的模型：{payload.model}",
+        )
     config = await _agent_config(thread_id, request.app)
     try:
         snapshot = await graph.aget_state(config)
@@ -617,12 +625,16 @@ async def send_message(
                 await _run_store_sync(store.update_thread_title, thread_id, title)
 
     bridge = get_bridge(request)
+    # 携带模型选择时写入 state 并随检查点持久化，后续消息缺省沿用。
+    stream_input: Dict[str, Any] = {"messages": [message]}
+    if payload.model:
+        stream_input["model"] = payload.model
     await _start_stream(
         thread_id,
         graph,
         bridge,
         request.app,
-        {"messages": [message]},
+        stream_input,
     )
     return {"thread_id": thread_id}
 

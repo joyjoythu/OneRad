@@ -108,6 +108,21 @@ describe('AgentChat', () => {
     expect(mention.props('placement')).toBe('top')
   })
 
+  it('shows the model selector bound to the store selection', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.setModel('deepseek-v4-pro')
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    const select = wrapper.findComponent({ name: 'ElSelect' })
+    expect(select.exists()).toBe(true)
+    expect(select.props('modelValue')).toBe('deepseek-v4-pro')
+  })
+
   it('emits send-message when clicking the send button', async () => {
     const projectStore = useProjectStore()
     projectStore.currentProject = mockProject()

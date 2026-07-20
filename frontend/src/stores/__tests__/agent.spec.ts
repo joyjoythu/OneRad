@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import { AUTO_APPROVE_STORAGE_KEY, useAgentStore } from '../agent'
+import { AUTO_APPROVE_STORAGE_KEY, MODEL_STORAGE_KEY, useAgentStore } from '../agent'
 import client from '@/api/client'
 import * as agentApi from '@/api/agent'
 import type { AgentState, PendingRadiomicsAnalysis } from '@/api/agent'
@@ -89,7 +89,19 @@ describe('useAgentStore', () => {
     expect(store.messages).toContainEqual({ role: 'user', content: 'Hello' })
     expect(client.post).toHaveBeenCalledWith(
       '/agent/threads/thread-1/messages',
-      { role: 'user', content: 'Hello' }
+      { role: 'user', content: 'Hello', model: 'deepseek-v4-flash' }
+    )
+  })
+
+  it('sendMessage includes the selected model in the payload', async () => {
+    const store = useAgentStore()
+    await store.ensureThread('project-1')
+    store.setModel('deepseek-v4-pro')
+    await store.sendMessage('Hello')
+
+    expect(client.post).toHaveBeenCalledWith(
+      '/agent/threads/thread-1/messages',
+      { role: 'user', content: 'Hello', model: 'deepseek-v4-pro' }
     )
   })
 
@@ -801,6 +813,34 @@ describe('useAgentStore', () => {
 
     expect(store.currentThread?.id).toBe('thread-current')
     expect(store.currentThread?.title).toBe('Current')
+  })
+
+  describe('setModel', () => {
+    it('defaults to deepseek-v4-flash without a saved preference', () => {
+      const store = useAgentStore()
+
+      expect(store.selectedModel).toBe('deepseek-v4-flash')
+    })
+
+    it('restores the saved preference during store initialization', () => {
+      localStorage.setItem(MODEL_STORAGE_KEY, 'deepseek-v4-pro')
+
+      const store = useAgentStore()
+
+      expect(store.selectedModel).toBe('deepseek-v4-pro')
+    })
+
+    it('persists a valid selection and ignores unknown models', () => {
+      const store = useAgentStore()
+
+      store.setModel('deepseek-v4-pro')
+      expect(store.selectedModel).toBe('deepseek-v4-pro')
+      expect(localStorage.getItem(MODEL_STORAGE_KEY)).toBe('deepseek-v4-pro')
+
+      store.setModel('gpt-4o')
+      expect(store.selectedModel).toBe('deepseek-v4-pro')
+      expect(localStorage.getItem(MODEL_STORAGE_KEY)).toBe('deepseek-v4-pro')
+    })
   })
 
   describe('setAutoApprove', () => {

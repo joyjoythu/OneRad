@@ -156,6 +156,7 @@ export interface CreateThreadResponse {
 export interface MessageRequest {
   role: string
   content: string
+  model?: string
 }
 
 export interface UpdatePlanRequest {
@@ -202,9 +203,11 @@ export const getThread = async (
 export const sendMessage = async (
   threadId: string,
   role: string,
-  content: string
+  content: string,
+  model?: string
 ): Promise<{ thread_id: string }> => {
   const payload: MessageRequest = { role, content }
+  if (model) payload.model = model
   const res = await client.post(
     `/agent/threads/${encodeURIComponent(threadId)}/messages`,
     payload

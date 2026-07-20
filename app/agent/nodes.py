@@ -29,15 +29,16 @@ from app.actions import execute_plan
 from app.code_runner import execute_script_if_safe
 from app.feature import FeatureAgent
 from app.radiomics_analysis import run_radiomics_cv_analysis
-from app.constants import DEEPSEEK_MODEL
+from app.constants import DEEPSEEK_MODEL, DEEPSEEK_MODELS
 from app.skills import load_skill_bundle
 
 logger = logging.getLogger(__name__)
 
 
 def _resolve_model(state: AgentState, config: Optional[RunnableConfig] = None) -> str:
-    """Return OneRad's fixed model, ignoring legacy checkpoint values."""
-    return DEEPSEEK_MODEL
+    """返回该会话选定的模型；旧检查点里不受支持的模型名回退到默认模型。"""
+    model = state.get("model")
+    return model if model in DEEPSEEK_MODELS else DEEPSEEK_MODEL
 
 
 def _build_llm(

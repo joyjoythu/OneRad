@@ -255,6 +255,79 @@ def test_thread_title_set_on_first_message(client, app, monkeypatch):
     assert threads[0]["title"] == "hello world this is a test"[:30]
 
 
+def test_send_message_forwards_selected_model(client, app):
+    """请求携带的模型名写入 graph 输入，随检查点持久化供节点解析。"""
+    project = _create_project(client)
+    thread_id = _create_thread(client, project['id'])["thread_id"]
+
+    captured = {}
+
+    async def fake_astream(input_value=None, config=None, stream_mode=None):
+        captured["input"] = input_value
+        yield {
+            "messages": [],
+            "interrupt_type": None,
+        }
+
+    mock_graph = AsyncMock()
+    mock_graph.aget_state = AsyncMock(
+        return_value=SimpleNamespace(values={"interrupt_type": None})
+    )
+    mock_graph.astream = fake_astream
+    app.dependency_overrides[get_agent_graph] = lambda: mock_graph
+
+    response = client.post(
+        f"/api/agent/threads/{thread_id}/messages",
+        json={"role": "user", "content": "hello", "model": "deepseek-v4-pro"},
+    )
+    assert response.status_code == 202, response.text
+
+    time.sleep(0.5)
+    assert captured["input"]["model"] == "deepseek-v4-pro"
+
+
+def test_send_message_without_model_keeps_thread_default(client, app):
+    """不携带模型时输入不含 model 字段，沿用会话检查点里的既有选择。"""
+    project = _create_project(client)
+    thread_id = _create_thread(client, project['id'])["thread_id"]
+
+    captured = {}
+
+    async def fake_astream(input_value=None, config=None, stream_mode=None):
+        captured["input"] = input_value
+        yield {
+            "messages": [],
+            "interrupt_type": None,
+        }
+
+    mock_graph = AsyncMock()
+    mock_graph.aget_state = AsyncMock(
+        return_value=SimpleNamespace(values={"interrupt_type": None})
+    )
+    mock_graph.astream = fake_astream
+    app.dependency_overrides[get_agent_graph] = lambda: mock_graph
+
+    response = client.post(
+        f"/api/agent/threads/{thread_id}/messages",
+        json={"role": "user", "content": "hello"},
+    )
+    assert response.status_code == 202, response.text
+
+    time.sleep(0.5)
+    assert "model" not in captured["input"]
+
+
+def test_send_message_rejects_unknown_model(client):
+    project = _create_project(client)
+    thread_id = _create_thread(client, project['id'])["thread_id"]
+
+    response = client.post(
+        f"/api/agent/threads/{thread_id}/messages",
+        json={"role": "user", "content": "hello", "model": "gpt-4o"},
+    )
+    assert response.status_code == 422
+
+
 def test_send_message_publishes_events(client, app):
     """Mock the graph to verify message sending stores events for SSE replay."""
     project = _create_project(client)

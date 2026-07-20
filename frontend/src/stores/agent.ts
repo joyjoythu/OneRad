@@ -20,6 +20,9 @@ import type {
 } from '@/api/agent'
 
 export const AUTO_APPROVE_STORAGE_KEY = 'onerad:agent:autoApprove'
+export const MODEL_STORAGE_KEY = 'onerad:agent:model'
+export const DEFAULT_MODEL = 'deepseek-v4-flash'
+export const AVAILABLE_MODELS = ['deepseek-v4-flash', 'deepseek-v4-pro'] as const
 
 function loadAutoApprovePreference(): boolean {
   try {
@@ -34,6 +37,24 @@ function saveAutoApprovePreference(enabled: boolean): void {
     localStorage.setItem(AUTO_APPROVE_STORAGE_KEY, String(enabled))
   } catch {
     // 浏览器禁用本地存储时仍允许当前会话切换该选项。
+  }
+}
+
+function loadModelPreference(): string {
+  try {
+    const saved = localStorage.getItem(MODEL_STORAGE_KEY)
+    if (saved && (AVAILABLE_MODELS as readonly string[]).includes(saved)) return saved
+  } catch {
+    // 浏览器禁用本地存储时使用默认模型。
+  }
+  return DEFAULT_MODEL
+}
+
+function saveModelPreference(model: string): void {
+  try {
+    localStorage.setItem(MODEL_STORAGE_KEY, model)
+  } catch {
+    // 浏览器禁用本地存储时仍允许当前会话切换模型。
   }
 }
 
@@ -75,6 +96,8 @@ export const useAgentStore = defineStore('agent', () => {
   const finishedThreadIds = ref<Set<string>>(new Set())
   // 自动审批：应用初始化时恢复上次选择；创建或恢复线程时同步给后端。
   const autoApprove = ref(loadAutoApprovePreference())
+  // 本次会话使用的 LLM 模型：恢复上次选择，发送消息时随请求带给后端。
+  const selectedModel = ref(loadModelPreference())
   // 自动审批同步请求进行中：用于禁用开关，防止快速连点导致前后端状态乱序。
   const autoApproveSyncing = ref(false)
   // 影像组学特征提取的实时进度（由后端节点线程推送，null 表示无提取在进行）。
@@ -425,7 +448,7 @@ export const useAgentStore = defineStore('agent', () => {
     // 先订阅再发起运行，避免漏掉运行初期发布的事件。
     connect()
     try {
-      await api.sendMessage(threadId.value, role, content)
+      await api.sendMessage(threadId.value, role, content, selectedModel.value)
       // 发起成功即标记运行中：侧边栏转圈即时出现，不等待下次列表拉取。
       runningThreadIds.value.add(threadId.value)
       updateRunningPolling()
@@ -514,6 +537,12 @@ export const useAgentStore = defineStore('agent', () => {
     }
   }
 
+  function setModel(model: string): void {
+    if (!(AVAILABLE_MODELS as readonly string[]).includes(model)) return
+    selectedModel.value = model
+    saveModelPreference(model)
+  }
+
   async function stop(): Promise<void> {
     if (!threadId.value) {
       throw new Error('No active agent thread')
@@ -575,6 +604,7 @@ export const useAgentStore = defineStore('agent', () => {
     finishedThreadIds,
     autoApprove,
     autoApproveSyncing,
+    selectedModel,
     ensureThread,
     reconnect,
     sendMessage,
@@ -583,6 +613,7 @@ export const useAgentStore = defineStore('agent', () => {
     cancel,
     other,
     setAutoApprove,
+    setModel,
     stop,
     disconnect,
     resetThread,
