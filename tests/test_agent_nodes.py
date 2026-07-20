@@ -9,6 +9,7 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from app.agent.nodes import (
     _build_llm,
     _resolve_api_key,
+    _run_system_command,
     auto_confirm,
     call_llm,
     execute_confirmed,
@@ -484,3 +485,89 @@ def test_publish_agent_progress_suppressed_after_cancel():
         loop.close()
 
     bridge.publish.assert_not_called()
+
+
+# ---------- read_yaml / update_yaml ----------
+
+def _write_yaml(tmp_path, text):
+    p = tmp_path / "params.yaml"
+    p.write_text(text, encoding="utf-8")
+    return p
+
+
+def test_read_yaml_full(tmp_path):
+    _write_yaml(tmp_path, "setting:\n  binWidth: 25\n  normalize: false\n")
+    res = _run_system_command(
+        {"_pending_tool": "read_yaml", "args": {"path": "params.yaml"}},
+        str(tmp_path),
+    )
+    assert res["tool"] == "read_yaml"
+    assert res["result"] == {"setting": {"binWidth": 25, "normalize": False}}
+
+
+def test_read_yaml_key_path(tmp_path):
+    _write_yaml(tmp_path, "setting:\n  binWidth: 25\n")
+    res = _run_system_command(
+        {"_pending_tool": "read_yaml",
+         "args": {"path": "params.yaml", "key": "setting.binWidth"}},
+        str(tmp_path),
+    )
+    assert res["result"] == 25
+
+
+def test_read_yaml_missing_key_returns_error(tmp_path):
+    _write_yaml(tmp_path, "setting:\n  binWidth: 25\n")
+    res = _run_system_command(
+        {"_pending_tool": "read_yaml",
+         "args": {"path": "params.yaml", "key": "setting.nope"}},
+        str(tmp_path),
+    )
+    assert "键不存在" in res["error"]
+
+
+def test_update_yaml_preserves_comments(tmp_path):
+    _write_yaml(
+        tmp_path,
+        "# 顶部注释\nsetting:\n  binWidth: 25  # 行内注释\n  label: 1\n",
+    )
+    res = _run_system_command(
+        {"_pending_tool": "update_yaml",
+         "args": {"path": "params.yaml",
+                  "updates": {"setting.binWidth": 10,
+                              "setting.resampledPixelSpacing": [1.0, 1.0, 2.0],
+                              "newSection.key": "v"}}},
+        str(tmp_path),
+    )
+    assert res["tool"] == "update_yaml"
+    assert set(res["result"]["updated"]) == {
+        "setting.binWidth", "setting.resampledPixelSpacing", "newSection.key"}
+
+    text = (tmp_path / "params.yaml").read_text(encoding="utf-8")
+    assert "# 顶部注释" in text
+    assert "# 行内注释" in text
+
+    import yaml
+    data = yaml.safe_load(text)
+    assert data["setting"]["binWidth"] == 10
+    assert data["setting"]["label"] == 1  # 未提及的键保持原值
+    assert data["setting"]["resampledPixelSpacing"] == [1.0, 1.0, 2.0]
+    assert data["newSection"] == {"key": "v"}
+
+
+def test_update_yaml_invalid_args(tmp_path):
+    _write_yaml(tmp_path, "a: 1\n")
+    res = _run_system_command(
+        {"_pending_tool": "update_yaml",
+         "args": {"path": "params.yaml", "updates": {}}},
+        str(tmp_path),
+    )
+    assert "updates" in res["error"]
+
+
+def test_yaml_tools_reject_sandbox_escape(tmp_path):
+    for t in ("read_yaml", "update_yaml"):
+        args = {"path": "../outside.yaml"}
+        if t == "update_yaml":
+            args["updates"] = {"a": 1}
+        res = _run_system_command({"_pending_tool": t, "args": args}, str(tmp_path))
+        assert "error" in res

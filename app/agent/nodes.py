@@ -309,6 +309,8 @@ def process_tool_calls(state: AgentState, config: Optional[RunnableConfig] = Non
             "list_directory",
             "find_files",
             "get_file_info",
+            "read_yaml",
+            "update_yaml",
             "plan_file_operations",
             "discover_radiomics_pairs",
             "extract_radiomics_features",
@@ -334,7 +336,8 @@ def process_tool_calls(state: AgentState, config: Optional[RunnableConfig] = Non
                 ))
                 continue
             confirmation_pending = True
-            if name in {"list_directory", "find_files", "get_file_info"}:
+            if name in {"list_directory", "find_files", "get_file_info",
+                        "read_yaml", "update_yaml"}:
                 interrupt_type = "system_command"
                 updates["pending_command"] = {"tool_call_id": tool_call_id, **parsed}
             elif name == "dispatch_subagent":
@@ -1049,6 +1052,59 @@ def _run_system_command(command: dict, project_path: str) -> dict:
                     "size": st.st_size,
                     "mtime": st.st_mtime,
                     "is_dir": target.is_dir(),
+                },
+            }
+        elif tool == "read_yaml":
+            path = args.get("path")
+            if path is None:
+                return {"error": "missing required argument: path"}
+            target = sandbox.resolve(path, must_exist=True)
+            import yaml
+            with open(target, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+            key = args.get("key") or ""
+            if key:
+                for part in key.split("."):
+                    if isinstance(data, dict) and part in data:
+                        data = data[part]
+                    else:
+                        return {"error": f"键不存在: {key}（在 '{part}' 处中断）"}
+            return {"tool": tool, "result": data}
+        elif tool == "update_yaml":
+            path = args.get("path")
+            updates = args.get("updates")
+            if path is None:
+                return {"error": "missing required argument: path"}
+            if not isinstance(updates, dict) or not updates:
+                return {"error": "updates 必须是非空的 {点号路径: 值} 映射"}
+            target = sandbox.resolve(path, must_exist=True)
+            from ruamel.yaml import YAML
+            rt_yaml = YAML()  # round-trip：保留注释与格式
+            with open(target, "r", encoding="utf-8") as f:
+                data = rt_yaml.load(f)
+            if data is None:
+                data = {}
+            applied = []
+            for dotted, value in updates.items():
+                parts = str(dotted).split(".")
+                node = data
+                for part in parts[:-1]:
+                    nxt = node.get(part) if isinstance(node, dict) else None
+                    if nxt is None:
+                        nxt = {}
+                        node[part] = nxt
+                    if not isinstance(nxt, dict):
+                        return {"error": f"路径 '{dotted}' 经过非映射节点: '{part}'"}
+                    node = nxt
+                node[parts[-1]] = value
+                applied.append(str(dotted))
+            with open(target, "w", encoding="utf-8") as f:
+                rt_yaml.dump(data, f)
+            return {
+                "tool": tool,
+                "result": {
+                    "path": str(target.relative_to(sandbox.root)),
+                    "updated": applied,
                 },
             }
         return {"error": f"unknown command {tool}"}

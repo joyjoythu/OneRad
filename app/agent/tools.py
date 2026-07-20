@@ -39,6 +39,28 @@ def build_tools(
         return json.dumps({"_pending_tool": "get_file_info", "args": {"path": path}})
 
     @tool
+    def read_yaml(path: str, key: str = "") -> str:
+        """读取项目内的 YAML 文件，返回解析后的内容（JSON）。
+        key 可选：用点号路径取子节点，如 "setting.binWidth"，
+        留空返回整个文件内容。执行前需要用户确认。"""
+        return json.dumps(
+            {"_pending_tool": "read_yaml", "args": {"path": path, "key": key}},
+            ensure_ascii=False,
+        )
+
+    @tool
+    def update_yaml(path: str, updates: Dict[str, Any]) -> str:
+        """修改项目内的 YAML 文件。updates 为点号路径到值的映射，例如
+        {"setting.binWidth": 10, "setting.normalize": True}。
+        保留文件原有注释与格式；缺失的中间层级会自动创建；
+        目标文件必须已存在。执行前需要用户确认。"""
+        return json.dumps(
+            {"_pending_tool": "update_yaml",
+             "args": {"path": path, "updates": updates}},
+            ensure_ascii=False,
+        )
+
+    @tool
     def plan_file_operations(instruction: str) -> str:
         """根据用户需求生成文件操作计划。仅生成计划，不实际执行。"""
         snapshot = _directory_snapshot(sandbox.root)
@@ -197,9 +219,11 @@ def build_tools(
     tools["list_directory"] = list_directory
     tools["find_files"] = find_files
     tools["get_file_info"] = get_file_info
+    tools["read_yaml"] = read_yaml
     tools["discover_radiomics_pairs"] = discover_radiomics_pairs
     if not readonly:
         # 只读模式（explore 子 agent）不注册写/重操作工具。
+        tools["update_yaml"] = update_yaml
         tools["plan_file_operations"] = plan_file_operations
         tools["execute_python_script"] = execute_python_script
         tools["extract_radiomics_features"] = extract_radiomics_features

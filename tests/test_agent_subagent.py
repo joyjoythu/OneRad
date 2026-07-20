@@ -448,14 +448,15 @@ def test_dispatch_subagent_recursion_limit_returns_partial(tmp_path, monkeypatch
 
 
 def test_build_tools_readonly_flag_limits_toolset(tmp_path):
-    """readonly=True 时只注册只读探索工具：目录/文件探查 + 配对扫描，
-    不含脚本执行、文件操作计划、特征提取、分析等写/重操作。"""
+    """readonly=True 时只注册只读探索工具：目录/文件探查 + YAML 读取 + 配对扫描，
+    不含脚本执行、文件操作计划、YAML 修改、特征提取、分析等写/重操作。"""
     llm = MagicMock()
     tools = build_tools(str(tmp_path), llm, readonly=True)
     assert set(tools) == {
         "list_directory",
         "find_files",
         "get_file_info",
+        "read_yaml",
         "discover_radiomics_pairs",
     }
 
@@ -513,6 +514,7 @@ def test_explore_subagent_uses_readonly_toolset(tmp_path):
         "list_directory",
         "find_files",
         "get_file_info",
+        "read_yaml",
         "discover_radiomics_pairs",
     }
 

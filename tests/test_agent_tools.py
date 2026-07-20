@@ -297,3 +297,37 @@ def test_run_radiomics_analysis_passes_explicit_output_dir(tmp_path):
     data = json.loads(result)
     assert data["_pending_tool"] == "run_radiomics_analysis"
     assert data["meta"]["output_dir"] == str(tmp_path / "my_results")
+
+
+def test_yaml_tools_registered(tmp_path):
+    fake_llm = MagicMock()
+    tools = build_tools(str(tmp_path), fake_llm)
+    assert "read_yaml" in tools
+    assert "update_yaml" in tools
+
+
+def test_yaml_tools_readonly_mode(tmp_path):
+    """只读模式（explore 子 agent）：read_yaml 可用，update_yaml 不注册。"""
+    fake_llm = MagicMock()
+    tools = build_tools(str(tmp_path), fake_llm, readonly=True)
+    assert "read_yaml" in tools
+    assert "update_yaml" not in tools
+
+
+def test_read_yaml_returns_pending(tmp_path):
+    fake_llm = MagicMock()
+    tools = build_tools(str(tmp_path), fake_llm)
+    result = tools["read_yaml"].invoke({"path": "Params_labels.yaml", "key": "setting"})
+    data = json.loads(result)
+    assert data["_pending_tool"] == "read_yaml"
+    assert data["args"] == {"path": "Params_labels.yaml", "key": "setting"}
+
+
+def test_update_yaml_returns_pending(tmp_path):
+    fake_llm = MagicMock()
+    tools = build_tools(str(tmp_path), fake_llm)
+    result = tools["update_yaml"].invoke(
+        {"path": "Params_labels.yaml", "updates": {"setting.binWidth": 10}})
+    data = json.loads(result)
+    assert data["_pending_tool"] == "update_yaml"
+    assert data["args"]["updates"] == {"setting.binWidth": 10}
