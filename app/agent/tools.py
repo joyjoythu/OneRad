@@ -69,8 +69,13 @@ def build_tools(
         return json.dumps({"_pending_tool": "discover_radiomics_pairs", **result})
 
     @tool
-    def extract_radiomics_features(pairs: List[Dict[str, str]], yaml_path: str = "") -> str:
-        """根据 image/mask 配对批量提取影像组学特征。执行前需要用户确认。"""
+    def extract_radiomics_features(pairs: List[Dict[str, str]], yaml_path: str = "",
+                                   force_rerun: bool = False) -> str:
+        """根据 image/mask 配对批量提取影像组学特征。执行前需要用户确认。
+
+        默认断点续提：已有 h5 缓存且提取设置未变的病例直接读取缓存，不再
+        重复提取；force_rerun=True 时忽略缓存，全部病例重新提取。
+        """
         if not pairs:
             return json.dumps({"success": False, "error": "pairs must be a non-empty list"})
         if not yaml_path:
@@ -106,6 +111,7 @@ def build_tools(
                 "n_cases": len(pairs),
                 "yaml_path": yaml_path,
                 "output_dir": output_dir,
+                "force_rerun": force_rerun,
                 "expected_outputs": ["radiomics_features.csv", "failed_cases.csv", "h5/*.h5"],
             },
         })

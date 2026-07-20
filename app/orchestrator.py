@@ -370,6 +370,7 @@ def register_default_handlers(orch: Orchestrator) -> None:
         state["qc"]["passed_pairs"],
         state["config"]["yaml_path"],
         resampled_pixel_spacing=state["config"].get("resampled_pixel_spacing"),
+        resume=state["config"].get("resume", True),
     ))
 
     orch.register_handler(PipelineStage.MERGE, merge_data)

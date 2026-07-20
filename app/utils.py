@@ -1,9 +1,14 @@
 from typing import Any, Dict, List, Optional, Tuple
 
+import logging
 import os
 import re
 
+import h5py
+import numpy as np
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 
 def parse_covariates(covs: str) -> List[str]:
@@ -46,11 +51,80 @@ def parse_float_tuple(value: str, expected_length: int = 3) -> Optional[Tuple[fl
     return tuple(float(p) for p in parts)
 
 
+def _h5_scalar_str(value) -> str:
+    """Decode an h5 scalar string dataset value (bytes or str) to ``str``."""
+    if isinstance(value, bytes):
+        return value.decode("utf-8")
+    if isinstance(value, np.ndarray):
+        return _h5_scalar_str(value[()])
+    return str(value)
+
+
+def rebuild_features_csv_from_h5(h5_dir: str, csv_path: str) -> Optional[str]:
+    """Rebuild a feature CSV from per-case h5 cache files.
+
+    Each usable h5 provides one row (``patient_id``, ``sequence`` and the
+    feature values). h5 files written by older versions (no ``patient_id``
+    dataset) are skipped. Feature columns containing NaN after merging —
+    feature sets can differ across batches — are dropped.
+
+    Returns ``csv_path`` on success, ``None`` when nothing usable was found.
+    """
+    if not os.path.isdir(h5_dir):
+        return None
+    rows = []
+    skipped = []
+    for name in sorted(os.listdir(h5_dir)):
+        if not name.endswith(".h5"):
+            continue
+        path = os.path.join(h5_dir, name)
+        try:
+            with h5py.File(path, "r") as hf:
+                if "patient_id" not in hf:
+                    skipped.append(name)
+                    continue
+                pid = _h5_scalar_str(hf["patient_id"][()])
+                seq = _h5_scalar_str(hf["sequence"][()]) if "sequence" in hf else ""
+                names = [
+                    n.decode("utf-8") if isinstance(n, bytes) else str(n)
+                    for n in hf["feature_names"][()]
+                ]
+                values = np.asarray(hf["f_values"][()], dtype=float).reshape(-1)
+        except Exception:
+            logger.warning("读取 h5 缓存失败，已跳过: %s", path, exc_info=True)
+            continue
+        row = {"patient_id": pid, "sequence": seq}
+        row.update({n: float(v) for n, v in zip(names, values)})
+        rows.append(row)
+    if not rows:
+        return None
+    if skipped:
+        logger.info("以下 h5 缺少 patient_id（旧版缓存），重建时已跳过: %s", skipped)
+
+    df = pd.DataFrame(rows)
+    meta_cols = ["patient_id", "sequence"]
+    feature_cols = [c for c in df.columns if c not in meta_cols]
+    if feature_cols:
+        df[feature_cols] = df[feature_cols].apply(pd.to_numeric, errors="coerce")
+        bad = [c for c in feature_cols if df[c].isna().any()]
+        if bad:
+            df = df.drop(columns=bad)
+            logger.info("重建特征矩阵时剔除含缺失值的特征列: %s", bad)
+
+    os.makedirs(os.path.dirname(csv_path) or ".", exist_ok=True)
+    df.to_csv(csv_path, index=False)
+    logger.info("已从 h5 缓存重建特征矩阵: %s（%d 例）", csv_path, len(df))
+    return csv_path
+
+
 def _load_feature_csv(path: str) -> pd.DataFrame:
     """Load a pre-extracted radiomic feature CSV.
 
     Supports either a ``patient_id`` column or a ``patient_id`` index. The
     returned DataFrame always has a regular ``patient_id`` column.
+
+    When the CSV does not exist but per-case h5 caches are present in the
+    sibling ``h5/`` directory, the CSV is rebuilt from them first.
 
     Args:
         path: Path to the CSV file.
@@ -63,7 +137,10 @@ def _load_feature_csv(path: str) -> pd.DataFrame:
         ValueError: If no patient identifier can be found.
     """
     if not os.path.exists(path):
-        raise FileNotFoundError(f"特征文件不存在: {path}")
+        rebuilt = rebuild_features_csv_from_h5(
+            os.path.join(os.path.dirname(path), "h5"), path)
+        if rebuilt is None:
+            raise FileNotFoundError(f"特征文件不存在: {path}")
 
     df = pd.read_csv(path)
 

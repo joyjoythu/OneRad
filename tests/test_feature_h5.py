@@ -40,6 +40,8 @@ def test_feature_agent_outputs_h5(mock_extractor, tmp_path, yaml_path):
         assert f["f_values"].shape == (1, 2)
         assert "feature_names" in f
         assert list(f["feature_names"].asstr()[:]) == ["feature_a", "feature_b"]
+        assert f["patient_id"].asstr()[()] == "case_001"
+        assert f["sequence"].asstr()[()] == ""
 
 
 @patch("app.feature.cir_get_features")

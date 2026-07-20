@@ -1105,6 +1105,7 @@ def _run_radiomics_execution(
             yaml_path=yaml_path,
             progress_callback=progress_callback,
             cancel_event=cancel_event,
+            resume=not pending.get("force_rerun", False),
         )
         return _json_safe_radiomics_result(result)
     except PathEscapeError:
@@ -1126,6 +1127,8 @@ _RADIOMICS_SUMMARY_KEYS = (
     "n_samples",
     "n_success",
     "n_failed",
+    "resumed",
+    "n_skipped",
     "failed_ids",
     "failed_examples",
     "zero_variance_features",

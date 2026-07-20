@@ -1,7 +1,10 @@
 import os
+import h5py
+import numpy as np
 import pytest
 from unittest.mock import patch
 from app.feature import FeatureAgent
+from app.utils import _load_feature_csv, rebuild_features_csv_from_h5
 
 
 def _make_pair(tmp_path, patient_id, image_name="img.nii", mask_name="mask.nii"):
@@ -267,3 +270,160 @@ def test_feature_agent_cancel_before_start_returns_no_results(tmp_path):
     assert result["success"] is False
     assert result["cancelled"] is True
     assert "已取消" in result["message"]
+
+
+def _counting_extractor(calls, base=_mock_extractor):
+    def extractor(image_path, mask_path, yaml_path):
+        calls.append(image_path)
+        return base(image_path, mask_path, yaml_path)
+    return extractor
+
+
+def test_resume_skips_cached_cases(tmp_path):
+    """第二次运行时，已有 h5 缓存的病例不再提取，只提新病例。"""
+    yaml_path = tmp_path / "params.yaml"
+    yaml_path.write_text("")
+    pairs = [_make_pair(tmp_path, "p1"), _make_pair(tmp_path, "p2")]
+    out_dir = str(tmp_path / "features")
+
+    first = FeatureAgent(extractor=_mock_extractor).run(
+        pairs, yaml_path=str(yaml_path), n_jobs=1, output_dir=out_dir)
+    assert first["success"] is True
+
+    calls = []
+    pairs2 = pairs + [_make_pair(tmp_path, "p4")]
+    second = FeatureAgent(extractor=_counting_extractor(calls)).run(
+        pairs2, yaml_path=str(yaml_path), n_jobs=1, output_dir=out_dir)
+
+    assert second["success"] is True
+    assert len(calls) == 1  # 只有 p4 被真正提取
+    assert "p4" in calls[0]
+    assert second["resumed"] is True
+    assert second["n_skipped"] == 2
+    assert second["feature_df"].shape[0] == 3
+    assert set(second["feature_df"]["patient_id"]) == {"p1", "p2", "p4"}
+    assert "缓存 2 例" in second["message"]
+    # 缓存行的特征值来自第一次运行
+    row_p1 = second["feature_df"].set_index("patient_id").loc["p1"]
+    assert row_p1["f1"] == 1.0 and row_p1["f2"] == 2.0
+
+
+def test_resume_rebuilds_csv_from_h5(tmp_path):
+    """CSV 被删除/覆盖后，可从 h5 缓存完整重建，零提取调用。"""
+    yaml_path = tmp_path / "params.yaml"
+    yaml_path.write_text("")
+    pairs = [_make_pair(tmp_path, "p1"), _make_pair(tmp_path, "p2")]
+    out_dir = str(tmp_path / "features")
+
+    FeatureAgent(extractor=_mock_extractor).run(
+        pairs, yaml_path=str(yaml_path), n_jobs=1, output_dir=out_dir)
+    os.remove(os.path.join(out_dir, "radiomics_features.csv"))
+
+    calls = []
+    result = FeatureAgent(extractor=_counting_extractor(calls)).run(
+        pairs, yaml_path=str(yaml_path), n_jobs=1, output_dir=out_dir)
+
+    assert result["success"] is True
+    assert calls == []
+    assert result["n_skipped"] == 2
+    assert os.path.exists(result["feature_path"])
+    assert result["feature_df"].shape == (2, 4)
+
+
+def test_settings_change_triggers_full_rerun(tmp_path):
+    """YAML 内容变化后，忽略 h5 缓存全量重提。"""
+    yaml_path = tmp_path / "params.yaml"
+    yaml_path.write_text("")
+    pairs = [_make_pair(tmp_path, "p1"), _make_pair(tmp_path, "p2")]
+    out_dir = str(tmp_path / "features")
+
+    FeatureAgent(extractor=_mock_extractor).run(
+        pairs, yaml_path=str(yaml_path), n_jobs=1, output_dir=out_dir)
+
+    yaml_path.write_text("setting:\n  binWidth: 10\n")  # 修改设置
+
+    calls = []
+    result = FeatureAgent(extractor=_counting_extractor(calls)).run(
+        pairs, yaml_path=str(yaml_path), n_jobs=1, output_dir=out_dir)
+
+    assert result["success"] is True
+    assert len(calls) == 2
+    assert result["n_skipped"] == 0
+
+
+def test_force_rerun_ignores_cache(tmp_path):
+    """resume=False 时即使有缓存也全部重新提取。"""
+    yaml_path = tmp_path / "params.yaml"
+    yaml_path.write_text("")
+    pairs = [_make_pair(tmp_path, "p1"), _make_pair(tmp_path, "p2")]
+    out_dir = str(tmp_path / "features")
+
+    FeatureAgent(extractor=_mock_extractor).run(
+        pairs, yaml_path=str(yaml_path), n_jobs=1, output_dir=out_dir)
+
+    calls = []
+    result = FeatureAgent(extractor=_counting_extractor(calls)).run(
+        pairs, yaml_path=str(yaml_path), n_jobs=1, output_dir=out_dir,
+        resume=False)
+
+    assert result["success"] is True
+    assert len(calls) == 2
+    assert result["n_skipped"] == 0
+
+
+def test_failed_case_retried_on_resume(tmp_path):
+    """上次失败的病例没有 h5 缓存，续提时会自动重试。"""
+    yaml_path = tmp_path / "params.yaml"
+    yaml_path.write_text("")
+    pairs = [_make_pair(tmp_path, "p1"), _make_pair(tmp_path, "p2"),
+             _make_pair(tmp_path, "p3")]  # p3 在 _mock_extractor 中会失败
+    out_dir = str(tmp_path / "features")
+
+    first = FeatureAgent(extractor=_mock_extractor).run(
+        pairs, yaml_path=str(yaml_path), n_jobs=1, output_dir=out_dir)
+    assert first["failed_ids"] == ["p3"]
+
+    calls = []
+    second = FeatureAgent(extractor=_counting_extractor(calls)).run(
+        pairs, yaml_path=str(yaml_path), n_jobs=1, output_dir=out_dir)
+
+    assert len(calls) == 1
+    assert "p3" in calls[0]
+    assert second["failed_ids"] == ["p3"]
+    assert second["n_success"] == 2
+
+
+def test_load_feature_csv_rebuilds_from_h5(tmp_path):
+    """CSV 删除后，_load_feature_csv 自动从 h5 缓存重建（含 patient_id）。"""
+    yaml_path = tmp_path / "params.yaml"
+    yaml_path.write_text("")
+    pairs = [_make_pair(tmp_path, "p1"), _make_pair(tmp_path, "p2")]
+    out_dir = str(tmp_path / "features")
+
+    FeatureAgent(extractor=_mock_extractor).run(
+        pairs, yaml_path=str(yaml_path), n_jobs=1, output_dir=out_dir)
+    csv_path = os.path.join(out_dir, "radiomics_features.csv")
+    os.remove(csv_path)
+
+    df = _load_feature_csv(csv_path)
+    assert os.path.exists(csv_path)  # 重建后落盘
+    assert set(df["patient_id"]) == {"p1", "p2"}
+    assert {"f1", "f2"} <= set(df.columns)
+    row_p1 = df.set_index("patient_id").loc["p1"]
+    assert row_p1["f1"] == 1.0 and row_p1["f2"] == 2.0
+
+
+def test_rebuild_skips_legacy_h5_without_patient_id(tmp_path):
+    """旧版 h5（无 patient_id）无法重建，_load_feature_csv 仍报文件不存在。"""
+    h5_dir = tmp_path / "features" / "h5"
+    h5_dir.mkdir(parents=True)
+    with h5py.File(h5_dir / "legacy.h5", "w") as hf:
+        hf.create_dataset("f_values", data=np.array([[1.0, 2.0]]))
+        hf.create_dataset(
+            "feature_names",
+            data=np.array(["f1", "f2"], dtype=h5py.string_dtype("utf-8")))
+
+    csv_path = str(tmp_path / "features" / "radiomics_features.csv")
+    assert rebuild_features_csv_from_h5(str(h5_dir), csv_path) is None
+    with pytest.raises(FileNotFoundError, match="特征文件不存在"):
+        _load_feature_csv(csv_path)

@@ -59,7 +59,8 @@ def test_smoke_pipeline(tmp_path, deterministic_rng, monkeypatch):
             "n_samples": len(clinical_df),
         }
 
-    def mock_feature_run(self, pairs, yaml_path, n_jobs=-1, resampled_pixel_spacing=None):
+    def mock_feature_run(self, pairs, yaml_path, n_jobs=-1, resampled_pixel_spacing=None,
+                         **kwargs):
         rows = []
         for p in pairs:
             pid = p["patient_id"]
