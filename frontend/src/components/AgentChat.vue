@@ -219,6 +219,13 @@
           <span>{{ statusText }}</span>
         </template>
       </div>
+      <div class="chat-progress">
+        <el-progress
+          v-if="extractionPercent !== null"
+          :percentage="extractionPercent"
+          :stroke-width="6"
+        />
+      </div>
 
       <div class="input-container">
         <el-mention
@@ -638,6 +645,18 @@ const statusText = computed(() => {
   }
   if (agentStore.interrupt) return '等待确认操作…'
   return ''
+})
+
+// 特征提取进度条百分比；无提取进行中时为 null（不渲染进度条）。
+const extractionPercent = computed(() => {
+  if (!agentStore.busy) return null
+  const progress = agentStore.radiomicsProgress
+  if (!progress || !progress.total) return null
+  if (progress.stage === 'finalizing') return 100
+  if (progress.stage === 'extracting') {
+    return Math.min(100, Math.round((progress.current / progress.total) * 100))
+  }
+  return 0
 })
 
 /** 格式化 token 数：>=1000 用 k，>=1M 用 M。 */
@@ -1214,6 +1233,17 @@ defineExpose({ clearInput })
   color: var(--app-text-secondary);
   font-size: 0.875rem;
   line-height: 1.5;
+}
+
+.chat-progress {
+  /* 与状态栏同理：固定占位高度，进度条出现/消失不改变布局 */
+  height: calc(6px + 0.5rem);
+  padding: 0.25rem 0.5rem;
+  box-sizing: border-box;
+}
+
+.chat-progress .el-progress {
+  width: 100%;
 }
 
 .chat-status--idle {

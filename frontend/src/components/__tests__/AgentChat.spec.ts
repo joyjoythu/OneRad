@@ -434,6 +434,62 @@ describe('AgentChat', () => {
     expect(wrapper.text()).toContain('正在思考')
   })
 
+  it('shows a progress bar with percentage while extracting features', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.threadId = 'thread-1'
+    agentStore.messages = [{ role: 'user', content: 'hi' }]
+    agentStore.busy = true
+    agentStore.radiomicsProgress = {
+      stage: 'extracting', current: 2, total: 5, patient_id: 'case_002',
+    }
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    // 比例数字保留在状态文本中
+    expect(wrapper.text()).toContain('(2/5)')
+    expect(wrapper.text()).toContain('case_002')
+    expect(wrapper.find('.el-progress').exists()).toBe(true)
+    expect(wrapper.find('.el-progress__text').text()).toContain('40%')
+  })
+
+  it('shows a full progress bar while finalizing extraction', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.threadId = 'thread-1'
+    agentStore.messages = [{ role: 'user', content: 'hi' }]
+    agentStore.busy = true
+    agentStore.radiomicsProgress = { stage: 'finalizing', current: 5, total: 5 }
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('正在保存特征结果')
+    expect(wrapper.find('.el-progress__text').text()).toContain('100%')
+  })
+
+  it('keeps the progress strip mounted but empty when not extracting', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.threadId = 'thread-1'
+    agentStore.messages = [{ role: 'user', content: 'hi' }]
+    agentStore.busy = true
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    // 进度条容器常驻占位（避免布局抖动），但无提取进度时不渲染进度条
+    expect(wrapper.find('.chat-progress').exists()).toBe(true)
+    expect(wrapper.find('.el-progress').exists()).toBe(false)
+  })
+
   it('shows the tool name while the agent is calling a tool', async () => {
     const projectStore = useProjectStore()
     projectStore.currentProject = mockProject()
