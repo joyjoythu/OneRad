@@ -791,6 +791,15 @@ async def stop_stream(
             status_code=status.HTTP_404_NOT_FOUND, detail="thread not found"
         )
 
+    # 先通知耗时任务（如特征提取的工作线程）在下一个检查点退出，
+    # 再取消 asyncio 流式任务——线程无法被强杀，必须协作式取消。
+    # 注意：cancel_event 的置位必须优先于任何可能失败的检查，
+    # 否则 409 响应会让前端解除 busy 状态，但工作线程永远收不到取消信号。
+    cancelled = agent_runtime.request_cancel(thread_id)
+    logger.info(
+        "收到 /stop 请求 thread_id=%s cancel_ack=%s", thread_id, cancelled
+    )
+
     task = request.app.state.agent_stream_tasks.get(thread_id)
     if thread_id not in request.app.state.active_agent_streams or task is None:
         raise HTTPException(
@@ -798,9 +807,6 @@ async def stop_stream(
             detail="当前没有正在运行的任务",
         )
 
-    # 先通知耗时任务（如特征提取的工作线程）在下一个检查点退出，
-    # 再取消 asyncio 流式任务——线程无法被强杀，必须协作式取消。
-    agent_runtime.request_cancel(thread_id)
     task.cancel()
     # 等待任务收尾（finally 清理集合与映射）。任务若已因其他异常结束，
     # 错误已由 _stream_agent 发布，这里不重复抛出。
@@ -808,6 +814,36 @@ async def stop_stream(
         await task
 
     snapshot = await graph.aget_state(config)
+    # 取消 asyncio 流式任务后，执行中节点（如 execute_confirmed 在
+    # 线程池里跑 FeatureAgent）的返回值会因 async generator 已销毁而丢失，
+    # checkpoint 里仍保留着旧的 interrupt_type 与 pending 字段。
+    # 前端收到 running=false 时若 interrupt_type 仍非空会重新弹出审批面板，
+    # 因此必须在 checkpoint 中显式清除中断状态。
+    current_interrupt = snapshot.values.get("interrupt_type") if snapshot.values else None
+    if current_interrupt:
+        logger.info(
+            "/stop: 清除残留 interrupt_type=%s thread_id=%s",
+            current_interrupt, thread_id,
+        )
+        await graph.aupdate_state(
+            config,
+            {
+                "interrupt_type": None,
+                "pending_plan": None,
+                "pending_command": None,
+                "pending_script": None,
+                "pending_radiomics_plan": None,
+                "pending_radiomics_execution": None,
+                "pending_radiomics_analysis": None,
+                "pending_subagent": None,
+                "script_risk_level": None,
+                "confirmed": None,
+                "other_instruction": None,
+                "operation_log": ["用户停止了当前任务"],
+            },
+        )
+        snapshot = await graph.aget_state(config)
+
     missing_ids = _unanswered_tool_call_ids(snapshot.values.get("messages", []))
     if missing_ids:
         await graph.aupdate_state(

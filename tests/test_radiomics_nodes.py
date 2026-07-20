@@ -1,7 +1,7 @@
 import json
 import pytest
 from unittest.mock import MagicMock, patch
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from app.agent.nodes import process_tool_calls, execute_confirmed
 from app.agent.state import AgentState
 
@@ -201,10 +201,12 @@ def test_execute_confirmed_radiomics_execution_cancelled(tmp_path):
     )
 
     result = execute_confirmed(state)
-    assert len(result["messages"]) == 1
+    # 取消时返回 ToolMessage + HumanMessage（告知 LLM 不要重试）
+    assert len(result["messages"]) == 2
     assert isinstance(result["messages"][0], ToolMessage)
     content = json.loads(result["messages"][0].content)
     assert content.get("cancelled") is True
+    assert isinstance(result["messages"][1], HumanMessage)
 
 
 def test_execute_confirmed_radiomics_execution(tmp_path):
@@ -344,6 +346,58 @@ def test_execute_confirmed_radiomics_execution_uses_runtime_context(tmp_path):
         assert callable(kwargs["progress_callback"])
     finally:
         runtime.unregister("thread-rt")
+
+
+def test_execute_confirmed_radiomics_fallback_when_context_missing(tmp_path):
+    """上下文缺失时节点应注册临时兜底，保证 cancel_event 不为 None。"""
+    from app.agent import runtime
+
+    yaml_path = tmp_path / "Params_labels.yaml"
+    yaml_path.write_text("setting:\n  label: 1\n")
+
+    img = tmp_path / "images" / "case_001_T1.nii.gz"
+    mask = tmp_path / "masks" / "case_001_T1.nii.gz"
+    img.parent.mkdir(parents=True)
+    mask.parent.mkdir(parents=True)
+    img.write_text("img")
+    mask.write_text("mask")
+
+    state = AgentState(
+        messages=[],
+        project_path=str(tmp_path),
+        base_url="https://api.deepseek.com/v1",
+        model="deepseek-v4-pro",
+        api_key="",
+        interrupt_type="radiomics_execution",
+        confirmed=True,
+        pending_radiomics_execution={
+            "tool_call_id": "tc2",
+            "pairs": [{"patient_id": "case_001", "image_path": str(img), "mask_path": str(mask)}],
+            "yaml_path": str(yaml_path),
+            "output_dir": str(tmp_path / "radiomics_features"),
+        },
+    )
+
+    # 确保此前未注册该 thread_id
+    runtime.unregister("fallback-rt")
+    assert runtime.get("fallback-rt") is None
+
+    try:
+        with patch("app.agent.nodes.FeatureAgent") as mock_agent_cls:
+            mock_agent = MagicMock()
+            mock_agent.run.return_value = {"success": True, "feature_path": "..."}
+            mock_agent_cls.return_value = mock_agent
+            execute_confirmed(state, {"configurable": {"thread_id": "fallback-rt"}})
+
+        # 节点应自动注册兜底上下文
+        ctx = runtime.get("fallback-rt")
+        assert ctx is not None
+        _, kwargs = mock_agent.run.call_args
+        # cancel_event 不为 None（即使 /stop 未调用，也有可用的 Event 对象）
+        assert kwargs["cancel_event"] is not None
+        assert kwargs["cancel_event"] is ctx.cancel_event
+    finally:
+        runtime.unregister("fallback-rt")
 
 
 def test_process_discover_radiomics_pairs_returns_error_when_images_missing(tmp_path):

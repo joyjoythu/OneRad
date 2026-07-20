@@ -159,12 +159,21 @@ class FeatureAgent:
         except ValueError:
             common_parent = ""
 
+        if cancel_event is None:
+            logger.warning(
+                "FeatureAgent.run: cancel_event 为 None，将无法响应 /stop 取消请求"
+            )
+
         total = len(pairs)
         report({"stage": "start", "current": 0, "total": total})
         results = []
         cancelled = False
         for idx, p in enumerate(pairs):
             if cancel_event is not None and cancel_event.is_set():
+                logger.info(
+                    "FeatureAgent.run: 检测到取消信号，在 %d/%d 处停止提取",
+                    idx + 1, total,
+                )
                 cancelled = True
                 break
             report({

@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pandas as pd
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from app.agent.nodes import process_tool_calls, execute_confirmed
 from app.agent.state import AgentState
@@ -180,7 +180,10 @@ def test_execute_confirmed_radiomics_analysis_cancelled(tmp_path):
         },
     )
     result = execute_confirmed(state)
+    # 取消时返回 ToolMessage + HumanMessage（告知 LLM 不要重试）
+    assert len(result["messages"]) == 2
     content = json.loads(result["messages"][0].content)
     assert content["cancelled"] is True
+    assert isinstance(result["messages"][1], HumanMessage)
     assert result["interrupt_type"] is None
     assert result["pending_radiomics_analysis"] is None

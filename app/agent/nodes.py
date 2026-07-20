@@ -645,6 +645,22 @@ def execute_confirmed(state: AgentState, config: Optional[RunnableConfig] = None
         messages: list = [ToolMessage(content=content, tool_call_id=tool_call_id)]
         if instruction:
             messages.append(HumanMessage(content=instruction))
+        else:
+            # 用户直接取消（未提供替代指令）时，追加一条 HumanMessage
+            # 明确告知 LLM 用户希望停止当前操作。
+            # 仅对耗时/多阶段操作（影像组学提取、分析、文件计划）追加，
+            # 避免对简单查询（list_directory 等）产生多余对话轮次。
+            if itype in (
+                "radiomics_plan",
+                "radiomics_execution",
+                "radiomics_analysis",
+                "file_plan",
+                "python_script",
+                "subagent_dispatch",
+            ):
+                messages.append(HumanMessage(
+                    content="我取消了刚才的操作，请不要重试。请询问我现在想做什么。"
+                ))
         return _clear_interrupt({"messages": messages})
 
     if itype == "file_plan":
@@ -658,7 +674,15 @@ def execute_confirmed(state: AgentState, config: Optional[RunnableConfig] = None
         results = {k: v for k, v in plan.items() if k != "tool_call_id"}
     elif itype == "radiomics_execution":
         ctx = agent_runtime.get(thread_id)
-        cancel_event = ctx.cancel_event if ctx is not None else None
+        if ctx is None:
+            # 运行时上下文缺失时的兜底：注册一个临时上下文，保证
+            # cancel_event 不为 None，/stop 也能找到并置位。
+            logger.warning(
+                "execute_confirmed: thread_id=%s 缺少运行时上下文，注册临时兜底",
+                thread_id,
+            )
+            ctx = agent_runtime.register(thread_id)
+        cancel_event = ctx.cancel_event
 
         def progress_callback(payload: dict) -> None:
             _publish_agent_progress(thread_id, payload)
@@ -675,7 +699,13 @@ def execute_confirmed(state: AgentState, config: Optional[RunnableConfig] = None
             _publish_agent_progress(thread_id, None)
     elif itype == "radiomics_analysis":
         ctx = agent_runtime.get(thread_id)
-        cancel_event = ctx.cancel_event if ctx is not None else None
+        if ctx is None:
+            logger.warning(
+                "execute_confirmed: thread_id=%s 缺少运行时上下文，注册临时兜底",
+                thread_id,
+            )
+            ctx = agent_runtime.register(thread_id)
+        cancel_event = ctx.cancel_event
         results = _run_radiomics_analysis(
             state["pending_radiomics_analysis"],
             state["project_path"],
