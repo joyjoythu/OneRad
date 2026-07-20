@@ -14,7 +14,12 @@ from app.radiomics_discovery import discover_pairs
 from app.skills import load_skill
 
 
-def build_tools(project_path: str, llm, allow_subagent: bool = False):
+def build_tools(
+    project_path: str,
+    llm,
+    allow_subagent: bool = False,
+    readonly: bool = False,
+):
     sandbox = Sandbox(project_path)
     tools: Dict[str, Any] = {}
 
@@ -147,21 +152,28 @@ def build_tools(project_path: str, llm, allow_subagent: bool = False):
     tools["list_directory"] = list_directory
     tools["find_files"] = find_files
     tools["get_file_info"] = get_file_info
-    tools["plan_file_operations"] = plan_file_operations
-    tools["execute_python_script"] = execute_python_script
     tools["discover_radiomics_pairs"] = discover_radiomics_pairs
-    tools["extract_radiomics_features"] = extract_radiomics_features
-    tools["run_radiomics_analysis"] = run_radiomics_analysis
+    if not readonly:
+        # 只读模式（explore 子 agent）不注册写/重操作工具。
+        tools["plan_file_operations"] = plan_file_operations
+        tools["execute_python_script"] = execute_python_script
+        tools["extract_radiomics_features"] = extract_radiomics_features
+        tools["run_radiomics_analysis"] = run_radiomics_analysis
 
-    if allow_subagent:
+    if allow_subagent and not readonly:
         @tool
-        def dispatch_subagent(tasks: List[Any]) -> str:
+        def dispatch_subagent(tasks: List[Any], mode: str = "general") -> str:
             """把一个或多个独立任务分派给子 agent 执行。每个子任务在与本对话隔离的
-            上下文中自主运行（可使用文件探查、Python 脚本、影像组学等全部工具，
-            无需逐步确认），多个任务会并行执行，结束后只把各任务的最终结论带回来。
+            上下文中自主运行，多个任务会并行执行，结束后只把各任务的最终结论带回来。
             适合耗时的探查/分析任务：中间过程不占用本对话上下文。
             tasks 是任务描述字符串数组，每项应是完整的任务描述（包含路径、目标、
-            期望输出），执行前需要用户确认。"""
+            期望输出）。
+            mode 控制子 agent 的能力与确认方式：
+            - "explore"：只读探索模式。子 agent 只能使用目录/文件探查与配对扫描等
+              只读工具，免确认立即并行执行。收到"开始分析"类请求后，应优先用该模式
+              把项目探索拆成 2-4 个互相独立的只读子任务一次派发。
+            - "general"（默认）：全功能模式。子 agent 可使用全部工具
+              （含 Python 脚本、影像组学提取等），执行前需要用户确认。"""
             # 模型常把每项写成 {"task": ..., "task_id": ...} 对象：归一化为字符串，
             # 避免 schema 校验直接拒绝（校验异常会把图弄崩，见 process_tool_calls）。
             normalized = []
@@ -175,8 +187,14 @@ def build_tools(project_path: str, llm, allow_subagent: bool = False):
                     {"error": "tasks 不能为空，应为任务描述字符串数组"},
                     ensure_ascii=False,
                 )
+            # 未知 mode 一律回落为 general（全工具 + 需确认），保证安全边界。
+            normalized_mode = "explore" if mode == "explore" else "general"
             return json.dumps(
-                {"_pending_tool": "dispatch_subagent", "tasks": normalized},
+                {
+                    "_pending_tool": "dispatch_subagent",
+                    "tasks": normalized,
+                    "mode": normalized_mode,
+                },
                 ensure_ascii=False,
             )
 

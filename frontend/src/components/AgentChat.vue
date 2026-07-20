@@ -342,7 +342,6 @@ import {
   CircleClose,
   DataAnalysis,
   Delete,
-  Document,
   Download,
   List,
   Loading,
@@ -350,7 +349,6 @@ import {
   Operation,
   Promotion,
   Refresh,
-  UploadFilled,
 } from '@element-plus/icons-vue'
 import { ElMessageBox } from 'element-plus'
 import { useAgentStore, AVAILABLE_MODELS } from '@/stores/agent'
@@ -423,27 +421,11 @@ function toolMessageDisplay(index: number): ToolMessageDisplay {
 
 const QUICK_ACTIONS = [
   {
-    command: 'diagnostic-report',
-    label: '输出诊断报告',
-    icon: Document,
-    divided: false,
-    prompt:
-      '请基于当前项目的影像组学分析结果输出诊断报告草稿，明确关键发现、证据与局限，并注明仅供科研参考。',
-  },
-  {
     command: 'start-analysis',
     label: '开始分析',
     icon: DataAnalysis,
     divided: false,
     prompt: '请检查当前项目配置与数据完整性，并开始执行完整的影像组学分析流程。',
-  },
-  {
-    command: 'import-data',
-    label: '导入数据／影像',
-    icon: UploadFilled,
-    divided: false,
-    prompt:
-      '请检查当前项目配置的影像目录和临床数据文件，导入数据并验证可用性；如果路径尚未配置，请明确告诉我需要补充哪些配置。',
   },
   {
     command: 'structured-conclusion',

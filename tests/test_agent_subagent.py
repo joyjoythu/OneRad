@@ -5,7 +5,11 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 from langgraph.types import Command
 
 from app.agent import build_initial_state, create_agent_graph
-from app.agent.nodes import SUBAGENT_SYSTEM_PROMPT, _summarize_subagent_entries
+from app.agent.nodes import (
+    EXPLORE_SUBAGENT_SYSTEM_PROMPT,
+    SUBAGENT_SYSTEM_PROMPT,
+    _summarize_subagent_entries,
+)
 from app.agent.tools import build_tools
 from app.api.agent import _sync_payload
 
@@ -26,6 +30,19 @@ def _dispatch_call(tasks=None):
             "name": "dispatch_subagent",
             "args": {"tasks": tasks},
             "id": "call_sub",
+        }],
+    )
+
+
+def _explore_dispatch_call(tasks=None):
+    if tasks is None:
+        tasks = ["统计项目根目录下的文件数量"]
+    return AIMessage(
+        content="",
+        tool_calls=[{
+            "name": "dispatch_subagent",
+            "args": {"tasks": tasks, "mode": "explore"},
+            "id": "call_explore",
         }],
     )
 
@@ -428,3 +445,137 @@ def test_dispatch_subagent_recursion_limit_returns_partial(tmp_path, monkeypatch
     assert "探索进展" in result["result"]
     assert "步数上限" in result["note"]
     assert final["messages"][-1].content == "主 agent 总结"
+
+
+def test_build_tools_readonly_flag_limits_toolset(tmp_path):
+    """readonly=True 时只注册只读探索工具：目录/文件探查 + 配对扫描，
+    不含脚本执行、文件操作计划、特征提取、分析等写/重操作。"""
+    llm = MagicMock()
+    tools = build_tools(str(tmp_path), llm, readonly=True)
+    assert set(tools) == {
+        "list_directory",
+        "find_files",
+        "get_file_info",
+        "discover_radiomics_pairs",
+    }
+
+
+def test_dispatch_explore_mode_skips_confirmation(tmp_path):
+    """mode="explore" 的派发免确认：不产生 interrupt，子 agent 立即执行，
+    结果作为 ToolMessage 回到主对话，主 agent 继续收尾。"""
+    state = _make_state(tmp_path)
+    graph = create_agent_graph()
+    config = {"configurable": {"thread_id": "test-explore-skip", "api_key": "fake"}}
+
+    with patch("app.agent.nodes._stream_chat_completion") as mock_stream:
+        mock_stream.side_effect = [
+            _explore_dispatch_call(),
+            AIMessage(content="探索结论：项目里共有 3 个文件"),
+            AIMessage(content="主 agent 总结"),
+        ]
+        final = graph.invoke(state, config)
+
+    # 主 agent 分派 → 子 agent 一次调用 → 主 agent 收尾，全程无确认中断
+    assert mock_stream.call_count == 3
+    assert final["interrupt_type"] is None
+    assert final.get("pending_subagent") is None
+    tool_msg = _find_tool_message(final["messages"], "call_explore")
+    assert tool_msg is not None
+    parsed = json.loads(tool_msg.content)
+    assert parsed["success"] is True
+    assert "探索结论" in parsed["results"][0]["result"]
+    assert final["messages"][-1].content == "主 agent 总结"
+
+
+def test_explore_subagent_uses_readonly_toolset(tmp_path):
+    """explore 模式的子 agent 使用探索专用 system prompt，且工具集为只读。"""
+    state = _make_state(tmp_path)
+    graph = create_agent_graph()
+    config = {"configurable": {"thread_id": "test-explore-readonly", "api_key": "fake"}}
+
+    with patch("app.agent.nodes._stream_chat_completion") as mock_stream:
+        mock_stream.side_effect = [
+            _explore_dispatch_call(),
+            AIMessage(content="探索结论"),
+            AIMessage(content="主 agent 总结"),
+        ]
+        graph.invoke(state, config)
+
+    sub_call = mock_stream.call_args_list[1]
+    sub_messages = sub_call.kwargs["messages"]
+    assert any(
+        isinstance(message, SystemMessage)
+        and message.content == EXPLORE_SUBAGENT_SYSTEM_PROMPT
+        for message in sub_messages
+    )
+    sub_tool_names = {t.name for t in sub_call.kwargs["tools"]}
+    assert sub_tool_names == {
+        "list_directory",
+        "find_files",
+        "get_file_info",
+        "discover_radiomics_pairs",
+    }
+
+
+def test_dispatch_explore_mode_parallel_tasks(tmp_path):
+    """explore 模式一次派发多个只读子任务：免确认并行执行，结果逐个汇总。"""
+    state = _make_state(tmp_path)
+    graph = create_agent_graph()
+    config = {"configurable": {"thread_id": "test-explore-parallel", "api_key": "fake"}}
+
+    def route_response(*args, **kwargs):
+        messages = kwargs["messages"]
+        for m in messages:
+            if isinstance(m, SystemMessage) and m.content == EXPLORE_SUBAGENT_SYSTEM_PROMPT:
+                task_text = next(
+                    x.content for x in messages if isinstance(x, HumanMessage)
+                )
+                return AIMessage(content=f"结论：{task_text} 已完成")
+        return AIMessage(content="主 agent 总结")
+
+    with patch("app.agent.nodes._stream_chat_completion") as mock_stream:
+        first_call = {"done": False}
+
+        def first_then_route(*args, **kwargs):
+            if not first_call["done"]:
+                first_call["done"] = True
+                return _explore_dispatch_call(tasks=["统计数据文件", "检查掩膜目录"])
+            return route_response(*args, **kwargs)
+
+        mock_stream.side_effect = first_then_route
+        final = graph.invoke(state, config)
+
+    tool_msg = _find_tool_message(final["messages"], "call_explore")
+    parsed = json.loads(tool_msg.content)
+    assert parsed["success"] is True
+    assert len(parsed["results"]) == 2
+    by_task = {r["task"]: r for r in parsed["results"]}
+    assert "统计数据文件 已完成" in by_task["统计数据文件"]["result"]
+    assert "检查掩膜目录 已完成" in by_task["检查掩膜目录"]["result"]
+    assert final["messages"][-1].content == "主 agent 总结"
+    # 主 agent 2 次（分派 + 收尾）+ 每个子任务各 1 次，全程无确认
+    assert mock_stream.call_count == 4
+    assert final["interrupt_type"] is None
+
+
+def test_dispatch_unknown_mode_falls_back_to_general(tmp_path):
+    """未知 mode 一律按 general 处理：仍需用户确认后才执行子 agent。"""
+    state = _make_state(tmp_path)
+    graph = create_agent_graph()
+    config = {"configurable": {"thread_id": "test-explore-fallback", "api_key": "fake"}}
+
+    with patch("app.agent.nodes._stream_chat_completion") as mock_stream:
+        mock_stream.return_value = AIMessage(
+            content="",
+            tool_calls=[{
+                "name": "dispatch_subagent",
+                "args": {"tasks": ["做件事"], "mode": "turbo"},
+                "id": "call_sub",
+            }],
+        )
+        events = list(graph.stream(state, config))
+
+    assert any("__interrupt__" in e for e in events)
+    snapshot = graph.get_state(config)
+    assert snapshot.values["interrupt_type"] == "subagent_dispatch"
+    assert snapshot.values["pending_subagent"]["tasks"] == ["做件事"]

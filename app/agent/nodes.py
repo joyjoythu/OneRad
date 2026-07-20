@@ -89,11 +89,24 @@ def _allow_subagent(config: Optional[RunnableConfig] = None) -> bool:
     return bool(config.get("configurable", {}).get("allow_subagent", True))
 
 
+def _readonly_tools(config: Optional[RunnableConfig] = None) -> bool:
+    """是否只挂载只读探索工具（list/find/info/discover_pairs）。
+    explore 模式的子 agent 置 True，使其免确认也无法写文件或跑脚本。"""
+    if config is None:
+        return False
+    return bool(config.get("configurable", {}).get("readonly_tools", False))
+
+
 def call_llm(state: AgentState, config: Optional[RunnableConfig] = None) -> dict:
     """流式调用 LLM，边收 reasoning_content 边推送 thinking 事件，组装 AIMessage。"""
     api_key = _resolve_api_key(state, config)
     llm = _build_llm(api_key, state, config)
-    tools = build_tools(state["project_path"], llm, allow_subagent=_allow_subagent(config))
+    tools = build_tools(
+        state["project_path"],
+        llm,
+        allow_subagent=_allow_subagent(config),
+        readonly=_readonly_tools(config),
+    )
     thread_id = (config or {}).get("configurable", {}).get("thread_id")
     response = _stream_chat_completion(
         api_key=api_key,
@@ -222,7 +235,12 @@ def process_tool_calls(state: AgentState, config: Optional[RunnableConfig] = Non
 
     api_key = _resolve_api_key(state, config)
     llm = _build_llm(api_key, state, config)
-    tools = build_tools(state["project_path"], llm, allow_subagent=_allow_subagent(config))
+    tools = build_tools(
+        state["project_path"],
+        llm,
+        allow_subagent=_allow_subagent(config),
+        readonly=_readonly_tools(config),
+    )
 
     updates = {"messages": []}
     interrupt_type = None
@@ -262,6 +280,27 @@ def process_tool_calls(state: AgentState, config: Optional[RunnableConfig] = Non
         except json.JSONDecodeError:
             updates["messages"].append(ToolMessage(
                 content=json.dumps({"error": f"Tool {name} returned invalid JSON"}),
+                tool_call_id=tool_call_id,
+            ))
+            continue
+
+        # 只读探索模式的子 agent 派发：免确认，不占 confirmation 名额，
+        # 直接在本节点内并行执行并把汇总结果作为 ToolMessage 返回。
+        if (
+            name == "dispatch_subagent"
+            and isinstance(parsed, dict)
+            and parsed.get("mode") == "explore"
+            and parsed.get("tasks")
+        ):
+            thread_id = (config or {}).get("configurable", {}).get("thread_id")
+            results = _run_subagents(
+                {"tasks": parsed["tasks"], "mode": "explore"},
+                state,
+                config,
+                thread_id,
+            )
+            updates["messages"].append(ToolMessage(
+                content=json.dumps(results, ensure_ascii=False),
                 tool_call_id=tool_call_id,
             ))
             continue
@@ -658,6 +697,14 @@ SUBAGENT_SYSTEM_PROMPT = (
     "完成后用简洁的中文输出最终结论：做了什么、关键结果、产出文件的相对路径。"
 )
 
+EXPLORE_SUBAGENT_SYSTEM_PROMPT = (
+    "你是被主 agent 分派的只读探索子 agent，在项目目录内独立完成交给你的探索任务。"
+    "你只能使用只读工具（目录列举、文件搜索、文件元信息、影像组学配对扫描），"
+    "无法运行脚本或修改任何文件；工具调用会自动批准执行，无需等待用户确认，"
+    "用户也看不到你的中间过程，因此不要向用户提问。"
+    "完成后用简洁的中文汇报发现：目录结构、关键数据文件、配对情况、可疑问题或缺失项。"
+)
+
 # 子 agent 结论带回主对话的长度上限（隔离上下文的初衷：中间过程不进主对话）。
 _SUBAGENT_RESULT_MAX_CHARS = 4000
 # 推送给前端的中间过程滚动窗口（最近若干条消息摘要）。
@@ -685,14 +732,15 @@ def _run_subagents(
     tasks = pending.get("tasks") or []
     if not tasks:
         return {"success": False, "error": "Missing subagent tasks"}
+    mode = pending.get("mode", "general")
 
     if len(tasks) == 1:
-        results = [_run_subagent(tasks[0], state, config, parent_thread_id)]
+        results = [_run_subagent(tasks[0], state, config, parent_thread_id, mode=mode)]
     else:
         workers = min(len(tasks), _SUBAGENT_MAX_WORKERS)
         with ThreadPoolExecutor(max_workers=workers) as pool:
             futures = [
-                pool.submit(_run_subagent, task, state, config, parent_thread_id)
+                pool.submit(_run_subagent, task, state, config, parent_thread_id, mode=mode)
                 for task in tasks
             ]
             results = [f.result() for f in futures]
@@ -771,13 +819,15 @@ def _run_subagent(
     state: AgentState,
     config: Optional[RunnableConfig],
     parent_thread_id: Optional[str],
+    mode: str = "general",
 ) -> dict:
     """在隔离上下文中运行单个子 agent（嵌套深度限制为 1 层）。
 
     子 agent 使用新编译的同构图 + 独立 MemorySaver，thread_id 派生自父线程；
     auto_approve 使其内部工具自动批准（Python 脚本的 risk 分类不变，high 仍拒绝），
-    工具集中不含 dispatch_subagent。中间过程经 _publish_subagent 滚动推送到
-    父线程的 SSE 流，只有最终结论作为工具结果回到主对话上下文。
+    工具集中不含 dispatch_subagent。mode="explore" 时进一步限制为只读探索工具集
+    （readonly_tools）并换用探索专用 system prompt。中间过程经 _publish_subagent
+    滚动推送到父线程的 SSE 流，只有最终结论作为工具结果回到主对话上下文。
     """
     sub_thread_id = f"{parent_thread_id or 'thread'}:sub:{uuid.uuid4().hex[:8]}"
 
@@ -808,14 +858,18 @@ def _run_subagent(
                 "thread_id": sub_thread_id,
                 "auto_approve": True,
                 "allow_subagent": False,
+                "readonly_tools": mode == "explore",
                 "api_key": cfg.get("api_key", ""),
                 "llm_model": cfg.get("llm_model") or state["model"],
             },
             "recursion_limit": _SUBAGENT_RECURSION_LIMIT,
         }
+        system_prompt = (
+            EXPLORE_SUBAGENT_SYSTEM_PROMPT if mode == "explore" else SUBAGENT_SYSTEM_PROMPT
+        )
         sub_input = {
             "messages": [
-                SystemMessage(content=SUBAGENT_SYSTEM_PROMPT),
+                SystemMessage(content=system_prompt),
                 HumanMessage(content=task),
             ],
             "project_path": state["project_path"],

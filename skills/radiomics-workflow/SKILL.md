@@ -7,6 +7,7 @@ description: Workflow guidance for radiomics discovery, clinical matching, featu
 
 Reason about a radiomics study as a traceable sequence:
 
+0. When asked to start the analysis, first survey the project with `dispatch_subagent(mode="explore")`: fan out independent read-only subtasks covering stages 1-4 (discovery candidates, pairing status, clinical table structure, extraction parameters) and reconcile their conclusions before touching any write or extraction step.
 1. Discover image and segmentation candidates and verify patient-level pairing.
 2. Inspect the clinical table; identify the patient ID, binary outcome, and requested covariates.
 3. Reconcile identifiers and report unmatched or ambiguous cases before analysis.
