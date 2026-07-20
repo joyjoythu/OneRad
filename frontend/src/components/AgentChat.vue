@@ -230,6 +230,7 @@
           :options="mentionOptions"
           :loading="mentionLoading"
           :filter-option="false"
+          placement="top"
           whole
           :placeholder="inputPlaceholder"
           aria-label="消息输入"
@@ -351,12 +352,11 @@ const projectStore = useProjectStore()
 
 const emit = defineEmits<{
   'send-message': [content: string]
-  'quick-action': [content: string]
   'stop': []
 }>()
 
 const input = ref('')
-const mentionRef = ref<{ dropdownVisible?: boolean } | null>(null)
+const mentionRef = ref<{ dropdownVisible?: boolean; focus?: () => void } | null>(null)
 
 // @ 文件引用：el-mention 触发 search 后防抖查询项目文件列表，
 // 选项已由后端按关键词过滤，故本地 filter-option 关闭。
@@ -609,7 +609,11 @@ async function handleQuickAction(command: string): Promise<void> {
   }
 
   const action = QUICK_ACTIONS.find((item) => item.command === command)
-  if (action?.prompt) emit('quick-action', action.prompt)
+  if (!action?.prompt) return
+  // 提示词先填入输入框，由用户调整后再手动发送，而不是直接发出。
+  const draft = input.value.trimEnd()
+  input.value = draft ? `${draft}\n${action.prompt}` : action.prompt
+  mentionRef.value?.focus?.()
 }
 
 // 根据运行状态推导用户可见的状态文案。

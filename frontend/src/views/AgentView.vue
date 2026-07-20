@@ -12,7 +12,6 @@
         <AgentChat
           ref="agentChatRef"
           @send-message="handleSendMessage"
-          @quick-action="handleQuickAction"
           @stop="handleStop"
         />
       </div>
@@ -149,10 +148,6 @@ const interruptTag = computed(() => {
 async function handleSendMessage(content: string): Promise<void> {
   const sent = await sendContent(content)
   if (sent) agentChatRef.value?.clearInput()
-}
-
-async function handleQuickAction(content: string): Promise<void> {
-  await sendContent(content)
 }
 
 async function sendContent(content: string): Promise<boolean> {

@@ -96,6 +96,18 @@ describe('AgentChat', () => {
     expect(rows[2].text()).toContain('result')
   })
 
+  it('opens the mention dropdown upward instead of flipping from below', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    const mention = wrapper.findComponent({ name: 'ElMention' })
+    expect(mention.exists()).toBe(true)
+    expect(mention.props('placement')).toBe('top')
+  })
+
   it('emits send-message when clicking the send button', async () => {
     const projectStore = useProjectStore()
     projectStore.currentProject = mockProject()
@@ -132,7 +144,7 @@ describe('AgentChat', () => {
     expect(wrapper.emitted('send-message')![0]).toEqual(['Enter message'])
   })
 
-  it('starts a quick action immediately while preserving the input draft', async () => {
+  it('fills the input with the quick action prompt instead of sending it', async () => {
     const projectStore = useProjectStore()
     projectStore.currentProject = mockProject()
 
@@ -147,10 +159,10 @@ describe('AgentChat', () => {
     dropdown.vm.$emit('command', 'start-analysis')
     await flushPromises()
 
-    expect(wrapper.emitted('quick-action')).toEqual([
-      ['请检查当前项目配置与数据完整性，并开始执行完整的影像组学分析流程。'],
-    ])
-    expect((textarea.element as HTMLTextAreaElement).value).toBe('尚未发送的草稿')
+    expect(wrapper.emitted('send-message')).toBeUndefined()
+    expect((textarea.element as HTMLTextAreaElement).value).toBe(
+      '尚未发送的草稿\n请检查当前项目配置与数据完整性，并开始执行完整的影像组学分析流程。'
+    )
   })
 
   it('confirms before clearing the current task and keeps history untouched', async () => {
