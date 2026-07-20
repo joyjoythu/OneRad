@@ -183,3 +183,58 @@ def test_report_generation_empty_selected_features(tmp_path):
     )
     assert result["success"] is True
     assert Path(result["report_path"]).exists()
+
+
+def _docx_all_text(path):
+    doc = Document(path)
+    texts = [p.text for p in doc.paragraphs]
+    for table in doc.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                texts.append(cell.text)
+    return "\n".join(texts)
+
+
+def test_report_generation_with_cv_metrics_and_small_p(tmp_path):
+    """cv_metrics 存在时渲染逐折表格；p<0.001 归并显示。"""
+    analysis_result = _base_analysis_result()
+    analysis_result["model_results"]["p_values"]["original_firstorder_Mean"] = 0.0004
+    analysis_result["metrics"].update({"ppv": 0.81, "npv": 0.79, "f1": 0.80})
+    metric_keys = ("auc", "accuracy", "sensitivity", "specificity",
+                   "ppv", "npv", "f1", "threshold")
+    analysis_result["cv_metrics"] = {
+        "folds": [
+            dict({"fold": i + 1}, **{k: 0.8 for k in metric_keys})
+            for i in range(5)
+        ],
+        "mean": {k: 0.8 for k in metric_keys},
+        "std": {k: 0.02 for k in metric_keys},
+    }
+    result = ReportAgent().run(
+        analysis_result=analysis_result,
+        output_dir=str(tmp_path),
+        modality="CT",
+        n_features=107,
+        covariates=[],
+    )
+    assert result["success"] is True
+    text = _docx_all_text(result["report_path"])
+    assert "<0.001" in text
+    assert "0.0004" not in text
+    assert "Mean±SD" in text
+    assert "0.800±0.020" in text
+    assert "PPV = 0.810" in text
+
+
+def test_report_generation_without_cv_metrics_still_works(tmp_path):
+    """缺少 cv_metrics 的旧输入仍能生成报告（无逐折表）。"""
+    result = ReportAgent().run(
+        analysis_result=_base_analysis_result(),
+        output_dir=str(tmp_path),
+        modality="CT",
+        n_features=107,
+        covariates=[],
+    )
+    assert result["success"] is True
+    text = _docx_all_text(result["report_path"])
+    assert "Mean±SD" not in text

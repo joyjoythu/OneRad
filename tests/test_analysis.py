@@ -185,3 +185,27 @@ def test_oof_probabilities_returned():
     assert len(probs) == len(df)
     assert all(isinstance(p, float) for p in probs)
     assert all(0.0 <= p <= 1.0 for p in probs)
+
+
+def test_cv_metrics_returned():
+    """run 返回逐折指标及均值/标准差，OOF 指标含 PPV/NPV/F1。"""
+    df = _make_df(n=50, n_signal=5, n_noise=5, seed=42)
+    agent = AnalysisAgent(covariates=[], n_splits=5)
+    result = agent.run(df, label_col="Label")
+    assert result["success"] is True
+
+    keys = ("auc", "accuracy", "sensitivity", "specificity",
+            "ppv", "npv", "f1", "threshold")
+    cv = result["cv_metrics"]
+    assert len(cv["folds"]) == 5
+    for i, fold in enumerate(cv["folds"]):
+        assert fold["fold"] == i + 1
+        for k in keys:
+            assert k in fold
+    for k in keys:
+        assert k in cv["mean"]
+        assert k in cv["std"]
+
+    for k in ("ppv", "npv", "f1"):
+        assert k in result["metrics"]
+        assert 0.0 <= result["metrics"][k] <= 1.0

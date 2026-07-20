@@ -114,3 +114,22 @@ def test_calculate_metrics_non_binary_labels():
     y_prob = np.array([0.1, 0.4, 0.6, 0.9])
     with pytest.raises(ValueError, match="only 0 and 1"):
         calculate_metrics(y_true, y_prob)
+
+
+def test_calculate_metrics_ppv_npv_f1():
+    y_true = np.array([0, 0, 1, 1])
+    y_prob = np.array([0.2, 0.6, 0.4, 0.8])
+    m = calculate_metrics(y_true, y_prob)
+    # Youden threshold 0.8: tp=1, fn=1, tn=2, fp=0
+    assert m.ppv == pytest.approx(1.0)
+    assert m.npv == pytest.approx(2 / 3)
+    assert m.f1 == pytest.approx(2 * 1.0 * 0.5 / (1.0 + 0.5))
+
+
+def test_calculate_metrics_perfect_separation_ppv_npv_f1():
+    y_true = np.array([0, 0, 1, 1])
+    y_prob = np.array([0.1, 0.4, 0.6, 0.9])
+    m = calculate_metrics(y_true, y_prob)
+    assert m.ppv == pytest.approx(1.0)
+    assert m.npv == pytest.approx(1.0)
+    assert m.f1 == pytest.approx(1.0)

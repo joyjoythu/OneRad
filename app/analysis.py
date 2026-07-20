@@ -71,6 +71,7 @@ class AnalysisAgent:
        - Retains all requested clinical covariates.
        - Trains a logistic regression model on the selected features.
        - Accumulates out-of-fold predicted probabilities.
+       - Records per-fold performance metrics.
     4. Intersects the per-fold selected radiomic features to obtain a stable
        feature set. If the intersection is empty and no clinical covariates
        were requested, the run fails early.
@@ -203,6 +204,7 @@ class AnalysisAgent:
         skf = StratifiedKFold(n_splits=self.n_splits, shuffle=True, random_state=self.random_state)
         val_probs = np.zeros(len(y))
         fold_selected_features = []
+        fold_metrics = []
         plot_paths = []
 
         for fold_idx, (train_idx, val_idx) in enumerate(skf.split(X, y)):
@@ -259,6 +261,19 @@ class AnalysisAgent:
             lr = LogisticRegression(max_iter=10000, random_state=self.random_state)
             lr.fit(X_train_sel, y_train)
             val_probs[val_idx] = lr.predict_proba(X_val_sel)[:, 1]
+
+            fold_res = calculate_metrics(y[val_idx], val_probs[val_idx])
+            fold_metrics.append({
+                "fold": fold_idx + 1,
+                "auc": float(fold_res.auc),
+                "accuracy": float(fold_res.accuracy),
+                "sensitivity": float(fold_res.sensitivity),
+                "specificity": float(fold_res.specificity),
+                "ppv": float(fold_res.ppv),
+                "npv": float(fold_res.npv),
+                "f1": float(fold_res.f1),
+                "threshold": float(fold_res.best_threshold),
+            })
 
         # 用稳定出现的特征作为最终选中特征
         selected_features = list(set.intersection(*fold_selected_features) if fold_selected_features else set())
@@ -318,6 +333,17 @@ class AnalysisAgent:
 
         metrics_result = calculate_metrics(y, val_probs)
 
+        cv_metric_keys = ("auc", "accuracy", "sensitivity", "specificity",
+                          "ppv", "npv", "f1", "threshold")
+        cv_metrics = {
+            "folds": fold_metrics,
+            "mean": {k: float(np.mean([f[k] for f in fold_metrics]))
+                     for k in cv_metric_keys},
+            "std": {k: float(np.std([f[k] for f in fold_metrics], ddof=1))
+                    if len(fold_metrics) > 1 else 0.0
+                    for k in cv_metric_keys},
+        }
+
         return {
             "success": True,
             "message": "分析完成",
@@ -330,11 +356,15 @@ class AnalysisAgent:
                 "accuracy": float(metrics_result.accuracy),
                 "sensitivity": float(metrics_result.sensitivity),
                 "specificity": float(metrics_result.specificity),
+                "ppv": float(metrics_result.ppv),
+                "npv": float(metrics_result.npv),
+                "f1": float(metrics_result.f1),
                 "threshold": float(metrics_result.best_threshold),
                 # Confusion matrix layout: [[tn, fp], [fn, tp]]
                 "confusion_matrix": [[int(metrics_result.tn), int(metrics_result.fp)],
                                       [int(metrics_result.fn), int(metrics_result.tp)]],
             },
+            "cv_metrics": cv_metrics,
             "n_samples": len(y),
             "oof_probabilities": [float(p) for p in val_probs],
             "plot_paths": plot_paths,

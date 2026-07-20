@@ -11,6 +11,26 @@ def parse_covariates(covs: str) -> List[str]:
     return [c.strip() for c in (covs or "").split(",") if c.strip()]
 
 
+def fmt_num(x) -> str:
+    """Format a number with 3 decimal places; ``None``/NaN becomes ``"-"``."""
+    if x is None or pd.isna(x):
+        return "-"
+    return f"{float(x):.3f}"
+
+
+def fmt_p(p) -> str:
+    """Format a p-value: ``"<0.001"`` below 0.001, else 3 decimal places.
+
+    ``None``/NaN becomes ``"-"``.
+    """
+    if p is None or pd.isna(p):
+        return "-"
+    p = float(p)
+    if p < 0.001:
+        return "<0.001"
+    return f"{p:.3f}"
+
+
 def parse_float_tuple(value: str, expected_length: int = 3) -> Optional[Tuple[float, ...]]:
     """Parse a comma-separated float string into a tuple.
 

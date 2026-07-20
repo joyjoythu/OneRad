@@ -29,6 +29,8 @@ from app.utils import (
     _load_feature_csv,
     _merge_feature_clinical,
     _norm_match_id,
+    fmt_num,
+    fmt_p,
     resolve_id_matches,
 )
 
@@ -364,10 +366,15 @@ def run_feature_statistics(
             "mw_u": mw_u, "mw_pvalue": mw_p,
         })
 
-    # Export CSV
+    # Export CSV（p 值列保留原始精度，其余数值列 3 位小数）
     os.makedirs(output_dir, exist_ok=True)
     csv_path = os.path.join(output_dir, "feature_statistics.csv")
     csv_df = pd.DataFrame(results)
+    csv_df = csv_df.round({
+        "group0_mean": 3, "group0_std": 3,
+        "group1_mean": 3, "group1_std": 3,
+        "t_stat": 3, "mw_u": 3,
+    })
     csv_df.to_csv(csv_path, index=False, encoding="utf-8-sig")
 
     # Export Word table
@@ -452,19 +459,19 @@ def _write_word_report(
         cells[0].text = r["feature"]
 
         if r.get("group0_mean") is not None and r.get("group0_std") is not None:
-            cells[1].text = f"{r['group0_mean']:.4f} ± {r['group0_std']:.4f}"
+            cells[1].text = f"{fmt_num(r['group0_mean'])} ± {fmt_num(r['group0_std'])}"
         else:
             cells[1].text = "N/A"
 
         if r.get("group1_mean") is not None and r.get("group1_std") is not None:
-            cells[2].text = f"{r['group1_mean']:.4f} ± {r['group1_std']:.4f}"
+            cells[2].text = f"{fmt_num(r['group1_mean'])} ± {fmt_num(r['group1_std'])}"
         else:
             cells[2].text = "N/A"
 
-        cells[3].text = f"{r['t_stat']:.4f}" if r.get("t_stat") is not None else "-"
-        cells[4].text = f"{r['t_pvalue']:.4f}" if r.get("t_pvalue") is not None else "-"
-        cells[5].text = f"{r['mw_u']:.1f}" if r.get("mw_u") is not None else "-"
-        cells[6].text = f"{r['mw_pvalue']:.4f}" if r.get("mw_pvalue") is not None else "-"
+        cells[3].text = fmt_num(r.get("t_stat"))
+        cells[4].text = fmt_p(r.get("t_pvalue"))
+        cells[5].text = fmt_num(r.get("mw_u"))
+        cells[6].text = fmt_p(r.get("mw_pvalue"))
 
         # Apply font size
         for cell in cells:

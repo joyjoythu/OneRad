@@ -2,7 +2,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from app.radiomics_analysis import inspect_analysis_inputs, run_radiomics_cv_analysis
+from app.radiomics_analysis import (
+    _render_markdown_report,
+    inspect_analysis_inputs,
+    run_radiomics_cv_analysis,
+)
 
 
 def _write_feature_csv(path, ids, n=8, seed=42):
@@ -283,7 +287,55 @@ def test_run_analysis_end_to_end(tmp_path):
 
     md = open(outputs["report_md"], encoding="utf-8").read()
     assert "AUC" in md
+    assert "折交叉验证逐折指标" in md
+    assert "均值±标准差" in md
+    assert "PPV" in md and "NPV" in md and "F1" in md
     assert result["n_matched"] == 60
+
+
+def test_render_markdown_report_formats(tmp_path):
+    """Markdown 报告:p<0.001 归并显示，数值 3 位小数，含逐折表。"""
+    analysis_result = {
+        "success": True,
+        "n_samples": 60,
+        "selected_features": ["original_sig_0"],
+        "model_results": {
+            "coefficients": {"original_sig_0": 0.12345},
+            "odds_ratios": {"original_sig_0": 1.13141},
+            "ci_lower": {"original_sig_0": 1.01},
+            "ci_upper": {"original_sig_0": 1.26},
+            "p_values": {"original_sig_0": 0.0004},
+        },
+        "metrics": {
+            "auc": 0.8567, "auc_ci": [0.75, 0.94],
+            "accuracy": 0.8, "sensitivity": 0.82, "specificity": 0.78,
+            "ppv": 0.81, "npv": 0.79, "f1": 0.815,
+            "threshold": 0.5, "confusion_matrix": [[24, 6], [6, 24]],
+        },
+        "cv_metrics": {
+            "folds": [
+                {"fold": i + 1, "auc": 0.8, "accuracy": 0.8, "sensitivity": 0.8,
+                 "specificity": 0.8, "ppv": 0.8, "npv": 0.8, "f1": 0.8,
+                 "threshold": 0.5}
+                for i in range(5)
+            ],
+            "mean": {"auc": 0.8, "accuracy": 0.8, "sensitivity": 0.8,
+                     "specificity": 0.8, "ppv": 0.8, "npv": 0.8, "f1": 0.8,
+                     "threshold": 0.5},
+            "std": {"auc": 0.02, "accuracy": 0.02, "sensitivity": 0.02,
+                    "specificity": 0.02, "ppv": 0.02, "npv": 0.02, "f1": 0.02,
+                    "threshold": 0.01},
+        },
+    }
+    path = _render_markdown_report(
+        analysis_result, outputs={}, n_matched=60, covariates=[],
+        output_dir=str(tmp_path), n_splits=5)
+    md = open(path, encoding="utf-8").read()
+    assert "<0.001" in md
+    assert "0.0004" not in md
+    assert "| 0.123 |" in md  # 系数 3 位小数
+    assert "5 折交叉验证逐折指标" in md
+    assert "0.800±0.020" in md
 
 
 def test_run_analysis_fails_when_class_too_small(tmp_path):

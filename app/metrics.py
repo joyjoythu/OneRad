@@ -13,6 +13,9 @@ class MetricsResult:
         accuracy: Proportion of correctly classified samples.
         sensitivity: True positive rate (recall for the positive class).
         specificity: True negative rate (recall for the negative class).
+        ppv: Positive predictive value (precision).
+        npv: Negative predictive value.
+        f1: Harmonic mean of PPV and sensitivity.
         auc: Area under the ROC curve; 0.0 when only one class is present.
         best_threshold: Decision threshold used to binarize probabilities.
         tp: Count of true positives.
@@ -24,6 +27,9 @@ class MetricsResult:
     accuracy: float = 0.0
     sensitivity: float = 0.0
     specificity: float = 0.0
+    ppv: float = 0.0
+    npv: float = 0.0
+    f1: float = 0.0
     auc: float = 0.0
     best_threshold: float = 0.5
     tp: int = 0
@@ -53,8 +59,8 @@ def calculate_metrics(
             the threshold selected by Youden's index.
 
     Returns:
-        MetricsResult containing accuracy, sensitivity, specificity, AUC,
-        best threshold, and confusion matrix counts.
+        MetricsResult containing accuracy, sensitivity, specificity, PPV,
+        NPV, F1, AUC, best threshold, and confusion matrix counts.
 
     Raises:
         ValueError: If `y_true` and `y_prob` have different lengths, or if
@@ -98,5 +104,8 @@ def calculate_metrics(
     result.sensitivity = result.tp / (result.tp + result.fn + 1e-16)
     result.specificity = result.tn / (result.tn + result.fp + 1e-16)
     result.accuracy = (result.tp + result.tn) / (result.tp + result.tn + result.fp + result.fn + 1e-16)
+    result.ppv = result.tp / (result.tp + result.fp + 1e-16)
+    result.npv = result.tn / (result.tn + result.fn + 1e-16)
+    result.f1 = 2 * result.ppv * result.sensitivity / (result.ppv + result.sensitivity + 1e-16)
 
     return result

@@ -8,6 +8,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 import logging
 from app.skills import load_skill
+from app.utils import fmt_num, fmt_p
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +105,7 @@ class ReportAgent:
             doc.add_heading("2. Feature Selection", level=1)
             feat_df = pd.DataFrame({
                 "Feature Name": analysis_result["selected_features"],
-                "Coefficient": [analysis_result["model_results"]["coefficients"].get(f, 0) for f in analysis_result["selected_features"]],
+                "Coefficient": [fmt_num(analysis_result["model_results"]["coefficients"].get(f, 0)) for f in analysis_result["selected_features"]],
             })
             self._add_table(doc, feat_df)
 
@@ -114,10 +115,10 @@ class ReportAgent:
             for feat in analysis_result["selected_features"]:
                 rows.append({
                     "Feature": feat,
-                    "OR": f"{analysis_result['model_results']['odds_ratios'].get(feat, 0):.3f}",
-                    "95% CI Lower": f"{analysis_result['model_results']['ci_lower'].get(feat, 0):.3f}" if analysis_result['model_results']['ci_lower'].get(feat) is not None else "-",
-                    "95% CI Upper": f"{analysis_result['model_results']['ci_upper'].get(feat, 0):.3f}" if analysis_result['model_results']['ci_upper'].get(feat) is not None else "-",
-                    "p-value": f"{analysis_result['model_results']['p_values'].get(feat, 1):.4f}",
+                    "OR": fmt_num(analysis_result['model_results']['odds_ratios'].get(feat, 0)),
+                    "95% CI Lower": fmt_num(analysis_result['model_results']['ci_lower'].get(feat)),
+                    "95% CI Upper": fmt_num(analysis_result['model_results']['ci_upper'].get(feat)),
+                    "p-value": fmt_p(analysis_result['model_results']['p_values'].get(feat, 1)),
                 })
             self._add_table(doc, pd.DataFrame(rows))
 
@@ -128,13 +129,44 @@ class ReportAgent:
                 f"The logistic regression model achieved an AUC of {m['auc']:.3f} "
                 f"(95% CI: {m['auc_ci'][0]:.3f}–{m['auc_ci'][1]:.3f}). "
                 f"Accuracy = {m['accuracy']:.3f}, Sensitivity = {m['sensitivity']:.3f}, "
-                f"Specificity = {m['specificity']:.3f}."
+                f"Specificity = {m['specificity']:.3f}, "
+                f"PPV = {fmt_num(m.get('ppv'))}, NPV = {fmt_num(m.get('npv'))}, "
+                f"F1 = {fmt_num(m.get('f1'))}."
             )
             doc.add_paragraph(perf_text)
 
+            # Per-fold cross-validation metrics
+            cv = analysis_result.get("cv_metrics")
+            if cv and cv.get("folds"):
+                doc.add_heading("5. Cross-Validation Details", level=1)
+                fold_rows = []
+                for f in cv["folds"]:
+                    fold_rows.append({
+                        "Fold": f["fold"],
+                        "AUC": fmt_num(f["auc"]),
+                        "Accuracy": fmt_num(f["accuracy"]),
+                        "Sensitivity": fmt_num(f["sensitivity"]),
+                        "Specificity": fmt_num(f["specificity"]),
+                        "PPV": fmt_num(f["ppv"]),
+                        "NPV": fmt_num(f["npv"]),
+                        "F1": fmt_num(f["f1"]),
+                    })
+                mean, std = cv["mean"], cv["std"]
+                fold_rows.append({
+                    "Fold": "Mean±SD",
+                    "AUC": f"{fmt_num(mean['auc'])}±{fmt_num(std['auc'])}",
+                    "Accuracy": f"{fmt_num(mean['accuracy'])}±{fmt_num(std['accuracy'])}",
+                    "Sensitivity": f"{fmt_num(mean['sensitivity'])}±{fmt_num(std['sensitivity'])}",
+                    "Specificity": f"{fmt_num(mean['specificity'])}±{fmt_num(std['specificity'])}",
+                    "PPV": f"{fmt_num(mean['ppv'])}±{fmt_num(std['ppv'])}",
+                    "NPV": f"{fmt_num(mean['npv'])}±{fmt_num(std['npv'])}",
+                    "F1": f"{fmt_num(mean['f1'])}±{fmt_num(std['f1'])}",
+                })
+                self._add_table(doc, pd.DataFrame(fold_rows))
+
             # Visualizations
             if plot_paths:
-                doc.add_heading("5. Visualizations", level=1)
+                doc.add_heading("6. Visualizations", level=1)
                 for plot_path in plot_paths:
                     if os.path.exists(plot_path):
                         doc.add_picture(plot_path, width=Inches(5.5))

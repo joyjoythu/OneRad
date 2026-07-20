@@ -3,7 +3,7 @@ import os
 import pandas as pd
 import pytest
 
-from app.utils import parse_covariates
+from app.utils import fmt_num, fmt_p, parse_covariates
 
 
 def test_parse_covariates_empty_string():
@@ -259,3 +259,30 @@ def test_resolve_id_matches_no_candidate_is_unmatched_not_ambiguous():
     res = resolve_id_matches(["nobody"], ["1000130"])
     assert res["mapping"] == {}
     assert res["ambiguous"] == []
+
+
+def test_fmt_num_three_decimals():
+    assert fmt_num(0.123456) == "0.123"
+    assert fmt_num(1.0) == "1.000"
+    assert fmt_num(0) == "0.000"
+
+
+def test_fmt_num_none_and_nan():
+    assert fmt_num(None) == "-"
+    assert fmt_num(float("nan")) == "-"
+
+
+def test_fmt_p_normal_range():
+    assert fmt_p(0.032) == "0.032"
+    assert fmt_p(0.05) == "0.050"
+
+
+def test_fmt_p_small_value():
+    assert fmt_p(0.0009) == "<0.001"
+    assert fmt_p(1e-10) == "<0.001"
+    assert fmt_p(0.0) == "<0.001"
+
+
+def test_fmt_p_boundary_and_none():
+    assert fmt_p(0.001) == "0.001"
+    assert fmt_p(None) == "-"

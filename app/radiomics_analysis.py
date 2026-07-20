@@ -24,6 +24,8 @@ from app.utils import (
     _merge_feature_clinical,
     _infer_covariates,
     _norm_match_id,
+    fmt_num,
+    fmt_p,
     resolve_id_matches,
 )
 
@@ -345,9 +347,39 @@ def _render_markdown_report(analysis_result: Dict[str, Any],
         f"| 准确率 | {m['accuracy']:.3f} |",
         f"| 敏感度 | {m['sensitivity']:.3f} |",
         f"| 特异度 | {m['specificity']:.3f} |",
+        f"| PPV | {fmt_num(m.get('ppv'))} |",
+        f"| NPV | {fmt_num(m.get('npv'))} |",
+        f"| F1 | {fmt_num(m.get('f1'))} |",
         f"| 最佳阈值 | {m['threshold']:.3f} |",
         "",
         f"混淆矩阵（[[TN, FP], [FN, TP]]）：`{m['confusion_matrix']}`",
+    ]
+    cv = analysis_result.get("cv_metrics")
+    if cv and cv.get("folds"):
+        lines += [
+            "",
+            f"{n_splits} 折交叉验证逐折指标：",
+            "",
+            "| 折 | AUC | 准确率 | 敏感度 | 特异度 | PPV | NPV | F1 | 阈值 |",
+            "|---|---|---|---|---|---|---|---|---|",
+        ]
+        for f in cv["folds"]:
+            lines.append(
+                f"| {f['fold']} | {fmt_num(f['auc'])} | {fmt_num(f['accuracy'])} "
+                f"| {fmt_num(f['sensitivity'])} | {fmt_num(f['specificity'])} "
+                f"| {fmt_num(f['ppv'])} | {fmt_num(f['npv'])} | {fmt_num(f['f1'])} "
+                f"| {fmt_num(f['threshold'])} |")
+        mean, std = cv["mean"], cv["std"]
+        lines.append(
+            f"| 均值±标准差 | {fmt_num(mean['auc'])}±{fmt_num(std['auc'])} "
+            f"| {fmt_num(mean['accuracy'])}±{fmt_num(std['accuracy'])} "
+            f"| {fmt_num(mean['sensitivity'])}±{fmt_num(std['sensitivity'])} "
+            f"| {fmt_num(mean['specificity'])}±{fmt_num(std['specificity'])} "
+            f"| {fmt_num(mean['ppv'])}±{fmt_num(std['ppv'])} "
+            f"| {fmt_num(mean['npv'])}±{fmt_num(std['npv'])} "
+            f"| {fmt_num(mean['f1'])}±{fmt_num(std['f1'])} "
+            f"| {fmt_num(mean['threshold'])}±{fmt_num(std['threshold'])} |")
+    lines += [
         "",
         "## 3. 稳定特征与回归系数",
         "",
@@ -360,9 +392,9 @@ def _render_markdown_report(analysis_result: Dict[str, Any],
         ci_hi = mr["ci_upper"].get(feat)
         ci = f"{ci_lo:.3f}\u2013{ci_hi:.3f}" if ci_lo is not None and ci_hi is not None else "-"
         lines.append(
-            f"| {feat} | {mr['coefficients'].get(feat, 0):.4f} "
-            f"| {mr['odds_ratios'].get(feat, 0):.3f} | {ci} "
-            f"| {mr['p_values'].get(feat, 1):.4f} |")
+            f"| {feat} | {fmt_num(mr['coefficients'].get(feat, 0))} "
+            f"| {fmt_num(mr['odds_ratios'].get(feat, 0))} | {ci} "
+            f"| {fmt_p(mr['p_values'].get(feat, 1))} |")
     lines += ["", "## 4. 图表", ""]
     for key, caption in (("roc_curve", "ROC 曲线"),
                          ("calibration_curve", "校准曲线"),
@@ -494,14 +526,14 @@ def run_radiomics_cv_analysis(
     case_df = pd.DataFrame({
         "patient_id": merged_df["patient_id"].values,
         "y_true": y.values,
-        "oof_prob": oof,
+        "oof_prob": np.round(np.asarray(oof, dtype=float), 3),
         "y_pred": [int(p >= threshold) for p in oof],
     })
     case_path = os.path.join(output_dir, "case_predictions.csv")
     case_df.to_csv(case_path, index=False)
     outputs["case_predictions"] = case_path
 
-    # 稳定特征系数表
+    # 稳定特征系数表（p_value 保留原始精度，其余数值列 3 位小数）
     mr = analysis_result["model_results"]
     selected = analysis_result["selected_features"]
     feat_df = pd.DataFrame({
@@ -512,6 +544,8 @@ def run_radiomics_cv_analysis(
         "ci_upper": [mr["ci_upper"].get(f) for f in selected],
         "p_value": [mr["p_values"].get(f) for f in selected],
     })
+    feat_df = feat_df.round(
+        {"coefficient": 3, "odds_ratio": 3, "ci_lower": 3, "ci_upper": 3})
     feat_path = os.path.join(output_dir, "selected_features.csv")
     feat_df.to_csv(feat_path, index=False)
     outputs["selected_features"] = feat_path
