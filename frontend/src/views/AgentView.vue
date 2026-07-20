@@ -1,7 +1,8 @@
 <template>
   <div class="agent-view">
-    <header v-if="interruptTag" class="agent-header">
-      <el-tag :type="interruptTag.type">
+    <header v-if="projectStore.currentProject || interruptTag" class="agent-header">
+      <ConversationTitle />
+      <el-tag v-if="interruptTag" :type="interruptTag.type">
         {{ interruptTag.label }}
       </el-tag>
     </header>
@@ -68,6 +69,7 @@ import { ref, computed, watch, onUnmounted } from 'vue'
 import { useAgentStore } from '@/stores/agent'
 import { useProjectStore } from '@/stores/project'
 import AgentChat from '@/components/AgentChat.vue'
+import ConversationTitle from '@/components/ConversationTitle.vue'
 import { Expand, Fold } from '@element-plus/icons-vue'
 import PlanDisplay from '@/components/PlanDisplay.vue'
 import CommandPanel from '@/components/CommandPanel.vue'
@@ -224,7 +226,8 @@ watch(
 .agent-header {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
+  gap: 0.75rem;
   flex-shrink: 0;
 }
 

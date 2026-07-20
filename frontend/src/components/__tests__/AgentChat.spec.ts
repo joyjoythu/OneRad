@@ -96,28 +96,6 @@ describe('AgentChat', () => {
     expect(rows[2].text()).toContain('result')
   })
 
-  it('shows the current conversation name above the message area', async () => {
-    const projectStore = useProjectStore()
-    projectStore.currentProject = mockProject()
-
-    const agentStore = useAgentStore()
-    agentStore.threadId = 'thread-1'
-    agentStore.currentThread = {
-      id: 'thread-1',
-      project_id: 'proj-1',
-      title: '肺结节影像组学分析',
-      created_at: '2026-01-01',
-      updated_at: '2026-01-01',
-    }
-
-    const wrapper = setupWrapper()
-    await flushPromises()
-
-    const title = wrapper.find('[data-testid="current-conversation-title"]')
-    expect(title.text()).toContain('当前会话')
-    expect(title.text()).toContain('肺结节影像组学分析')
-  })
-
   it('emits send-message when clicking the send button', async () => {
     const projectStore = useProjectStore()
     projectStore.currentProject = mockProject()
