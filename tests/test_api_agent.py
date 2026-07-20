@@ -704,6 +704,67 @@ def test_stop_requests_cooperative_cancel(client, app, monkeypatch):
     assert cancelled_threads == [thread_id]
 
 
+def test_stop_clears_pending_feature_statistics(client, app):
+    """stop 清理 checkpoint 残留中断状态时，必须同时清掉
+    pending_feature_statistics，否则恢复会话后审批状态脏数据仍在。"""
+    project = _create_project(client)
+    thread_id = _create_thread(client, project['id'])["thread_id"]
+
+    snapshots = [
+        SimpleNamespace(values={"interrupt_type": None}),  # send_message 前检查
+        SimpleNamespace(values={"interrupt_type": None}),  # stop 存在性检查
+        SimpleNamespace(values={"messages": []}),          # 流式 finally 补打时间戳读取
+        SimpleNamespace(values={                           # 取消后读取：残留统计审批
+            "messages": [],
+            "interrupt_type": "feature_statistics",
+            "pending_feature_statistics": {"tool_call_id": "tc_stats_1"},
+        }),
+        SimpleNamespace(values={"messages": []}),          # 清理后读取
+    ]
+
+    async def blocking_astream(input_value=None, config=None, stream_mode=None):
+        yield {"messages": [], "interrupt_type": None, "operation_log": []}
+        await asyncio.sleep(3600)
+
+    mock_graph = AsyncMock()
+    mock_graph.aget_state = AsyncMock(side_effect=snapshots)
+    mock_graph.astream = blocking_astream
+    app.dependency_overrides[get_agent_graph] = lambda: mock_graph
+
+    response = client.post(
+        f"/api/agent/threads/{thread_id}/messages",
+        json={"role": "user", "content": "hi"},
+    )
+    assert response.status_code == 202, response.text
+
+    deadline = time.time() + 2
+    while time.time() < deadline and thread_id not in app.state.agent_stream_tasks:
+        time.sleep(0.05)
+    assert thread_id in app.state.agent_stream_tasks
+
+    deadline = time.time() + 2
+    while (
+        time.time() < deadline
+        and not app.state.event_bridge.store.list_sse_events("agent", thread_id)
+    ):
+        time.sleep(0.05)
+    assert app.state.event_bridge.store.list_sse_events("agent", thread_id)
+
+    response = client.post(f"/api/agent/threads/{thread_id}/stop")
+    assert response.status_code == 202, response.text
+
+    cleanup_calls = [
+        call
+        for call in mock_graph.aupdate_state.await_args_list
+        if call.args[1].get("interrupt_type") is None
+        and "pending_radiomics_analysis" in call.args[1]
+    ]
+    assert cleanup_calls, "stop 未执行残留中断清理"
+    for call in cleanup_calls:
+        assert "pending_feature_statistics" in call.args[1]
+        assert call.args[1]["pending_feature_statistics"] is None
+
+
 def test_stop_cancels_stream_and_repairs_history(client, app):
     """stop 应取消活动流，并为未应答的 tool_calls 补「已停止」ToolMessage。"""
     project = _create_project(client)
@@ -876,6 +937,34 @@ def test_sync_payload_includes_pending_radiomics_analysis():
 
     payload_missing = _sync_payload({}, running=False)
     assert payload_missing["pending_radiomics_analysis"] is None
+
+
+def test_sync_payload_includes_pending_feature_statistics():
+    """_sync_payload 必须返回特征统计待确认字段，否则前端无法渲染确认面板，
+    线程会卡死在 human_review 中断态（发消息 409、无确认 UI）。"""
+    from app.api.agent import _sync_payload
+
+    values = {
+        "messages": [],
+        "interrupt_type": "feature_statistics",
+        "operation_log": [],
+        "pending_feature_statistics": {
+            "tool_call_id": "tc_stats_1",
+            "feature_csv": "features.csv",
+            "label_col": "label",
+            "n_selected": 8,
+            "n_matched": 95,
+        },
+    }
+
+    payload = _sync_payload(values, running=False)
+
+    assert payload["interrupt_type"] == "feature_statistics"
+    assert payload["pending_feature_statistics"]["tool_call_id"] == "tc_stats_1"
+    assert payload["pending_feature_statistics"]["n_selected"] == 8
+
+    payload_missing = _sync_payload({}, running=False)
+    assert payload_missing["pending_feature_statistics"] is None
 
 
 def test_sync_payload_includes_context_usage():

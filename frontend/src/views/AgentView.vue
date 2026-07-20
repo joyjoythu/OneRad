@@ -140,6 +140,8 @@ const interruptTag = computed(() => {
       return { label: '待确认特征提取', type: 'warning' as const }
     case 'radiomics_analysis':
       return { label: '待确认影像组学分析', type: 'warning' as const }
+    case 'feature_statistics':
+      return { label: '待确认特征统计', type: 'warning' as const }
     default:
       return null
   }

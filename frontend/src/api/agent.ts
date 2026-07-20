@@ -124,6 +124,20 @@ export interface PendingRadiomicsAnalysis {
   available_clinical_columns: string[]
 }
 
+export interface PendingFeatureStatistics {
+  tool_call_id: string
+  feature_csv: string
+  clinical: string
+  id_col: string
+  label_col: string
+  selected_features_csv: string
+  selected_features: string[]
+  output_dir: string
+  n_feature_cases: number
+  n_matched: number
+  n_selected: number
+}
+
 export interface AgentState {
   thread_id?: string
   messages: AgentMessage[]
@@ -135,6 +149,7 @@ export interface AgentState {
   pending_radiomics_plan?: PendingRadiomicsPlan | null
   pending_radiomics_execution?: PendingRadiomicsExecution | null
   pending_radiomics_analysis?: PendingRadiomicsAnalysis | null
+  pending_feature_statistics?: PendingFeatureStatistics | null
   pending_subagent?: PendingSubagent | null
   subagent?: SubagentStatus | null
   radiomics_progress?: RadiomicsProgress | null

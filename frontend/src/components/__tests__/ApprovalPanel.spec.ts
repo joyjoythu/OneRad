@@ -178,6 +178,40 @@ describe('ApprovalPanel', () => {
     expect(wrapper.text()).toContain('确认分析')
   })
 
+  it('shows the statistics summary for feature_statistics interrupts', () => {
+    const store = useAgentStore()
+    store.interrupt = 'feature_statistics'
+    store.pendingFeatureStatistics = {
+      tool_call_id: 'tc-fs-1',
+      feature_csv: 'radiomics_features/radiomics_features.csv',
+      clinical: 'clinical/data.csv',
+      id_col: 'patient_id',
+      label_col: 'label',
+      selected_features_csv: 'radiomics_analysis/selected_features.csv',
+      selected_features: ['feat_a', 'feat_b'],
+      output_dir: 'feature_statistics',
+      n_feature_cases: 100,
+      n_matched: 95,
+      n_selected: 2,
+    } as never
+
+    const wrapper = setupWrapper()
+
+    expect(wrapper.text()).toContain('待确认：特征统计')
+    expect(wrapper.text()).toContain('标签列：label')
+    expect(wrapper.text()).toContain('匹配 95 例')
+    expect(wrapper.text()).toContain('确认统计')
+  })
+
+  it('renders nothing when pending_feature_statistics is missing', () => {
+    const store = useAgentStore()
+    store.interrupt = 'feature_statistics'
+    store.pendingFeatureStatistics = null
+
+    const wrapper = setupWrapper()
+    expect(wrapper.find('.approval-panel').exists()).toBe(false)
+  })
+
   it('expands the custom instruction input when clicking the other button', async () => {
     const store = useAgentStore()
     store.interrupt = 'system_command'

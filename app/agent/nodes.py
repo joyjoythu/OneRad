@@ -526,6 +526,10 @@ def _publish_agent_progress(thread_id: Optional[str], payload: Optional[dict]) -
     ctx = agent_runtime.get(thread_id)
     if ctx is None or ctx.loop is None or ctx.bridge is None:
         return
+    # /stop 置位取消事件后不再推送进度：流式任务已被取消，继续推送
+    # running:True 会把前端 busy 重新置回运行中，看起来"后台还在跑"。
+    if ctx.cancel_event.is_set():
+        return
     try:
         asyncio.run_coroutine_threadsafe(
             ctx.bridge.publish(

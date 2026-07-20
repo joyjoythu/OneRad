@@ -74,6 +74,7 @@ type ApprovalType =
   | 'radiomics_plan'
   | 'radiomics_execution'
   | 'radiomics_analysis'
+  | 'feature_statistics'
   | 'subagent_dispatch'
 
 interface ApprovalView {
@@ -136,6 +137,16 @@ const view = computed<ApprovalView | null>(() => {
         confirmLabel: '确认分析',
       }
     }
+    case 'feature_statistics': {
+      const stats = agentStore.pendingFeatureStatistics
+      if (!stats) return null
+      return {
+        type: 'feature_statistics',
+        label: '特征统计',
+        summary: `筛选特征：${stats.n_selected} 个，标签列：${stats.label_col}，匹配 ${stats.n_matched} 例`,
+        confirmLabel: '确认统计',
+      }
+    }
     case 'subagent_dispatch': {
       const subagent = agentStore.pendingSubagent
       if (!subagent) return null
@@ -191,6 +202,7 @@ watch(
     agentStore.pendingRadiomicsPlan,
     agentStore.pendingRadiomicsExecution,
     agentStore.pendingRadiomicsAnalysis,
+    agentStore.pendingFeatureStatistics,
     agentStore.pendingSubagent,
   ],
   () => {

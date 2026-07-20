@@ -644,6 +644,55 @@ describe('useAgentStore', () => {
     expect(store.pendingRadiomicsAnalysis).toBeNull()
   })
 
+  it('tracks pending feature statistics from SSE state', async () => {
+    const store = useAgentStore()
+    await store.ensureThread('project-1')
+    const es = MockEventSource.instances[0]
+
+    const stats = {
+      tool_call_id: 'tc-fs-1',
+      feature_csv: 'radiomics_features/radiomics_features.csv',
+      clinical: 'clinical/data.csv',
+      id_col: 'patient_id',
+      label_col: 'label',
+      selected_features_csv: 'radiomics_analysis/selected_features.csv',
+      selected_features: ['feat_a'],
+      output_dir: 'feature_statistics',
+      n_feature_cases: 100,
+      n_matched: 95,
+      n_selected: 1,
+    }
+    es.emit('agent', mockState({
+      interrupt_type: 'feature_statistics',
+      pending_feature_statistics: stats,
+    }))
+    expect(store.pendingFeatureStatistics).toEqual(stats)
+    expect(store.interrupt).toBe('feature_statistics')
+
+    // 确认/取消后后端返回清空后的状态
+    es.emit('agent', mockState({
+      interrupt_type: null,
+      pending_feature_statistics: null,
+    }))
+    expect(store.pendingFeatureStatistics).toBeNull()
+    expect(store.interrupt).toBeNull()
+  })
+
+  it('resetThread clears pending feature statistics', async () => {
+    const store = useAgentStore()
+    await store.ensureThread('project-1')
+    const es = MockEventSource.instances[0]
+
+    es.emit('agent', mockState({
+      pending_feature_statistics: { tool_call_id: 'tc-fs-1' } as never,
+    }))
+    expect(store.pendingFeatureStatistics).not.toBeNull()
+
+    store.resetThread()
+
+    expect(store.pendingFeatureStatistics).toBeNull()
+  })
+
   it('deleteThread removes the current thread and resets internal state', async () => {
     const store = useAgentStore()
     vi.spyOn(agentApi, 'createThread').mockResolvedValueOnce({ thread_id: 'thread-del' })

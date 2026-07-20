@@ -405,3 +405,58 @@ def test_publish_thinking_noops_without_runtime_context():
     from app.agent.nodes import _publish_thinking
 
     _publish_thinking("nonexistent-thread", "text", True)  # 不抛异常即通过
+
+
+def test_publish_agent_progress_publishes_payload():
+    """正常提取中：进度载荷经 bridge 发布。"""
+    import asyncio
+    from unittest.mock import AsyncMock
+    from app.agent import runtime as agent_runtime
+    from app.agent.nodes import _publish_agent_progress
+
+    loop = asyncio.new_event_loop()
+    bridge = MagicMock()
+    bridge.publish = AsyncMock()
+    agent_runtime.register("t-prog", loop=loop, bridge=bridge)
+    try:
+        _publish_agent_progress(
+            "t-prog", {"stage": "extracting", "current": 1, "total": 3}
+        )
+        loop.run_until_complete(asyncio.sleep(0.05))
+    finally:
+        agent_runtime.unregister("t-prog")
+        loop.close()
+
+    bridge.publish.assert_awaited_once_with(
+        "agent",
+        "t-prog",
+        {
+            "radiomics_progress": {"stage": "extracting", "current": 1, "total": 3},
+            "running": True,
+        },
+    )
+
+
+def test_publish_agent_progress_suppressed_after_cancel():
+    """/stop 置位 cancel_event 后不再推送进度：提取线程在当前病例收尾期间
+    继续推送 running:True 会把前端 busy 重新置回运行中，看起来"后台还在跑"。"""
+    import asyncio
+    from unittest.mock import AsyncMock
+    from app.agent import runtime as agent_runtime
+    from app.agent.nodes import _publish_agent_progress
+
+    loop = asyncio.new_event_loop()
+    bridge = MagicMock()
+    bridge.publish = AsyncMock()
+    ctx = agent_runtime.register("t-prog-cancel", loop=loop, bridge=bridge)
+    ctx.cancel_event.set()
+    try:
+        _publish_agent_progress(
+            "t-prog-cancel", {"stage": "extracting", "current": 2, "total": 3}
+        )
+        loop.run_until_complete(asyncio.sleep(0.05))
+    finally:
+        agent_runtime.unregister("t-prog-cancel")
+        loop.close()
+
+    bridge.publish.assert_not_called()
