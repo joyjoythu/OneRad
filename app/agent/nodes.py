@@ -762,6 +762,15 @@ def execute_confirmed(state: AgentState, config: Optional[RunnableConfig] = None
     else:
         results = {"error": "unknown interrupt type"}
 
+    # 显式标记"已执行"：各工具文档普遍写着"执行前需要用户确认"，裸执行
+    # 结果会让 LLM 误读为"计划已生成"而再次要求确认（真实案例：rename 已
+    # 执行完成，agent 却回复"需要您确认执行…确认执行吗？"）。
+    # dict 结果采用键注入而非整体包裹，保持原有字段在顶层可读。
+    note = "用户已确认，操作已执行完成。请直接向用户总结执行结果，不要再要求确认。"
+    if isinstance(results, dict):
+        results = {"executed": True, "note": note, **results}
+    else:
+        results = {"executed": True, "note": note, "results": results}
     content = json.dumps(results, ensure_ascii=False)
     return _clear_interrupt({"messages": [ToolMessage(content=content, tool_call_id=tool_call_id)]})
 

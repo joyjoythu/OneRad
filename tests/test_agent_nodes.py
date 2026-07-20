@@ -324,6 +324,30 @@ def test_human_review_confirm_clears_other_instruction():
     assert updates["other_instruction"] is None
 
 
+def test_execute_confirmed_marks_executed_results():
+    """执行完成后的 ToolMessage 必须显式标记 executed，
+    否则 LLM 会把执行结果误读为"计划已生成"而再次要求用户确认。"""
+    state = _make_state()
+    state.update({
+        "interrupt_type": "file_plan",
+        "confirmed": True,
+        "pending_plan": {
+            "tool_call_id": "tc1",
+            "plan": [{"action": "rename", "source": "a", "target": "b", "reason": "r"}],
+        },
+    })
+
+    with patch(
+        "app.agent.nodes.execute_plan",
+        return_value=[{"success": True, "action": "rename", "target": "b"}],
+    ):
+        result = execute_confirmed(state)
+
+    content = json.loads(result["messages"][0].content)
+    assert content["executed"] is True
+    assert content["results"] == [{"success": True, "action": "rename", "target": "b"}]
+
+
 def test_execute_confirmed_other_cancels_and_appends_instruction():
     """other 走取消路径：补取消 ToolMessage、追加 HumanMessage、清空中断状态。"""
     state = _make_state()

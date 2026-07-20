@@ -121,7 +121,9 @@ def test_graph_interrupts_on_file_plan(tmp_path):
     tool_msg = _find_result_tool_message(final["messages"], tool_call_id="call_plan")
     assert tool_msg is not None
     parsed = json.loads(tool_msg.content)
-    assert parsed[0]["success"] is True
+    # list 型执行结果（文件计划）被包裹为 {"executed": ..., "results": [...]}
+    assert parsed["executed"] is True
+    assert parsed["results"][0]["success"] is True
     assert (tmp_path / "new_folder").is_dir()
 
 
