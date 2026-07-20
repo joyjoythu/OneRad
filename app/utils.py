@@ -1,6 +1,7 @@
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import os
+import re
 
 import pandas as pd
 
@@ -155,6 +156,98 @@ def _load_clinical_for_analysis(path: str, label_col: Optional[str] = None) -> T
         id_col = "patient_id"
 
     return df, id_col, label_col
+
+
+_COMPOUND_ID_SEPARATORS = re.compile(r"[_\-]")
+
+
+def _norm_match_id(value) -> str:
+    """Normalize an ID for matching: strip, and collapse integral floats
+    like "1.0" to "1"."""
+    s = str(value).strip()
+    if s.endswith(".0"):
+        head = s[:-2]
+        if head.lstrip("-").isdigit():
+            return head
+    return s
+
+
+def resolve_id_matches(clinical_ids, feature_ids) -> Dict[str, Any]:
+    """Resolve clinical-table IDs to feature-matrix patient_ids.
+
+    Matching rules (conservative — rather miss than mismatch):
+
+    1. Exact match after normalization (``_norm_match_id``).
+    2. Compound IDs (containing ``_`` or ``-``) are split into parts; a
+       clinical ID part-matches when exactly one of its parts equals a
+       feature ID's full normalized form (or vice versa: a simple clinical
+       ID equals one part of a compound feature ID), the candidate was not
+       already taken by an exact match, and no other clinical ID claims it.
+    3. Multiple candidates or multiple claimants → the clinical ID is
+       listed in ``ambiguous`` and excluded, so callers can report it.
+
+    Args:
+        clinical_ids: IDs from the clinical table (any dtype).
+        feature_ids: patient_ids from the feature matrix (any dtype).
+
+    Returns:
+        ``{"mapping": {临床原始ID字符串: 特征侧归一化ID}, "ambiguous": [...]}``
+    """
+    def _parts(norm: str) -> Tuple[str, ...]:
+        return tuple(p for p in _COMPOUND_ID_SEPARATORS.split(norm) if p)
+
+    feat_records = []  # (norm, parts)
+    seen_norms = set()
+    for v in feature_ids:
+        norm = _norm_match_id(v)
+        if norm in seen_norms:
+            continue
+        seen_norms.add(norm)
+        feat_records.append((norm, set(_parts(norm))))
+
+    clin_records = []  # (raw, norm, parts)
+    for v in clinical_ids:
+        norm = _norm_match_id(v)
+        clin_records.append((str(v), norm, set(_parts(norm))))
+
+    # 1. 精确匹配
+    mapping: Dict[str, str] = {}
+    used_feat_norms = set()
+    remaining = []
+    for raw, norm, parts in clin_records:
+        if norm in seen_norms and norm not in used_feat_norms:
+            mapping[raw] = norm
+            used_feat_norms.add(norm)
+        else:
+            remaining.append((raw, norm, parts))
+
+    # 2. 部分匹配：候选唯一才接受
+    cand_of: Dict[str, str] = {}   # clin_raw -> 唯一候选 feat_norm
+    claims: Dict[str, List[str]] = {}  # feat_norm -> [clin_raw, ...]
+    ambiguous = []
+    for raw, norm, parts in remaining:
+        candidates = set()
+        for fnorm, fparts in feat_records:
+            if fnorm in used_feat_norms:
+                continue
+            if (len(parts) > 1 and fnorm in parts) or (
+                    len(fparts) > 1 and norm in fparts):
+                candidates.add(fnorm)
+        if len(candidates) == 1:
+            fnorm = next(iter(candidates))
+            cand_of[raw] = fnorm
+            claims.setdefault(fnorm, []).append(raw)
+        elif len(candidates) > 1:
+            ambiguous.append(raw)
+
+    # 3. 同一特征 ID 被多个临床 ID 认领 → 全部视为歧义
+    for raw, fnorm in cand_of.items():
+        if len(claims[fnorm]) > 1:
+            ambiguous.append(raw)
+        else:
+            mapping[raw] = fnorm
+
+    return {"mapping": mapping, "ambiguous": sorted(ambiguous)}
 
 
 def _merge_feature_clinical(

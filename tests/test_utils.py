@@ -187,3 +187,75 @@ def test_infer_covariates_empty_explicit_returns_empty():
         "Label": [0],
     })
     assert _infer_covariates(clinical_df, "patient_id", "Label", []) == []
+
+
+def test_resolve_id_matches_exact():
+    """归一化后完全相等的 ID 直接匹配（含 "1.0" -> "1" 归并）。"""
+    from app.utils import resolve_id_matches
+
+    res = resolve_id_matches(["1000130", "1.0"], ["1000130", 1, "other"])
+    assert res["mapping"] == {"1000130": "1000130", "1.0": "1"}
+    assert res["ambiguous"] == []
+
+
+def test_resolve_id_matches_compound_clinical_id_by_unique_part():
+    """临床复合 ID（住院号_拼音）按唯一命中的部分匹配到特征 ID。"""
+    from app.utils import resolve_id_matches
+
+    res = resolve_id_matches(
+        ["1008605_chenxiuzhen", "1028129_yyh"],
+        ["chenxiuzhen", "1028129", "other"],
+    )
+    assert res["mapping"] == {
+        "1008605_chenxiuzhen": "chenxiuzhen",
+        "1028129_yyh": "1028129",
+    }
+    assert res["ambiguous"] == []
+
+
+def test_resolve_id_matches_simple_clinical_id_against_compound_feature():
+    """反向：临床纯拼音 ID 匹配到特征侧复合 ID 的唯一部分。"""
+    from app.utils import resolve_id_matches
+
+    res = resolve_id_matches(["chenliujuan"], ["905692_chenliujuan"])
+    assert res["mapping"] == {"chenliujuan": "905692_chenliujuan"}
+    assert res["ambiguous"] == []
+
+
+def test_resolve_id_matches_ambiguous_when_multiple_parts_hit():
+    """复合 ID 的多个部分分别命中不同特征 ID 时无法判定，列为歧义。"""
+    from app.utils import resolve_id_matches
+
+    res = resolve_id_matches(["1061852_lhy"], ["1061852", "lhy"])
+    assert res["mapping"] == {}
+    assert res["ambiguous"] == ["1061852_lhy"]
+
+
+def test_resolve_id_matches_ambiguous_when_feature_claimed_twice():
+    """同一个特征 ID 被多个临床 ID 部分匹配认领时，全部列为歧义。"""
+    from app.utils import resolve_id_matches
+
+    res = resolve_id_matches(
+        ["1042296_yyy", "1042296_yyy22"], ["1042296"]
+    )
+    assert res["mapping"] == {}
+    assert res["ambiguous"] == ["1042296_yyy", "1042296_yyy22"]
+
+
+def test_resolve_id_matches_exact_wins_over_part_candidate():
+    """特征 ID 已被精确匹配占用后，不再作为其他复合 ID 的部分候选。"""
+    from app.utils import resolve_id_matches
+
+    res = resolve_id_matches(["1042296", "1042296_yyy"], ["1042296"])
+    assert res["mapping"] == {"1042296": "1042296"}
+    # 1042296_yyy 的唯一候选已被占用 → 不匹配，但也不是"多候选歧义"
+    assert res["ambiguous"] == []
+
+
+def test_resolve_id_matches_no_candidate_is_unmatched_not_ambiguous():
+    """完全无候选的临床 ID 不算歧义（临床表可含无影像患者）。"""
+    from app.utils import resolve_id_matches
+
+    res = resolve_id_matches(["nobody"], ["1000130"])
+    assert res["mapping"] == {}
+    assert res["ambiguous"] == []

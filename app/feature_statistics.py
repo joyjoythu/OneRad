@@ -25,7 +25,12 @@ from docx.shared import Pt
 from scipy import stats
 
 from app.radiomics_analysis import _load_table
-from app.utils import _load_feature_csv, _merge_feature_clinical
+from app.utils import (
+    _load_feature_csv,
+    _merge_feature_clinical,
+    _norm_match_id,
+    resolve_id_matches,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +117,9 @@ def inspect_statistics_inputs(
             return {"status": "error",
                     "message": f"指定的 ID 列 '{id_col}' 不存在",
                     "detected": detected}
-        if counts.get(id_col, 0) == 0:
+        if counts.get(id_col, 0) == 0 and not resolve_id_matches(
+                clinical_df[id_col].tolist(),
+                feature_df["patient_id"].tolist())["mapping"]:
             return {"status": "error",
                     "message": f"指定的 ID 列 '{id_col}' 与特征 patient_id 无任何匹配",
                     "detected": detected}
@@ -137,7 +144,12 @@ def inspect_statistics_inputs(
                 id_col = best
     if id_col:
         detected["id_col"] = id_col
-        detected["n_matched"] = counts.get(id_col, 0)
+        # 精确匹配之外，复合 ID（住院号_拼音）可按唯一部分匹配计入；
+        # 歧义 ID 被排除并记录，供上层向用户报告。
+        resolution = resolve_id_matches(
+            clinical_df[id_col].tolist(), feature_df["patient_id"].tolist())
+        detected["n_matched"] = len(resolution["mapping"])
+        detected["ambiguous_ids"] = resolution["ambiguous"]
 
     # 4. 标签列
     from app.radiomics_analysis import _binary_values, _binary_columns
@@ -217,7 +229,8 @@ def inspect_statistics_inputs(
         "selected_features": detected.get("selected_features", []),
         "output_dir": output_dir,
         "n_feature_cases": detected["n_feature_cases"],
-        "n_matched": counts.get(id_col, 0),
+        "n_matched": detected["n_matched"],
+        "ambiguous_ids": detected.get("ambiguous_ids", []),
         "n_selected": detected.get("n_selected", 0),
     }}
 
@@ -257,6 +270,19 @@ def run_feature_statistics(
 
     if id_col != "patient_id":
         clinical_df = clinical_df.rename(columns={id_col: "patient_id"})
+
+    # ID 解析：复合临床 ID（如 住院号_拼音）按唯一部分匹配到特征
+    # patient_id；歧义 ID 被排除并在结果中报告。合并前把两侧 ID 统一为
+    # 归一化键，避免 dtype（int/str）或格式差异导致漏配。
+    resolution = resolve_id_matches(
+        clinical_df["patient_id"].tolist(), feature_df["patient_id"].tolist())
+    id_map = resolution["mapping"]
+    ambiguous_ids = resolution["ambiguous"]
+    feature_df = feature_df.copy()
+    clinical_df = clinical_df.copy()
+    feature_df["patient_id"] = feature_df["patient_id"].map(_norm_match_id)
+    clinical_df["patient_id"] = clinical_df["patient_id"].map(
+        lambda v: id_map.get(str(v), _norm_match_id(v)))
 
     try:
         merged = _merge_feature_clinical(feature_df, clinical_df, id_col="patient_id")
@@ -348,14 +374,19 @@ def run_feature_statistics(
     docx_path = os.path.join(output_dir, "feature_statistics_report.docx")
     _write_word_report(results, idx_0.sum(), idx_1.sum(), docx_path)
 
+    message = (f"统计分析完成：共分析 {len(results)} 个特征，"
+               f"t检验显著 {sig_ttest} 个，Mann-Whitney U 显著 {sig_mwu} 个")
+    if ambiguous_ids:
+        message += (f"；{len(ambiguous_ids)} 例临床 ID 存在歧义未纳入: "
+                    + ", ".join(ambiguous_ids))
     return {
         "success": True,
-        "message": f"统计分析完成：共分析 {len(results)} 个特征，"
-                   f"t检验显著 {sig_ttest} 个，Mann-Whitney U 显著 {sig_mwu} 个",
+        "message": message,
         "n_features_analyzed": len(results),
         "n_significant_ttest": sig_ttest,
         "n_significant_mwu": sig_mwu,
         "n_missing_features": len(missing),
+        "ambiguous_ids": ambiguous_ids,
         "outputs": {"csv": csv_path, "docx": docx_path},
         "results": results,
     }

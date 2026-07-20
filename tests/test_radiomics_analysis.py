@@ -197,6 +197,58 @@ def test_inspect_float_ids_normalized(tmp_path):
     assert result["resolved"]["n_matched"] == 60
 
 
+def test_inspect_part_matches_compound_clinical_ids(tmp_path):
+    """临床复合 ID（住院号_拼音）按唯一部分匹配计入 n_matched；
+    多候选或多认领的歧义 ID 被排除并列入 ambiguous_ids。"""
+    rng = np.random.RandomState(42)
+    feat_ids = ["1000130", "chenxiuzhen", "1061852", "lhy", "1042296"]
+    label = np.array([0, 1, 0, 1, 1])
+    feat_df = pd.DataFrame({"patient_id": feat_ids})
+    for j in range(4):
+        feat_df[f"original_sig_{j}"] = rng.randn(5) + label * 1.5
+    feat = tmp_path / "features.csv"
+    feat_df.to_csv(feat, index=False)
+    clin_ids = [
+        "1000130",              # 精确匹配
+        "1008605_chenxiuzhen",  # 唯一部分命中 chenxiuzhen
+        "1061852_lhy",          # 两个部分均命中 → 歧义
+        "1042296_yyy",          # 与下一行同时认领 1042296 → 歧义
+        "1042296_yyy22",
+    ]
+    clin = tmp_path / "clinical.csv"
+    pd.DataFrame({"patient_id": clin_ids, "Label": label}).to_csv(clin, index=False)
+
+    result = inspect_analysis_inputs(
+        str(tmp_path), feature_csv=str(feat), clinical=str(clin))
+
+    assert result["status"] == "ready"
+    assert result["resolved"]["n_matched"] == 2
+    assert set(result["resolved"]["ambiguous_ids"]) == {
+        "1061852_lhy", "1042296_yyy", "1042296_yyy22"}
+
+
+def test_run_analysis_applies_part_match_mapping(tmp_path):
+    """run 阶段同样应用部分匹配：复合临床 ID 的样本应进入合并后的分析。"""
+    ids = [f"P{i:03d}" for i in range(60)]
+    feat = tmp_path / "features.csv"
+    label = _write_feature_csv(feat, ids)
+    clin = tmp_path / "clinical.csv"
+    compound_ids = [f"{1000000 + i}_P{i:03d}" for i in range(60)]
+    _write_clinical_csv(clin, compound_ids, label)
+
+    out_dir = str(tmp_path / "analysis_out")
+    result = run_radiomics_cv_analysis(
+        feature_csv=str(feat), clinical=str(clin), output_dir=out_dir,
+        id_col="patient_id", label_col="Label")
+
+    assert result["success"] is True
+    assert result["n_matched"] == 60
+    case_df = pd.read_csv(result["outputs"]["case_predictions"])
+    assert len(case_df) == 60
+    # 合并以特征侧 patient_id 为准
+    assert set(case_df["patient_id"]) == set(ids)
+
+
 def _make_run_inputs(tmp_path, n=60, seed=42):
     ids = [f"P{i:03d}" for i in range(n)]
     feat = tmp_path / "features.csv"
