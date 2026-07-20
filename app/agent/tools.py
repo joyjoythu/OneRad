@@ -149,6 +149,45 @@ def build_tools(
             ensure_ascii=False,
         )
 
+    @tool
+    def run_feature_statistics(feature_csv: str = "", clinical: str = "",
+                               id_col: str = "", label_col: str = "",
+                               selected_features_csv: str = "",
+                               output_dir: str = "") -> str:
+        """对 LASSO 筛选后的影像组学特征做分组统计分析（独立样本 t 检验 +
+        Mann-Whitney U 检验），生成 Word 表格。执行前需要用户确认。
+        所有参数均可留空：feature_csv 缺省用 radiomics_features/radiomics_features.csv，
+        clinical 缺省时自动在项目内搜索，selected_features_csv 缺省用
+        radiomics_analysis/selected_features.csv。"""
+        from app.feature_statistics import inspect_statistics_inputs
+        try:
+            if feature_csv:
+                feature_csv = str(sandbox.resolve(feature_csv, must_exist=False))
+            if clinical:
+                clinical = str(sandbox.resolve(clinical, must_exist=False))
+            if selected_features_csv:
+                selected_features_csv = str(sandbox.resolve(
+                    selected_features_csv, must_exist=False))
+            if output_dir:
+                output_dir = str(sandbox.resolve(output_dir, must_exist=False))
+        except ValueError:
+            return json.dumps({"status": "error", "message": "路径超出项目目录"})
+        report = inspect_statistics_inputs(
+            project_path,
+            feature_csv=feature_csv,
+            clinical=clinical,
+            id_col=id_col,
+            label_col=label_col,
+            selected_features_csv=selected_features_csv,
+            output_dir=output_dir,
+        )
+        if report.get("status") != "ready":
+            return json.dumps(report, ensure_ascii=False)
+        return json.dumps(
+            {"_pending_tool": "run_feature_statistics", "meta": report["resolved"]},
+            ensure_ascii=False,
+        )
+
     tools["list_directory"] = list_directory
     tools["find_files"] = find_files
     tools["get_file_info"] = get_file_info
@@ -159,6 +198,7 @@ def build_tools(
         tools["execute_python_script"] = execute_python_script
         tools["extract_radiomics_features"] = extract_radiomics_features
         tools["run_radiomics_analysis"] = run_radiomics_analysis
+        tools["run_feature_statistics"] = run_feature_statistics
 
     if allow_subagent and not readonly:
         @tool

@@ -313,6 +313,7 @@ def process_tool_calls(state: AgentState, config: Optional[RunnableConfig] = Non
             "discover_radiomics_pairs",
             "extract_radiomics_features",
             "run_radiomics_analysis",
+            "run_feature_statistics",
             "dispatch_subagent",
         } or (
             name == "execute_python_script"
@@ -415,6 +416,27 @@ def process_tool_calls(state: AgentState, config: Optional[RunnableConfig] = Non
                     continue
                 interrupt_type = "radiomics_analysis"
                 updates["pending_radiomics_analysis"] = {"tool_call_id": tool_call_id, **parsed["meta"]}
+            elif name == "run_feature_statistics":
+                if not isinstance(parsed, dict):
+                    updates["messages"].append(ToolMessage(
+                        content=json.dumps({"error": f"Tool {name} returned invalid payload"}),
+                        tool_call_id=tool_call_id,
+                    ))
+                    continue
+                if "_pending_tool" not in parsed:
+                    updates["messages"].append(ToolMessage(
+                        content=tool_result,
+                        tool_call_id=tool_call_id,
+                    ))
+                    continue
+                if not isinstance(parsed.get("meta"), dict):
+                    updates["messages"].append(ToolMessage(
+                        content=json.dumps({"error": f"Tool {name} returned invalid payload"}),
+                        tool_call_id=tool_call_id,
+                    ))
+                    continue
+                interrupt_type = "feature_statistics"
+                updates["pending_feature_statistics"] = {"tool_call_id": tool_call_id, **parsed["meta"]}
             # 需要确认的工具不在此处生成 ToolMessage，由 execute_confirmed 在用户确认/取消后统一补齐。
         else:
             updates["messages"].append(ToolMessage(content=tool_result, tool_call_id=tool_call_id))
@@ -449,6 +471,7 @@ def human_review(state: AgentState) -> dict:
         "radiomics_plan": state.get("pending_radiomics_plan"),
         "radiomics_execution": state.get("pending_radiomics_execution"),
         "radiomics_analysis": state.get("pending_radiomics_analysis"),
+        "feature_statistics": state.get("pending_feature_statistics"),
         "subagent": state.get("pending_subagent"),
     })
     if not isinstance(value, dict):
@@ -482,6 +505,7 @@ def _resolve_tool_call_id(state: AgentState) -> str:
         state.get("pending_radiomics_plan"),
         state.get("pending_radiomics_execution"),
         state.get("pending_radiomics_analysis"),
+        state.get("pending_feature_statistics"),
         state.get("pending_subagent"),
     ):
         if pending:
@@ -617,6 +641,18 @@ def execute_confirmed(state: AgentState, config: Optional[RunnableConfig] = None
                     tool_call_id=tool_call_id,
                 )]
             })
+    elif itype == "feature_statistics":
+        pending_feature_statistics = state.get("pending_feature_statistics")
+        tool_call_id = (pending_feature_statistics or {}).get("tool_call_id", "") or _resolve_tool_call_id(state)
+        if not pending_feature_statistics:
+            if not tool_call_id:
+                raise RuntimeError("Missing pending feature statistics and cannot resolve tool_call_id")
+            return _clear_interrupt({
+                "messages": [ToolMessage(
+                    content=json.dumps({"error": "Missing pending feature statistics"}),
+                    tool_call_id=tool_call_id,
+                )]
+            })
     elif itype == "subagent_dispatch":
         pending_subagent = state.get("pending_subagent")
         tool_call_id = (pending_subagent or {}).get("tool_call_id", "") or _resolve_tool_call_id(state)
@@ -654,6 +690,7 @@ def execute_confirmed(state: AgentState, config: Optional[RunnableConfig] = None
                 "radiomics_plan",
                 "radiomics_execution",
                 "radiomics_analysis",
+                "feature_statistics",
                 "file_plan",
                 "python_script",
                 "subagent_dispatch",
@@ -710,6 +747,11 @@ def execute_confirmed(state: AgentState, config: Optional[RunnableConfig] = None
             state["pending_radiomics_analysis"],
             state["project_path"],
             cancel_event=cancel_event,
+        )
+    elif itype == "feature_statistics":
+        results = _run_feature_statistics(
+            state["pending_feature_statistics"],
+            state["project_path"],
         )
     elif itype == "subagent_dispatch":
         results = _run_subagents(state["pending_subagent"], state, config, thread_id)
@@ -1142,6 +1184,50 @@ def _json_safe_radiomics_result(result: dict) -> dict:
     return summary
 
 
+def _run_feature_statistics(
+    pending: dict,
+    project_path: str,
+) -> dict:
+    """执行已确认的影像组学特征统计分析任务。"""
+    from app.feature_statistics import run_feature_statistics
+    sandbox = Sandbox(project_path)
+    try:
+        feature_csv = _resolve_within_project(sandbox, pending.get("feature_csv"))
+        clinical = _resolve_within_project(sandbox, pending.get("clinical"))
+        selected_features_csv = _resolve_within_project(
+            sandbox, pending.get("selected_features_csv"))
+        output_dir = _resolve_within_project(
+            sandbox,
+            pending.get("output_dir") or str(Path(project_path) / "feature_statistics"),
+        )
+        result = run_feature_statistics(
+            feature_csv=feature_csv,
+            clinical=clinical,
+            id_col=pending.get("id_col", "patient_id"),
+            label_col=pending.get("label_col", "label"),
+            selected_features=pending.get("selected_features", []),
+            output_dir=output_dir,
+        )
+        return _json_safe_stats_result(result)
+    except PathEscapeError:
+        return {"success": False, "error": "路径超出项目目录"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+def _json_safe_stats_result(result: dict) -> dict:
+    """统计分析结果转 JSON 安全摘要：剔除 results 大数组以节省上下文。"""
+    return {
+        "success": result.get("success", False),
+        "message": result.get("message", ""),
+        "n_features_analyzed": result.get("n_features_analyzed", 0),
+        "n_significant_ttest": result.get("n_significant_ttest", 0),
+        "n_significant_mwu": result.get("n_significant_mwu", 0),
+        "n_missing_features": result.get("n_missing_features", 0),
+        "outputs": result.get("outputs", {}),
+    }
+
+
 def _clear_interrupt(updates: dict) -> dict:
     """清空中断相关状态字段。"""
     updates.update({
@@ -1152,6 +1238,7 @@ def _clear_interrupt(updates: dict) -> dict:
         "pending_radiomics_plan": None,
         "pending_radiomics_execution": None,
         "pending_radiomics_analysis": None,
+        "pending_feature_statistics": None,
         "script_risk_level": None,
         "confirmed": None,
         "other_instruction": None,
