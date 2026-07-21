@@ -221,6 +221,13 @@
               浏览
             </el-button>
           </div>
+          <div
+            class="path-hint"
+            :class="{ 'path-hint--warning': pathHasNonAscii }"
+            data-testid="project-path-hint"
+          >
+            请勿使用中文路径：pyradiomics 在中文路径下无法正常工作。
+          </div>
         </el-form-item>
         <el-form-item label="描述" prop="description">
           <el-input
@@ -287,9 +294,24 @@ const form = reactive({
   description: '',
 })
 
+/** 路径含中文等非 ASCII 字符时高亮提示（pyradiomics 不兼容中文路径）。 */
+const pathHasNonAscii = computed(() => /[^\x00-\x7F]/.test(form.path))
+
 const rules = reactive<FormRules>({
   name: [{ required: true, message: '请输入项目名称', trigger: 'blur' }],
-  path: [{ required: true, message: '请输入项目路径', trigger: 'blur' }],
+  path: [
+    { required: true, message: '请输入项目路径', trigger: 'blur' },
+    {
+      validator: (_rule, value: string, callback) => {
+        if (value && /[^\x00-\x7F]/.test(value)) {
+          callback(new Error('路径不能包含中文等非 ASCII 字符：pyradiomics 无法正常工作'))
+        } else {
+          callback()
+        }
+      },
+      trigger: 'blur',
+    },
+  ],
 })
 
 const PINNED_PROJECTS_KEY = 'onerad:sidebar:pinnedProjects'
@@ -676,6 +698,19 @@ function handleProjectPathSelected(path: string): void {
 
 .path-input-row .el-input {
   flex: 1;
+}
+
+.path-hint {
+  width: 100%;
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--app-text-muted);
+}
+
+.path-hint--warning {
+  color: var(--el-color-warning);
+  font-weight: 500;
 }
 
 .project-tree-items {

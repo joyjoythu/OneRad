@@ -153,6 +153,26 @@ def test_create_project_rejects_path_traversal(client, temp_db):
     assert "Invalid project path" in response.json()["detail"]
 
 
+def test_create_project_rejects_non_ascii_relative_path(client, temp_db):
+    """中文等含非 ASCII 字符的相对路径应被拒绝（pyradiomics 不兼容）。"""
+    response = client.post(
+        "/api/projects",
+        json={"name": "cn", "path": "中文项目", "description": "test"},
+    )
+    assert response.status_code == 400
+    assert "ASCII" in response.json()["detail"]
+
+
+def test_create_project_rejects_non_ascii_absolute_path(client, temp_db):
+    _store, root = temp_db
+    response = client.post(
+        "/api/projects",
+        json={"name": "cn-abs", "path": str(root / "中文目录" / "proj"), "description": "test"},
+    )
+    assert response.status_code == 400
+    assert "ASCII" in response.json()["detail"]
+
+
 def test_create_project_accepts_absolute_path(client, temp_db):
     _store, root = temp_db
     # Use a directory outside ONERAD_DATA_DIR to prove absolute paths are accepted.

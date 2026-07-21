@@ -27,6 +27,7 @@ def _resolve_project_path(path: str) -> Path:
     resolved relative to the data directory (ONERAD_DATA_DIR env var, read
     lazily at call time); absolute paths are accepted as-is, allowing
     projects to live outside the default data directory.
+    解析后的完整路径必须为纯 ASCII：pyradiomics 在中文路径下无法正常工作。
     """
     parsed = Path(path)
     if ".." in parsed.parts:
@@ -38,6 +39,12 @@ def _resolve_project_path(path: str) -> Path:
         resolved = parsed.resolve()
     else:
         resolved = (_data_dir() / parsed).resolve()
+
+    if not str(resolved).isascii():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="项目路径不能包含中文等非 ASCII 字符：pyradiomics 在中文路径下无法正常工作",
+        )
 
     return resolved
 
