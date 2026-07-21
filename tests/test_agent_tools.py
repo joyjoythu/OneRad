@@ -26,7 +26,8 @@ def test_list_directory_returns_pending(tmp_path):
     assert data["_pending_tool"] == "list_directory"
 
 
-def test_execute_python_script_rejects_high_risk(tmp_path):
+def test_execute_python_script_high_risk_returns_pending(tmp_path):
+    """高危脚本不再拒绝，转为带高危标记的确认请求。"""
     fake_llm = MagicMock()
     tools = build_tools(str(tmp_path), fake_llm)
     code = "import os\nos.system('ls')"
@@ -34,8 +35,8 @@ def test_execute_python_script_rejects_high_risk(tmp_path):
         {"description": "high risk test", "code": code}
     )
     data = json.loads(result)
-    assert data["error"] == "脚本被判定为高风险，拒绝执行"
-    assert data["risk_level"] == "high"
+    assert data["_pending_tool"] == "execute_python_script"
+    assert data["script"]["risk_level"] == "high"
 
 
 def test_execute_python_script_returns_medium_pending(tmp_path):

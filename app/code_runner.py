@@ -22,15 +22,8 @@ HIGH_RISK_MODULES = {
     "subprocess",
     "paramiko",
     "ctypes",
-    "os",
-    "shutil",
-    "pathlib",
-    "importlib",
-    "sys",
-    "builtins",
-    "asyncio",
     "multiprocessing",
-    "concurrent",
+    "builtins",
     "_winapi",
     "nt",
 }
@@ -82,20 +75,24 @@ DANGEROUS_NAMES = {
     "exec",
     "eval",
     "rmtree",
-    "remove",
-    "unlink",
     "__import__",
-    "getattr",
     "execv",
     "execve",
     "spawnv",
     "spawnve",
     "create_subprocess_exec",
     "create_subprocess_shell",
-    "Process",
     "CreateProcess",
     "load_module",
     "exec_module",
+}
+
+# 常见但风险有限的名称：只把脚本升为中危（需确认 + 沙箱头），不直接判高危。
+MEDIUM_RISK_NAMES = {
+    "remove",
+    "unlink",
+    "getattr",
+    "Process",
     "run",
 }
 
@@ -134,6 +131,10 @@ def classify_risk(code: str) -> str:
             for alias in node.names:
                 local = alias.asname or alias.name
                 import_map[local] = module
+                # from os import system / from shutil import rmtree as rm 等
+                # 直接引入危险函数，无论是否调用都视为高危。
+                if alias.name in DANGEROUS_NAMES:
+                    return "high"
             top = module.split(".")[0]
             if top in HIGH_RISK_MODULES:
                 return "high"
@@ -142,12 +143,10 @@ def classify_risk(code: str) -> str:
         elif isinstance(node, ast.Call):
             func = node.func
             if isinstance(func, ast.Name):
-                if func.id in {"exec", "eval"}:
-                    return "high"
-                if func.id == "__import__":
-                    return "high"
                 if func.id in DANGEROUS_NAMES:
                     return "high"
+                if func.id in MEDIUM_RISK_NAMES:
+                    risk = "medium"
                 source = import_map.get(func.id)
                 if source:
                     top = source.split(".")[0]
@@ -156,17 +155,22 @@ def classify_risk(code: str) -> str:
             elif isinstance(func, ast.Attribute):
                 if func.attr in DANGEROUS_NAMES:
                     return "high"
+                if func.attr in MEDIUM_RISK_NAMES:
+                    risk = "medium"
         elif isinstance(node, ast.Attribute):
             if node.attr in DANGEROUS_NAMES:
                 return "high"
+            if node.attr in MEDIUM_RISK_NAMES:
+                risk = "medium"
 
-    # 检测 .. 父目录引用、Unix 绝对路径与 Windows 绝对路径（高危路径特征优先于写操作）
+    # .. 父目录引用、Unix/Windows 绝对路径：中危处理。中危脚本运行时注入
+    # 沙箱头，越界 open() 会在运行时被拦截，无需静态拒绝。
     if re.search(r"['\"]/[^'\"\n]+['\"]", code):
-        return "high"
+        risk = "medium"
     if re.search(PATH_TRAVERSAL_PATTERN, code):
-        return "high"
+        risk = "medium"
     if re.search(WINDOWS_ABS_PATH_PATTERN, code):
-        return "high"
+        risk = "medium"
 
     # 检测写操作
     for pat in MEDIUM_RISK_WRITE_PATTERNS:
@@ -268,9 +272,13 @@ del _b, _io, _os, _PROJECT_ROOT, _orig_open, _io_open, _make_safe_open, _safe_op
 
 
 def execute_script_if_safe(meta: Dict[str, Any], project_path: str) -> Dict[str, Any]:
+    """执行经用户确认后的脚本。
+
+    所有等级（含 high）在到达本函数前均已通过用户确认；high 不再拒绝执行。
+    medium 脚本注入沙箱头（best-effort 限制 open() 越界）；high 涉及网络/
+    子进程等沙箱头无法覆盖的向量，确认即授权，直接运行。
+    """
     risk_level = meta.get("risk_level")
-    if risk_level == "high":
-        return {"error": "脚本被判定为高风险，拒绝执行", "risk_level": "high", "success": False}
 
     script_path = Path(meta["script_path"])
 

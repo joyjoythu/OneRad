@@ -90,40 +90,62 @@ def test_classify_syntax_error_is_high():
     assert classify_risk(code) == "high"
 
 
-def test_execute_script_if_safe_blocks_high_risk():
-    meta = {"risk_level": "high", "script_path": "/tmp/fake.py"}
-    result = execute_script_if_safe(meta, "/tmp")
-    assert result["success"] is False
-    assert result["risk_level"] == "high"
-    assert "拒绝执行" in result["error"]
+def test_execute_script_if_safe_runs_high_risk_after_confirmation(tmp_path, monkeypatch):
+    """高危脚本到达执行层前已经过用户确认，不再被拒绝。"""
+    monkeypatch.setattr(
+        "app.code_runner.find_venv_python", lambda project_path: Path(sys.executable)
+    )
+    script = tmp_path / "agent_scripts" / "high.py"
+    script.parent.mkdir()
+    script.write_text("print('high ran')", encoding="utf-8")
+    meta = {"risk_level": "high", "script_path": str(script)}
+    result = execute_script_if_safe(meta, str(tmp_path))
+    assert result["success"] is True
+    assert "high ran" in result["stdout"]
 
 
-def test_classify_pathlib_is_high():
-    assert classify_risk("import pathlib") == "high"
-    assert classify_risk("from pathlib import Path") == "high"
+def test_classify_pathlib_is_medium():
+    assert classify_risk("import pathlib") == "medium"
+    assert classify_risk("from pathlib import Path") == "medium"
 
 
-def test_classify_parent_reference_is_high():
-    assert classify_risk("open('../outside.txt', 'w')") == "high"
-    assert classify_risk("with open('sub/../../escape.txt') as f: pass") == "high"
+def test_classify_common_modules_are_medium():
+    """os/shutil/sys/asyncio 等常见模块误伤率高，降为中危。"""
+    assert classify_risk("import os") == "medium"
+    assert classify_risk("import shutil") == "medium"
+    assert classify_risk("import sys") == "medium"
+    assert classify_risk("import asyncio") == "medium"
 
 
-def test_classify_windows_absolute_path_is_high():
-    assert classify_risk(r"open('C:\\Users\\x.txt', 'w')") == "high"
-    assert classify_risk(r"open(r'C:\\Users\\x.txt', 'w')") == "high"
-    assert classify_risk("open('C:/Users/x.txt', 'w')") == "high"
+def test_classify_generic_attribute_names_are_medium():
+    """.run()/.remove()/getattr 等泛化属性调用只升中危。"""
+    assert classify_risk("result.run()") == "medium"
+    assert classify_risk("os.remove('a.txt')") == "medium"
+    assert classify_risk("getattr(obj, 'x')") == "medium"
+
+
+def test_classify_parent_reference_is_medium():
+    assert classify_risk("open('../outside.txt', 'w')") == "medium"
+    assert classify_risk("with open('sub/../../escape.txt') as f: pass") == "medium"
+
+
+def test_classify_windows_absolute_path_is_medium():
+    assert classify_risk(r"open('C:\\Users\\x.txt', 'w')") == "medium"
+    assert classify_risk(r"open(r'C:\\Users\\x.txt', 'w')") == "medium"
+    assert classify_risk("open('C:/Users/x.txt', 'w')") == "medium"
 
 
 def test_run_script_blocks_path_traversal(tmp_path, monkeypatch):
+    """含 .. 的脚本判中危，沙箱头在运行时拦截越界写入。"""
     monkeypatch.setattr(
         "app.code_runner.find_venv_python", lambda project_path: Path(sys.executable)
     )
     code = "open('../outside.txt', 'w').write('x')"
     meta = prepare_script(code, "escape", str(tmp_path))
-    assert meta["risk_level"] == "high"
+    assert meta["risk_level"] == "medium"
     result = execute_script_if_safe(meta, str(tmp_path))
     assert result["success"] is False
-    assert "拒绝执行" in result["error"]
+    assert "PermissionError" in result["stderr"]
 
 
 def test_run_script_allows_in_project_write(tmp_path, monkeypatch):
@@ -194,17 +216,17 @@ def test_low_risk_script_runs_without_header(tmp_path, monkeypatch):
     assert script_path.read_text(encoding="utf-8") == original_content
 
 
-def test_run_script_blocks_dynamic_pathlib(tmp_path, monkeypatch):
+def test_run_script_dynamic_import_runs_after_confirmation(tmp_path, monkeypatch):
+    """动态 __import__ 仍判高危，但确认后正常执行（不再拒绝）。"""
     monkeypatch.setattr(
         "app.code_runner.find_venv_python", lambda project_path: Path(sys.executable)
     )
-    code = "__import__('pathlib').Path('..').resolve()"
+    code = "__import__('pathlib').Path('..').resolve()\nprint('dynamic ok')"
     meta = prepare_script(code, "dynamic pathlib", str(tmp_path))
-    # 动态 __import__ 会被分类为高危，直接拒绝
     assert meta["risk_level"] == "high"
     result = execute_script_if_safe(meta, str(tmp_path))
-    assert result["success"] is False
-    assert "拒绝执行" in result["error"]
+    assert result["success"] is True
+    assert "dynamic ok" in result["stdout"]
 
 
 def test_classify_getattr_call_is_high():
