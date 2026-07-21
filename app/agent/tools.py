@@ -96,7 +96,11 @@ def build_tools(
 
     @tool
     def discover_radiomics_pairs() -> str:
-        """扫描项目下的 images/ 和 masks/，发现图像与掩膜的匹配计划。执行前需要用户确认。"""
+        """扫描项目下的 images/ 和 masks/，发现图像与掩膜的匹配计划。执行前需要用户确认。
+        返回中的 existing_features 报告已有特征文件的覆盖情况（none/partial/
+        complete 及病例数）：complete 时必须先用 ask_user_choice 询问用户是
+        重新提取还是直接基于现有特征分析；partial 时按断点续提继续提取剩余
+        病例，无需询问。"""
         result = discover_pairs(project_path)
         if not result.get("success", True):
             return json.dumps(result)

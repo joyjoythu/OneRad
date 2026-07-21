@@ -14,6 +14,7 @@ Reason about a radiomics study as a traceable sequence:
    - Always ask the user whether to adjust `resampledPixelSpacing`, reporting the current value, the measured distribution, and the suggested value. Never change it on your own.
    - If the user wants a different value, apply it with `update_yaml` on the project YAML before extraction. Changing the YAML invalidates cached h5 results, so affected cases re-extract automatically.
 3. Extract reproducible radiomic features with the project YAML configuration.
+   - Check `existing_features` from the pairing discovery first. If `complete`, always ask the user with `ask_user_choice` whether to re-extract (and why) or to proceed to the analysis on the existing features — never start extraction on your own. If `partial`, continue extraction for the remaining cases (h5 cache resume) without asking.
 4. Inspect the clinical table after extraction and before analysis; identify the patient ID, binary outcome, and requested covariates. Reconcile identifiers and report unmatched or ambiguous cases before analysis.
 5. Run the configured feature selection and cross-validated model analysis.
 6. Interpret performance, calibration, decision curves, limitations, and generated artifacts without overstating evidence.

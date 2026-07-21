@@ -150,3 +150,54 @@ def test_project_path_validation(tmp_path):
     result = discover_pairs(str(file_path))
     assert result["success"] is False
     assert "not a directory" in result["message"].lower()
+
+
+def _make_pairs_project(tmp_path, n_cases):
+    for i in range(n_cases):
+        case = f"case_{i:03d}"
+        (tmp_path / "images" / case).mkdir(parents=True, exist_ok=True)
+        (tmp_path / "masks" / case).mkdir(parents=True, exist_ok=True)
+        (tmp_path / "images" / case / "T1.nii.gz").write_text("img")
+        (tmp_path / "masks" / case / "T1.nii.gz").write_text("mask")
+
+
+def _make_features_csv(tmp_path, n_rows):
+    out_dir = tmp_path / "radiomics_features"
+    out_dir.mkdir(exist_ok=True)
+    lines = ["ID,f1,f2"] + [f"case_{i:03d},0.1,0.2" for i in range(n_rows)]
+    (out_dir / "radiomics_features.csv").write_text("\n".join(lines))
+
+
+def test_existing_features_none_when_no_csv(tmp_path):
+    _make_pairs_project(tmp_path, 2)
+    result = discover_pairs(str(tmp_path))
+    assert result["existing_features"]["status"] == "none"
+    assert result["existing_features"]["n_cases"] == 0
+    assert result["existing_features"]["n_paired"] == 2
+
+
+def test_existing_features_complete(tmp_path):
+    _make_pairs_project(tmp_path, 2)
+    _make_features_csv(tmp_path, 2)
+    result = discover_pairs(str(tmp_path))
+    features = result["existing_features"]
+    assert features["status"] == "complete"
+    assert features["n_cases"] == 2
+    assert features["path"] == "radiomics_features/radiomics_features.csv"
+
+
+def test_existing_features_partial(tmp_path):
+    _make_pairs_project(tmp_path, 3)
+    _make_features_csv(tmp_path, 1)
+    result = discover_pairs(str(tmp_path))
+    assert result["existing_features"]["status"] == "partial"
+    assert result["existing_features"]["n_cases"] == 1
+
+
+def test_existing_features_corrupt_csv_treated_as_none(tmp_path):
+    _make_pairs_project(tmp_path, 1)
+    out_dir = tmp_path / "radiomics_features"
+    out_dir.mkdir()
+    (out_dir / "radiomics_features.csv").write_bytes(b"\xff\xfe\x00bad")
+    result = discover_pairs(str(tmp_path))
+    assert result["existing_features"]["status"] == "none"

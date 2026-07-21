@@ -1,3 +1,4 @@
+import csv
 import re
 from pathlib import Path
 from typing import Dict, Any, List, Optional
@@ -57,6 +58,29 @@ def _token_match(image_base: str, mask_base: str) -> bool:
     return bool(set(_tokens(image_base)) & set(_tokens(mask_base)))
 
 
+def _existing_features_status(project: Path, n_paired: int) -> Dict[str, Any]:
+    """检测项目下已提取的特征文件，供主 agent 决定续提还是询问用户。
+
+    对比基准为高/中置信度配对数（可提取病例数）：
+    none（无特征文件）/ partial（覆盖一部分）/ complete（覆盖全部配对）。
+    """
+    csv_path = project / "radiomics_features" / "radiomics_features.csv"
+    if not csv_path.exists():
+        return {"status": "none", "n_cases": 0, "n_paired": n_paired}
+    try:
+        with open(csv_path, "r", encoding="utf-8", newline="") as f:
+            n_cases = max(sum(1 for _ in csv.reader(f)) - 1, 0)
+    except (OSError, csv.Error, UnicodeDecodeError):
+        return {"status": "none", "n_cases": 0, "n_paired": n_paired}
+    status = "complete" if n_cases >= n_paired > 0 else "partial"
+    return {
+        "status": status,
+        "n_cases": n_cases,
+        "n_paired": n_paired,
+        "path": "radiomics_features/radiomics_features.csv",
+    }
+
+
 def discover_pairs(project_path: str) -> Dict[str, Any]:
     """Discover image/mask pairs under *project_path*.
 
@@ -64,8 +88,9 @@ def discover_pairs(project_path: str) -> Dict[str, Any]:
     matches them with high, medium or low confidence.
 
     Returns a dict with keys ``success``, ``images_found``, ``masks_found``,
-    ``pairs`` (with ``high``, ``medium``, ``low``), ``unmatched_images`` and
-    ``unmatched_masks``.
+    ``pairs`` (with ``high``, ``medium``, ``low``), ``unmatched_images``,
+    ``unmatched_masks`` and ``existing_features`` (status of previously
+    extracted features: none / partial / complete).
     """
     project = Path(project_path).resolve()
     if not project.exists():
@@ -185,4 +210,7 @@ def discover_pairs(project_path: str) -> Dict[str, Any]:
         },
         "unmatched_images": unmatched_images,
         "unmatched_masks": [_rel_to_project(mask_path) for mask_path in available_masks],
+        "existing_features": _existing_features_status(
+            project, len(high_pairs) + len(medium_pairs)
+        ),
     }
