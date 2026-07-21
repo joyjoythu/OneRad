@@ -20,6 +20,12 @@
         aria-atomic="false"
         @scroll.passive="handleMessagesScroll"
       >
+        <div v-if="agentStore.messages.length === 0" class="chat-welcome">
+          <AgentAvatar class="chat-welcome-avatar" />
+          <div class="chat-welcome-text">
+            让 OneRad 在 {{ projectStore.currentProject?.name }} 下开始分析
+          </div>
+        </div>
         <div
           v-for="(message, index) in agentStore.messages"
           :key="index"
@@ -973,6 +979,34 @@ defineExpose({ clearInput })
 .chat-empty-tip {
   font-size: 1rem;
   color: var(--app-text-muted);
+}
+
+/* 新对话欢迎区：放大头像 + 引导文案（选中项目但无消息时显示） */
+.chat-welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.875rem;
+  min-height: 60%;
+}
+
+/* 提权覆盖 AgentAvatar 内部固定尺寸（scoped 样式同优先级，顺序不可靠） */
+.chat-welcome .chat-welcome-avatar {
+  width: 72px;
+  height: 72px;
+}
+
+.chat-welcome .chat-welcome-avatar :deep(svg) {
+  width: 50px;
+  height: 50px;
+}
+
+.chat-welcome-text {
+  font-family: Georgia, 'Times New Roman', 'Songti SC', 'SimSun', serif;
+  font-size: 1.25rem;
+  letter-spacing: 0.04em;
+  color: var(--app-text);
 }
 
 .message-list {
