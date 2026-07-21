@@ -17,6 +17,7 @@ from langchain_core.messages import (
 from langgraph.errors import InvalidUpdateError
 from langgraph.types import Command
 from pydantic import BaseModel, ConfigDict
+from starlette.concurrency import run_in_threadpool
 from starlette.responses import StreamingResponse
 
 from app.agent import build_initial_state, create_agent_graph
@@ -909,18 +910,40 @@ async def thread_events(
     # 快照会让前端把过期中间状态逐个重放（长历史时界面从头滚动加载）。
     # 仅显式传 last_event_id（或 EventSource 自动重连携带 Last-Event-ID 头）
     # 时才回放其后的历史事件。
+    fresh_subscribe = last_event_id is None
     if last_event_id is None:
         header = request.headers.get("last-event-id")
         if header and header.isdigit():
             last_event_id = int(header)
+            fresh_subscribe = False
     if last_event_id is None:
         last_event_id = await bridge.next_event_id("agent", thread_id) - 1
+
+    # 页面刷新后的全新订阅不回放历史，但影像组学提取进度只走旁路事件、
+    # 不在 state 快照里：线程仍在运行时补偿推送最近一次进度，否则前端
+    # 进度条在刷新后消失。补偿事件不带 id 行：EventSource 的 Last-Event-ID
+    # 保持未设置，浏览器自动重连时重新走本补偿逻辑而非回放全部历史。
+    catch_up_data: Optional[str] = None
+    if fresh_subscribe and thread_id in request.app.state.active_agent_streams:
+        latest = await run_in_threadpool(
+            bridge.store.get_latest_sse_event_containing,
+            "agent", thread_id, "radiomics_progress",
+        )
+        if latest:
+            try:
+                parsed = json.loads(latest["data"])
+            except (TypeError, json.JSONDecodeError):
+                parsed = None
+            if isinstance(parsed, dict) and parsed.get("radiomics_progress"):
+                catch_up_data = latest["data"]
 
     async def event_generator():
         queue: asyncio.Queue = await bridge.subscribe(
             "agent", thread_id, last_event_id=last_event_id
         )
         try:
+            if catch_up_data is not None:
+                yield f"event: agent\ndata: {catch_up_data}\n\n"
             while True:
                 try:
                     event = await asyncio.wait_for(queue.get(), timeout=1.0)

@@ -506,6 +506,27 @@ class ProjectStore:
         finally:
             conn.close()
 
+    def get_latest_sse_event_containing(
+        self, scope: str, scope_id: str, needle: str
+    ) -> Optional[Dict[str, Any]]:
+        """返回 data 中包含指定键名的最近一条事件（倒序取一），无则 None。"""
+        conn = self._connect()
+        try:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                """
+                SELECT scope, scope_id, event_id, data, created_at
+                FROM sse_events
+                WHERE scope = ? AND scope_id = ? AND data LIKE ?
+                ORDER BY event_id DESC
+                LIMIT 1
+                """,
+                (scope, scope_id, f'%"{needle}"%'),
+            ).fetchone()
+            return dict(row) if row else None
+        finally:
+            conn.close()
+
     def get_max_event_id(self, scope: str, scope_id: str) -> int:
         conn = self._connect()
         try:

@@ -511,6 +511,56 @@ def test_events_stream_replays_with_last_event_id_header(client, app):
     assert '"done"' in body
 
 
+def test_events_stream_catches_up_radiomics_progress_on_fresh_subscribe(client, app):
+    """页面刷新后的全新订阅（无 last_event_id）默认不回放历史，但线程仍在
+    运行时需补偿推送最近一次影像组学提取进度——该数据只走旁路事件、不在
+    state 快照里，否则前端进度条在刷新后消失。"""
+    import threading
+
+    project = _create_project(client)
+    thread_id = _create_thread(client, project["id"])["thread_id"]
+
+    progress = {
+        "radiomics_progress": {
+            "stage": "extracting", "current": 3, "total": 10, "patient_id": "p3",
+        },
+        "running": True,
+    }
+    asyncio.run(app.state.event_bridge.publish("agent", thread_id, progress))
+
+    app.state.active_agent_streams.add(thread_id)
+    # 兜底结束流：无论补偿事件是否存在，1.5s 后标记流结束让生成器退出，
+    # 避免测试在事件缺失时挂死。
+    threading.Timer(
+        1.5, lambda: app.state.active_agent_streams.discard(thread_id)
+    ).start()
+    with client.stream("GET", f"/api/agent/threads/{thread_id}/events") as response:
+        assert response.status_code == 200
+        body = "".join(response.iter_text())
+
+    assert '"radiomics_progress"' in body
+    assert '"current": 3' in body
+
+
+def test_events_stream_no_progress_catch_up_when_stream_inactive(client, app):
+    """线程未在运行时，全新订阅不补偿历史进度事件（保持 live-only 语义）。"""
+    project = _create_project(client)
+    thread_id = _create_thread(client, project["id"])["thread_id"]
+
+    asyncio.run(app.state.event_bridge.publish(
+        "agent", thread_id,
+        {"radiomics_progress": {"stage": "extracting", "current": 3, "total": 10},
+         "running": True},
+    ))
+
+    with client.stream("GET", f"/api/agent/threads/{thread_id}/events") as response:
+        assert response.status_code == 200
+        body = "".join(response.iter_text())
+
+    assert '"radiomics_progress"' not in body
+    assert "event: agent_end" in body
+
+
 def test_send_message_conflict_while_streaming(client, app):
     """流式运行进行中发送新消息应返回 409，避免并发运行破坏消息历史。"""
     project = _create_project(client)
