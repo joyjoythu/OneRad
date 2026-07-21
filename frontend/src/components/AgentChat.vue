@@ -223,18 +223,15 @@
       <ApprovalPanel />
 
       <div
+        v-if="statusText"
         class="chat-status"
-        :class="{ 'chat-status--idle': !statusText }"
         role="status"
       >
-        <template v-if="statusText">
-          <el-icon class="is-loading"><Loading /></el-icon>
-          <span>{{ statusText }}</span>
-        </template>
+        <el-icon class="is-loading"><Loading /></el-icon>
+        <span>{{ statusText }}</span>
       </div>
-      <div class="chat-progress">
+      <div v-if="extractionPercent !== null" class="chat-progress">
         <el-progress
-          v-if="extractionPercent !== null"
           :percentage="extractionPercent"
           :stroke-width="6"
         />
@@ -1388,8 +1385,8 @@ defineExpose({ clearInput })
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  /* 固定占位高度：状态栏出现/消失不再改变消息列表高度，
-     避免贴底滚动时内容被挤压回弹。 */
+  /* 仅在存在状态文本时渲染（v-if），无内容不占位，
+     聊天内容可直接显示到输入框正上方。 */
   height: calc(0.875rem * 1.5 + 0.5rem);
   padding: 0.25rem 0.5rem;
   box-sizing: border-box;
@@ -1399,7 +1396,7 @@ defineExpose({ clearInput })
 }
 
 .chat-progress {
-  /* 与状态栏同理：固定占位高度，进度条出现/消失不改变布局 */
+  /* 与状态栏同理：仅在提取进行中渲染（v-if），无内容不占位 */
   height: calc(6px + 0.5rem);
   padding: 0.25rem 0.5rem;
   box-sizing: border-box;
@@ -1407,10 +1404,6 @@ defineExpose({ clearInput })
 
 .chat-progress .el-progress {
   width: 100%;
-}
-
-.chat-status--idle {
-  visibility: hidden;
 }
 
 .input-container {

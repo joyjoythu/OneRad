@@ -399,7 +399,7 @@ describe('AgentChat', () => {
     expect(wrapper.find('[aria-label="停止"]').exists()).toBe(false)
   })
 
-  it('keeps the status bar mounted but hidden when idle to avoid layout shift', async () => {
+  it('does not render the status bar when idle', async () => {
     const projectStore = useProjectStore()
     projectStore.currentProject = mockProject()
 
@@ -411,12 +411,9 @@ describe('AgentChat', () => {
     const wrapper = setupWrapper()
     await flushPromises()
 
-    // 状态栏必须常驻占位（仅隐藏），否则出现/消失会改变消息列表高度，
-    // 导致贴底滚动时内容被挤压回弹。
-    const status = wrapper.find('.chat-status')
-    expect(status.exists()).toBe(true)
-    expect(status.classes()).toContain('chat-status--idle')
-    expect(status.text()).not.toContain('正在思考')
+    // 状态栏无内容时不渲染不占位：聊天内容可直接显示到输入框正上方。
+    expect(wrapper.find('.chat-status').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('正在思考')
   })
 
   it('shows a thinking indicator while the agent is busy', async () => {
@@ -474,7 +471,7 @@ describe('AgentChat', () => {
     expect(wrapper.find('.el-progress__text').text()).toContain('100%')
   })
 
-  it('keeps the progress strip mounted but empty when not extracting', async () => {
+  it('does not render the progress strip when not extracting', async () => {
     const projectStore = useProjectStore()
     projectStore.currentProject = mockProject()
 
@@ -486,8 +483,8 @@ describe('AgentChat', () => {
     const wrapper = setupWrapper()
     await flushPromises()
 
-    // 进度条容器常驻占位（避免布局抖动），但无提取进度时不渲染进度条
-    expect(wrapper.find('.chat-progress').exists()).toBe(true)
+    // 进度条无提取进度时整体不渲染不占位
+    expect(wrapper.find('.chat-progress').exists()).toBe(false)
     expect(wrapper.find('.el-progress').exists()).toBe(false)
   })
 
