@@ -1063,7 +1063,9 @@ defineExpose({ clearInput })
   display: flex;
   align-items: flex-start;
   gap: 0.625rem;
-  margin: 0.25rem 0 1rem;
+  /* 水平方向必须保持 auto：否则会覆盖 .message-list > * 的 margin-inline:auto，
+     导致子 Agent 面板脱离 880px 居中列、整体偏左。 */
+  margin: 0.25rem auto 1rem;
   padding: 0 0.25rem;
 }
 
