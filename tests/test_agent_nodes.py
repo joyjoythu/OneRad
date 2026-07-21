@@ -571,3 +571,35 @@ def test_yaml_tools_reject_sandbox_escape(tmp_path):
             args["updates"] = {"a": 1}
         res = _run_system_command({"_pending_tool": t, "args": args}, str(tmp_path))
         assert "error" in res
+
+
+# ---------- inspect_image_spacing ----------
+
+def test_run_system_command_inspect_image_spacing(tmp_path):
+    import numpy as np
+    import SimpleITK as sitk
+
+    images = tmp_path / "images"
+    images.mkdir()
+    img = sitk.GetImageFromArray(np.zeros((4, 5, 6), dtype=np.uint8))
+    img.SetSpacing((0.5, 0.5, 1.0))
+    sitk.WriteImage(img, str(images / "a.nii.gz"))
+
+    # 扫描模式
+    res = _run_system_command(
+        {"_pending_tool": "inspect_image_spacing", "args": {}}, str(tmp_path))
+    assert res["tool"] == "inspect_image_spacing"
+    assert res["result"]["suggested_spacing"] == [0.5, 0.5, 1.0]
+
+    # pairs 模式 + 沙箱越界拒绝
+    res = _run_system_command(
+        {"_pending_tool": "inspect_image_spacing",
+         "args": {"pairs": [{"image_path": "images/a.nii.gz",
+                             "mask_path": "masks/a.nii.gz"}]}},
+        str(tmp_path))
+    assert res["result"]["n_cases"] == 1
+    res = _run_system_command(
+        {"_pending_tool": "inspect_image_spacing",
+         "args": {"pairs": [{"image_path": "../outside.nii.gz"}]}},
+        str(tmp_path))
+    assert "error" in res

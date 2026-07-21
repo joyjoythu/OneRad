@@ -90,7 +90,7 @@ def _allow_subagent(config: Optional[RunnableConfig] = None) -> bool:
 
 
 def _readonly_tools(config: Optional[RunnableConfig] = None) -> bool:
-    """是否只挂载只读探索工具（list/find/info/read_yaml/read_tabular_file/discover_pairs）。
+    """是否只挂载只读探索工具（list/find/info/read_yaml/read_tabular_file/discover_pairs/inspect_image_spacing）。
     explore 模式的子 agent 置 True，使其免确认也无法写文件或跑脚本。"""
     if config is None:
         return False
@@ -314,6 +314,7 @@ def process_tool_calls(state: AgentState, config: Optional[RunnableConfig] = Non
             "update_yaml",
             "plan_file_operations",
             "discover_radiomics_pairs",
+            "inspect_image_spacing",
             "extract_radiomics_features",
             "run_radiomics_analysis",
             "run_feature_statistics",
@@ -338,7 +339,8 @@ def process_tool_calls(state: AgentState, config: Optional[RunnableConfig] = Non
                 continue
             confirmation_pending = True
             if name in {"list_directory", "find_files", "get_file_info",
-                        "read_yaml", "read_tabular_file", "update_yaml"}:
+                        "read_yaml", "read_tabular_file", "update_yaml",
+                        "inspect_image_spacing"}:
                 interrupt_type = "system_command"
                 updates["pending_command"] = {"tool_call_id": tool_call_id, **parsed}
             elif name == "dispatch_subagent":
@@ -788,7 +790,7 @@ SUBAGENT_SYSTEM_PROMPT = (
 
 EXPLORE_SUBAGENT_SYSTEM_PROMPT = (
     "你是被主 agent 分派的只读探索子 agent，在项目目录内独立完成交给你的探索任务。"
-    "你只能使用只读工具（目录列举、文件搜索、文件元信息、影像组学配对扫描），"
+    "你只能使用只读工具（目录列举、文件搜索、文件元信息、影像组学配对扫描、影像 spacing 检测），"
     "无法运行脚本或修改任何文件；工具调用会自动批准执行，无需等待用户确认，"
     "用户也看不到你的中间过程，因此不要向用户提问。"
     "完成后用简洁的中文汇报发现：目录结构、关键数据文件、配对情况、可疑问题或缺失项。"
@@ -1159,6 +1161,17 @@ def _run_system_command(command: dict, project_path: str) -> dict:
                     "updated": applied,
                 },
             }
+        elif tool == "inspect_image_spacing":
+            from app.image_spacing import inspect_spacing
+            pairs = args.get("pairs") or []
+            image_paths = []
+            for pair in pairs:
+                rel = pair.get("image_path") if isinstance(pair, dict) else None
+                if not rel:
+                    return {"error": "pair missing image_path"}
+                image_paths.append(str(sandbox.resolve(rel, must_exist=False)))
+            result = inspect_spacing(str(sandbox.root), image_paths=image_paths or None)
+            return {"tool": tool, "result": result}
         return {"error": f"unknown command {tool}"}
     except Exception as e:
         return {"error": str(e)}

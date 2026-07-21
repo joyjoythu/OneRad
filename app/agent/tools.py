@@ -103,6 +103,21 @@ def build_tools(
         return json.dumps({"_pending_tool": "discover_radiomics_pairs", **result})
 
     @tool
+    def inspect_image_spacing(pairs: List[Dict[str, str]] = None) -> str:
+        """检测队列影像的实际像素间距(spacing),为确认 resampledPixelSpacing 提供依据。
+        pairs 可选:与 extract_radiomics_features 相同的配对列表(只读取其中的
+        image_path);不传则扫描项目 images/ 目录下的全部 .nii.gz。
+        返回各轴 spacing 的中位数/范围/不同取值数、逐例明细(病例数 ≤50 时)、
+        建议值与读取失败列表。执行前需要用户确认。"""
+        args: Dict[str, Any] = {}
+        if pairs:
+            args["pairs"] = pairs
+        return json.dumps(
+            {"_pending_tool": "inspect_image_spacing", "args": args},
+            ensure_ascii=False,
+        )
+
+    @tool
     def extract_radiomics_features(pairs: List[Dict[str, str]], yaml_path: str = "",
                                    force_rerun: bool = False) -> str:
         """根据 image/mask 配对批量提取影像组学特征。执行前需要用户确认。
@@ -234,6 +249,7 @@ def build_tools(
     tools["read_yaml"] = read_yaml
     tools["read_tabular_file"] = read_tabular_file
     tools["discover_radiomics_pairs"] = discover_radiomics_pairs
+    tools["inspect_image_spacing"] = inspect_image_spacing
     if not readonly:
         # 只读模式（explore 子 agent）不注册写/重操作工具。
         tools["update_yaml"] = update_yaml

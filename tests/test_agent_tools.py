@@ -332,3 +332,22 @@ def test_update_yaml_returns_pending(tmp_path):
     data = json.loads(result)
     assert data["_pending_tool"] == "update_yaml"
     assert data["args"]["updates"] == {"setting.binWidth": 10}
+
+
+def test_inspect_image_spacing_registered_in_all_tool_sets(tmp_path):
+    fake_llm = MagicMock()
+    full = build_tools(str(tmp_path), fake_llm)
+    readonly = build_tools(str(tmp_path), fake_llm, readonly=True)
+    assert "inspect_image_spacing" in full
+    assert "inspect_image_spacing" in readonly
+
+
+def test_inspect_image_spacing_returns_pending(tmp_path):
+    fake_llm = MagicMock()
+    tools = build_tools(str(tmp_path), fake_llm)
+    data = json.loads(tools["inspect_image_spacing"].invoke({}))
+    assert data["_pending_tool"] == "inspect_image_spacing"
+    assert data["args"] == {}
+    data = json.loads(tools["inspect_image_spacing"].invoke(
+        {"pairs": [{"image_path": "images/a.nii.gz", "mask_path": "masks/a.nii.gz"}]}))
+    assert data["args"]["pairs"][0]["image_path"] == "images/a.nii.gz"

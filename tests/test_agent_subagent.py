@@ -448,8 +448,8 @@ def test_dispatch_subagent_recursion_limit_returns_partial(tmp_path, monkeypatch
 
 
 def test_build_tools_readonly_flag_limits_toolset(tmp_path):
-    """readonly=True 时只注册只读探索工具：目录/文件探查 + YAML/表格读取 + 配对扫描，
-    不含脚本执行、文件操作计划、YAML 修改、特征提取、分析等写/重操作。"""
+    """readonly=True 时只注册只读探索工具：目录/文件探查 + YAML/表格读取 + 配对扫描
+    + spacing 检测，不含脚本执行、文件操作计划、YAML 修改、特征提取、分析等写/重操作。"""
     llm = MagicMock()
     tools = build_tools(str(tmp_path), llm, readonly=True)
     assert set(tools) == {
@@ -459,6 +459,7 @@ def test_build_tools_readonly_flag_limits_toolset(tmp_path):
         "read_yaml",
         "read_tabular_file",
         "discover_radiomics_pairs",
+        "inspect_image_spacing",
     }
 
 
@@ -518,6 +519,7 @@ def test_explore_subagent_uses_readonly_toolset(tmp_path):
         "read_yaml",
         "read_tabular_file",
         "discover_radiomics_pairs",
+        "inspect_image_spacing",
     }
 
 
