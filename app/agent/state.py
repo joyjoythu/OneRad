@@ -21,6 +21,8 @@ class AgentState(TypedDict):
     pending_radiomics_analysis: Optional[Dict[str, Any]]    # {"tool_call_id": str, ...analysis meta}
     pending_subagent: Optional[Dict[str, Any]]              # {"tool_call_id": str, "task": str}
     pending_feature_statistics: Optional[Dict[str, Any]]    # {"tool_call_id": str, ...stats meta}
+    pending_choice: Optional[Dict[str, Any]]                # {"tool_call_id": str, "question": str, "options": [...]}
+    choice_answer: Optional[str]                            # 用户在选择面板中提交的答案
 
     context_usage: Optional[Dict[str, Any]]      # 最近一次 LLM 调用的 token 用量
     todos: NotRequired[List[Dict[str, str]]]     # 计划面板步骤列表，由 update_todo_list 工具全量替换

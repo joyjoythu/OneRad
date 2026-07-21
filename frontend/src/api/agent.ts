@@ -138,6 +138,12 @@ export interface PendingFeatureStatistics {
   n_selected: number
 }
 
+export interface PendingChoice {
+  tool_call_id: string
+  question: string
+  options: string[]
+}
+
 export interface TodoItem {
   content: string
   status: 'pending' | 'in_progress' | 'completed'
@@ -157,6 +163,7 @@ export interface AgentState {
   pending_radiomics_analysis?: PendingRadiomicsAnalysis | null
   pending_feature_statistics?: PendingFeatureStatistics | null
   pending_subagent?: PendingSubagent | null
+  pending_choice?: PendingChoice | null
   subagent?: SubagentStatus | null
   radiomics_progress?: RadiomicsProgress | null
   thinking?: ThinkingState | null
@@ -265,6 +272,17 @@ export const other = async (
   const res = await client.post(
     `/agent/threads/${encodeURIComponent(threadId)}/other`,
     { instruction }
+  )
+  return res.data
+}
+
+export const answer = async (
+  threadId: string,
+  answerText: string
+): Promise<{ thread_id: string }> => {
+  const res = await client.post(
+    `/agent/threads/${encodeURIComponent(threadId)}/answer`,
+    { answer: answerText }
   )
   return res.data
 }

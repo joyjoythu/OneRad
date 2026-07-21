@@ -669,6 +669,63 @@ def test_other_rejects_blank_instruction(client, app, instruction):
     assert response.status_code == 400, response.text
 
 
+def test_answer_resumes_user_choice(client, app):
+    """answer 动作把用户选择的答案恢复给挂起的 user_choice 中断。"""
+    project = _create_project(client)
+    thread_id = _create_thread(client, project["id"])["thread_id"]
+
+    captured = {}
+
+    async def fake_astream(input_value=None, config=None, stream_mode=None):
+        captured["input"] = input_value
+        yield {
+            "messages": [],
+            "interrupt_type": None,
+            "operation_log": ["done"],
+        }
+
+    mock_graph = AsyncMock()
+    mock_graph.aget_state = AsyncMock(
+        return_value=SimpleNamespace(values={"interrupt_type": "user_choice"})
+    )
+    mock_graph.astream = fake_astream
+    app.dependency_overrides[get_agent_graph] = lambda: mock_graph
+
+    response = client.post(
+        f"/api/agent/threads/{thread_id}/answer",
+        json={"answer": "  3mm  "},
+    )
+    assert response.status_code == 202, response.text
+
+    time.sleep(0.5)
+    resume = captured["input"].resume
+    assert resume["action"] == "answer"
+    assert resume["answer"] == "3mm"
+
+
+def test_answer_conflict_without_user_choice(client, app):
+    """当前中断不是 user_choice（或没有中断）时 answer 应返回 409。"""
+    project = _create_project(client)
+    thread_id = _create_thread(client, project["id"])["thread_id"]
+
+    response = client.post(
+        f"/api/agent/threads/{thread_id}/answer",
+        json={"answer": "3mm"},
+    )
+    assert response.status_code == 409, response.text
+
+
+def test_answer_rejects_blank_answer(client, app):
+    project = _create_project(client)
+    thread_id = _create_thread(client, project["id"])["thread_id"]
+
+    response = client.post(
+        f"/api/agent/threads/{thread_id}/answer",
+        json={"answer": "   "},
+    )
+    assert response.status_code == 400, response.text
+
+
 def test_unanswered_tool_call_ids_all_answered():
     messages = [
         AIMessage(

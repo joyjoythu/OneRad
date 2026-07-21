@@ -269,6 +269,26 @@ def build_tools(
             )
         return json.dumps({"success": True, "todos": normalized}, ensure_ascii=False)
 
+    @tool
+    def ask_user_choice(question: str, options: List[str]) -> str:
+        """向用户发起结构化提问，前端会以选择面板展示，挂起等待用户选择后
+        把答案作为本工具的结果返回。适合需要用户在几个明确方案中做决定的
+        场景（如参数取值、分析方案取舍），不要用于开放式问题。
+        options 为 2-8 个简明选项；前端会固定追加"其他"供用户自由输入，
+        无需也不应把"其他"列入 options。调用后等待用户提交，不要假设答案。"""
+        cleaned = [str(o).strip() for o in options if str(o).strip()]
+        if not question.strip() or len(cleaned) < 2:
+            return json.dumps(
+                {"success": False, "error": "question 不能为空且至少提供 2 个选项"},
+                ensure_ascii=False,
+            )
+        return json.dumps(
+            {"_pending_tool": "ask_user_choice",
+             "question": question.strip(),
+             "options": cleaned[:8]},
+            ensure_ascii=False,
+        )
+
     tools["list_directory"] = list_directory
     tools["find_files"] = find_files
     tools["get_file_info"] = get_file_info
@@ -285,6 +305,7 @@ def build_tools(
         tools["run_radiomics_analysis"] = run_radiomics_analysis
         tools["run_feature_statistics"] = run_feature_statistics
         tools["update_todo_list"] = update_todo_list
+        tools["ask_user_choice"] = ask_user_choice
 
     if allow_subagent and not readonly:
         @tool

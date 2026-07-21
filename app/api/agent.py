@@ -70,6 +70,12 @@ class OtherRequest(BaseModel):
     instruction: str
 
 
+class AnswerRequest(BaseModel):
+    """Request body for resuming a user_choice interrupt with the chosen answer."""
+
+    answer: str
+
+
 class ThreadPatchRequest(BaseModel):
     """Request body for renaming a thread."""
 
@@ -223,6 +229,7 @@ def _sync_payload(values: Optional[Dict[str, Any]], running: bool) -> Dict[str, 
         "pending_radiomics_analysis": values.get("pending_radiomics_analysis"),
         "pending_feature_statistics": values.get("pending_feature_statistics"),
         "pending_subagent": values.get("pending_subagent"),
+        "pending_choice": values.get("pending_choice"),
         "context_usage": values.get("context_usage"),
         "todos": values.get("todos") or [],
         "context_window": _context_window_for_model(values.get("model")),
@@ -777,6 +784,50 @@ async def other_interrupt(
         bridge,
         request.app,
         Command(resume={"action": "other", "instruction": instruction}),
+    )
+    return {"thread_id": thread_id}
+
+
+@router.post(
+    "/threads/{thread_id}/answer",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=Dict[str, Any],
+)
+async def answer_interrupt(
+    thread_id: str,
+    payload: AnswerRequest,
+    request: Request,
+    graph=Depends(get_agent_graph),
+) -> Dict[str, Any]:
+    """Resume a user_choice interrupt: 把用户在选择面板中提交的答案
+    作为提问工具的结果返回给 agent。"""
+    answer = payload.answer.strip()
+    if not answer:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="answer 不能为空",
+        )
+
+    config = await _agent_config(thread_id, request.app)
+    try:
+        snapshot = await graph.aget_state(config)
+    except KeyError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="thread not found"
+        )
+    if snapshot.values.get("interrupt_type") != "user_choice":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="当前没有待回答的选择提问",
+        )
+
+    bridge = get_bridge(request)
+    await _start_stream(
+        thread_id,
+        graph,
+        bridge,
+        request.app,
+        Command(resume={"action": "answer", "answer": answer}),
     )
     return {"thread_id": thread_id}
 

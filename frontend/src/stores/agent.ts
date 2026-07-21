@@ -14,6 +14,7 @@ import type {
   PendingRadiomicsAnalysis,
   PendingFeatureStatistics,
   PendingSubagent,
+  PendingChoice,
   SubagentStatus,
   RadiomicsProgress,
   ThinkingState,
@@ -73,6 +74,7 @@ export const useAgentStore = defineStore('agent', () => {
   const pendingRadiomicsAnalysis = ref<PendingRadiomicsAnalysis | null>(null)
   const pendingFeatureStatistics = ref<PendingFeatureStatistics | null>(null)
   const pendingSubagent = ref<PendingSubagent | null>(null)
+  const pendingChoice = ref<PendingChoice | null>(null)
   // 各子 agent 的运行状态（key 为派生子线程 id）：运行中经 SSE 滚动推送
   // （含中间过程条目）。终态只用于说明父 agent 当前所处的内部阶段；
   // 父流程结束或新一轮开始时清空，避免它看起来像一条独立的最终回复。
@@ -226,6 +228,9 @@ export const useAgentStore = defineStore('agent', () => {
     if (state.pending_subagent !== undefined) {
       pendingSubagent.value = state.pending_subagent
     }
+    if (state.pending_choice !== undefined) {
+      pendingChoice.value = state.pending_choice
+    }
     if (state.subagent) {
       // 并行分派时各子 agent 独立推送，按 id 归组；条目列表每次全量滚动替换。
       subagentStatuses.value = {
@@ -264,6 +269,7 @@ export const useAgentStore = defineStore('agent', () => {
     pendingRadiomicsAnalysis.value = null
     pendingFeatureStatistics.value = null
     pendingSubagent.value = null
+    pendingChoice.value = null
     subagentStatuses.value = {}
     currentThread.value = null
     busy.value = false
@@ -533,6 +539,23 @@ export const useAgentStore = defineStore('agent', () => {
     }
   }
 
+  async function answerChoice(answerText: string): Promise<void> {
+    if (!threadId.value) {
+      throw new Error('No active agent thread')
+    }
+    clearSubagentStatus()
+    busy.value = true
+    connect()
+    try {
+      await api.answer(threadId.value, answerText)
+      runningThreadIds.value.add(threadId.value)
+      updateRunningPolling()
+    } catch (err) {
+      busy.value = false
+      throw err
+    }
+  }
+
   async function setAutoApprove(enabled: boolean): Promise<void> {
     const previous = autoApprove.value
     autoApprove.value = enabled
@@ -610,6 +633,7 @@ export const useAgentStore = defineStore('agent', () => {
     pendingRadiomicsAnalysis,
     pendingFeatureStatistics,
     pendingSubagent,
+    pendingChoice,
     subagentStatuses,
     radiomicsProgress,
     todos,
@@ -634,6 +658,7 @@ export const useAgentStore = defineStore('agent', () => {
     confirm,
     cancel,
     other,
+    answerChoice,
     setAutoApprove,
     setModel,
     stop,

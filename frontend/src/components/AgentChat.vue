@@ -124,6 +124,17 @@
                   }}
                 </el-button>
               </div>
+              <ChoicePanel
+                v-for="choice in choiceToolCalls(message)"
+                :key="choice.id"
+                :question="choice.question"
+                :options="choice.options"
+                :status="choiceStatus(choice.id)"
+                :interactive="isInteractiveChoice(choice.id)"
+                :answer="choiceAnswerText(choice.id)"
+                :submitting="choiceSubmitting"
+                @submit="handleChoiceSubmit"
+              />
             </div>
             <div v-if="message.timestamp" class="message-time">
               {{ formatMessageTime(message.timestamp) }}
@@ -362,6 +373,7 @@ import type { AgentMessage } from '@/api/agent'
 import { listProjectEntries } from '@/api/projects'
 import AgentAvatar from './AgentAvatar.vue'
 import ApprovalPanel from './ApprovalPanel.vue'
+import ChoicePanel from './ChoicePanel.vue'
 import { formatMessageTime } from '@/utils/time'
 import { renderMarkdown } from '@/utils/markdown'
 import { formatToolMessage, type ToolMessageDisplay } from '@/utils/toolMessage'
@@ -703,8 +715,98 @@ function toolCallNames(message: AgentMessage): string {
   if (!message.tool_calls?.length) return ''
   return message.tool_calls
     .map((tc) => tc.name)
-    .filter(Boolean)
+    // ask_user_choice 由选择面板卡片展示，不再重复打"调用工具"标签。
+    .filter((name): name is string => Boolean(name) && name !== 'ask_user_choice')
     .join(', ')
+}
+
+interface ChoiceToolCall {
+  id: string
+  question: string
+  options: string[]
+}
+
+/** 从 assistant 消息中提取 ask_user_choice 工具调用（用于渲染选择面板）。 */
+function choiceToolCalls(message: AgentMessage): ChoiceToolCall[] {
+  if (message.role !== 'assistant' || !message.tool_calls?.length) return []
+  const result: ChoiceToolCall[] = []
+  for (const tc of message.tool_calls) {
+    if (tc.name !== 'ask_user_choice' || !tc.id) continue
+    const args = tc.args as { question?: unknown; options?: unknown } | undefined
+    if (typeof args?.question !== 'string' || !Array.isArray(args?.options)) continue
+    result.push({
+      id: tc.id,
+      question: args.question,
+      options: args.options.map((o) => String(o)),
+    })
+  }
+  return result
+}
+
+type ChoiceDisplay =
+  | { status: 'pending' }
+  | { status: 'answered'; answer: string }
+  | { status: 'cancelled' }
+
+/** 推导某个 ask_user_choice 调用的展示状态：已回答 > 已取消 > 等待用户选择。 */
+function choiceDisplay(toolCallId: string): ChoiceDisplay {
+  const toolMsg = agentStore.messages.find(
+    (m) => m.role === 'tool' && m.tool_call_id === toolCallId
+  )
+  if (toolMsg) {
+    try {
+      const parsed = JSON.parse(toolMsg.content) as {
+        answer?: unknown
+        cancelled?: unknown
+      }
+      if (typeof parsed.answer === 'string' && parsed.answer) {
+        return { status: 'answered', answer: parsed.answer }
+      }
+    } catch {
+      // 非 JSON 内容按取消处理
+    }
+    return { status: 'cancelled' }
+  }
+  return { status: 'pending' }
+}
+
+/** 是否为当前等待回答的提问（interrupt 中的那一个才允许交互）。 */
+function isInteractiveChoice(toolCallId: string): boolean {
+  return (
+    agentStore.interrupt === 'user_choice' &&
+    agentStore.pendingChoice?.tool_call_id === toolCallId
+  )
+}
+
+/** 卡片状态：无答案且提问已不在等待态（陈旧）时按已取消展示。 */
+function choiceStatus(toolCallId: string): 'pending' | 'answered' | 'cancelled' {
+  const display = choiceDisplay(toolCallId)
+  if (
+    display.status === 'pending' &&
+    !isInteractiveChoice(toolCallId) &&
+    !agentStore.busy
+  ) {
+    return 'cancelled'
+  }
+  return display.status
+}
+
+function choiceAnswerText(toolCallId: string): string | undefined {
+  const display = choiceDisplay(toolCallId)
+  return display.status === 'answered' ? display.answer : undefined
+}
+
+const choiceSubmitting = ref(false)
+
+async function handleChoiceSubmit(text: string): Promise<void> {
+  choiceSubmitting.value = true
+  try {
+    await agentStore.answerChoice(text)
+  } catch {
+    // errors handled by axios interceptor
+  } finally {
+    choiceSubmitting.value = false
+  }
 }
 
 watchEffect(async () => {

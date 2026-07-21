@@ -334,6 +334,7 @@ def process_tool_calls(state: AgentState, config: Optional[RunnableConfig] = Non
             "run_radiomics_analysis",
             "run_feature_statistics",
             "dispatch_subagent",
+            "ask_user_choice",
         } or (
             name == "execute_python_script"
             and isinstance(parsed, dict)
@@ -458,6 +459,19 @@ def process_tool_calls(state: AgentState, config: Optional[RunnableConfig] = Non
                     continue
                 interrupt_type = "feature_statistics"
                 updates["pending_feature_statistics"] = {"tool_call_id": tool_call_id, **parsed["meta"]}
+            elif name == "ask_user_choice":
+                if not isinstance(parsed, dict) or not parsed.get("question"):
+                    updates["messages"].append(ToolMessage(
+                        content=json.dumps({"error": f"Tool {name} returned invalid payload"}),
+                        tool_call_id=tool_call_id,
+                    ))
+                    continue
+                interrupt_type = "user_choice"
+                updates["pending_choice"] = {
+                    "tool_call_id": tool_call_id,
+                    "question": parsed["question"],
+                    "options": parsed["options"],
+                }
             # 需要确认的工具不在此处生成 ToolMessage，由 execute_confirmed 在用户确认/取消后统一补齐。
         else:
             updates["messages"].append(ToolMessage(content=tool_result, tool_call_id=tool_call_id))
@@ -472,6 +486,9 @@ def route_after_process(
     """根据是否有待确认的中断决定路由；自动审批开启时跳过人工确认。"""
     if not state.get("interrupt_type"):
         return "call_llm"
+    # 提问必须等待真实用户回答，自动审批不能代答（否则答案为空）。
+    if state["interrupt_type"] == "user_choice":
+        return "human_review"
     if config.get("configurable", {}).get("auto_approve"):
         return "auto_confirm"
     return "human_review"
@@ -494,6 +511,7 @@ def human_review(state: AgentState) -> dict:
         "radiomics_analysis": state.get("pending_radiomics_analysis"),
         "feature_statistics": state.get("pending_feature_statistics"),
         "subagent": state.get("pending_subagent"),
+        "choice": state.get("pending_choice"),
     })
     if not isinstance(value, dict):
         value = {"action": "cancel"}
@@ -508,8 +526,11 @@ def human_review(state: AgentState) -> dict:
 
     action = value.get("action")
     return {
-        "confirmed": action == "confirm",
+        # "answer"（选择面板提交）与 "confirm" 一样进入执行分支：
+        # execute_confirmed 的 user_choice 分支把答案作为工具结果返回。
+        "confirmed": action in ("confirm", "answer"),
         "other_instruction": value.get("instruction") if action == "other" else None,
+        "choice_answer": value.get("answer") if action == "answer" else None,
         "pending_plan": pending_plan,
         "pending_radiomics_plan": pending_radiomics_plan,
         "pending_radiomics_execution": state.get("pending_radiomics_execution"),
@@ -528,6 +549,7 @@ def _resolve_tool_call_id(state: AgentState) -> str:
         state.get("pending_radiomics_analysis"),
         state.get("pending_feature_statistics"),
         state.get("pending_subagent"),
+        state.get("pending_choice"),
     ):
         if pending:
             return pending.get("tool_call_id", "") or ""
@@ -690,6 +712,18 @@ def execute_confirmed(state: AgentState, config: Optional[RunnableConfig] = None
                     tool_call_id=tool_call_id,
                 )]
             })
+    elif itype == "user_choice":
+        pending_choice = state.get("pending_choice")
+        tool_call_id = (pending_choice or {}).get("tool_call_id", "") or _resolve_tool_call_id(state)
+        if not pending_choice:
+            if not tool_call_id:
+                raise RuntimeError("Missing pending choice and cannot resolve tool_call_id")
+            return _clear_interrupt({
+                "messages": [ToolMessage(
+                    content=json.dumps({"error": "Missing pending choice"}),
+                    tool_call_id=tool_call_id,
+                )]
+            })
     else:
         tool_call_id = _resolve_tool_call_id(state)
         if not tool_call_id:
@@ -780,6 +814,8 @@ def execute_confirmed(state: AgentState, config: Optional[RunnableConfig] = None
         )
     elif itype == "subagent_dispatch":
         results = _run_subagents(state["pending_subagent"], state, config, thread_id)
+    elif itype == "user_choice":
+        results = {"answer": state.get("choice_answer") or ""}
     else:
         results = {"error": "unknown interrupt type"}
 
@@ -1395,5 +1431,7 @@ def _clear_interrupt(updates: dict) -> dict:
         "confirmed": None,
         "other_instruction": None,
         "pending_subagent": None,
+        "pending_choice": None,
+        "choice_answer": None,
     })
     return updates
