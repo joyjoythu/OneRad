@@ -61,7 +61,8 @@ describe('AgentChat', () => {
     const wrapper = setupWrapper()
     await flushPromises()
 
-    expect(wrapper.find('.el-empty').exists()).toBe(true)
+    expect(wrapper.find('.chat-empty-brand').exists()).toBe(true)
+    expect(wrapper.find('.chat-empty-brand').text()).toBe('OneRad')
     expect(wrapper.text()).toContain('请先选择一个项目')
   })
 
@@ -269,7 +270,7 @@ describe('AgentChat', () => {
 
     // 无项目时输入区不渲染（显示空状态），mention 无从触发；
     // 这里直接验证 mock 未被调用即可。
-    expect(wrapper.find('.el-empty').exists()).toBe(true)
+    expect(wrapper.find('.chat-empty-brand').exists()).toBe(true)
     expect(listProjectEntries).not.toHaveBeenCalled()
   })
 

@@ -104,15 +104,19 @@ function handleToggleSidebar(): void {
   background: linear-gradient(145deg, var(--app-accent-hover), var(--app-accent-active));
   box-shadow: 0 6px 16px var(--app-focus-ring);
   color: #ffffff;
-  font-size: 1rem;
-  font-weight: 750;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-style: italic;
+  font-size: 1.15rem;
+  font-weight: 700;
 }
 
 .app-header h1 {
   margin: 0;
-  font-size: 1.125rem;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-style: italic;
+  font-size: 1.25rem;
   font-weight: 700;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.03em;
   color: var(--app-accent-active);
 }
 

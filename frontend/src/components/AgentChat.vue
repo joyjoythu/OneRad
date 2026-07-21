@@ -6,7 +6,8 @@
       v-if="!projectStore.currentProject"
       class="chat-empty"
     >
-      <el-empty description="请先选择一个项目开始对话" />
+      <div class="chat-empty-brand">OneRad</div>
+      <div class="chat-empty-tip">请先选择一个项目开始对话</div>
     </div>
 
     <template v-else>
@@ -920,8 +921,33 @@ defineExpose({ clearInput })
 .chat-empty {
   flex: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 1rem;
+}
+
+.chat-empty-brand {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-style: italic;
+  font-weight: 700;
+  font-size: 4.5rem;
+  letter-spacing: 0.06em;
+  background: linear-gradient(
+    135deg,
+    var(--el-color-primary) 20%,
+    var(--el-color-primary-light-3) 60%,
+    var(--el-color-primary) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  user-select: none;
+}
+
+.chat-empty-tip {
+  font-size: 1rem;
+  color: var(--app-text-muted);
 }
 
 .message-list {
