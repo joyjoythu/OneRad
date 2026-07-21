@@ -138,11 +138,17 @@ export interface PendingFeatureStatistics {
   n_selected: number
 }
 
+export interface TodoItem {
+  content: string
+  status: 'pending' | 'in_progress' | 'completed'
+}
+
 export interface AgentState {
   thread_id?: string
   messages: AgentMessage[]
   interrupt_type: string | null
   operation_log: string[]
+  todos?: TodoItem[]
   pending_plan: PendingPlan | null
   pending_command: PendingCommand | null
   pending_script: PendingScript | null

@@ -19,3 +19,9 @@ Reason about a radiomics study as a traceable sequence:
 6. Interpret performance, calibration, decision curves, limitations, and generated artifacts without overstating evidence.
 
 Prefer the dedicated discovery, extraction, and analysis tools for these stages. Do not skip a failed prerequisite or manufacture missing measurements. When reusing existing outputs, verify their paths and relevance to the current cohort first.
+
+## Progress reporting (update_todo_list)
+
+When asked to start the analysis (or any multi-stage task), first call `update_todo_list` to create one step per macro stage (0–6 above), then submit the full updated list each time a stage is entered or completed, so the side panel reflects real progress.
+
+Do not redo finished work: if the survey finds usable existing outputs, mark the corresponding stages `completed` and start `in_progress` from the actual entry point. Feature extraction resumes per-case from h5 cache — when only part of the cohort is extracted, keep that stage `in_progress` and continue with the remaining cases rather than restarting.

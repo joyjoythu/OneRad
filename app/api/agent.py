@@ -223,6 +223,7 @@ def _sync_payload(values: Optional[Dict[str, Any]], running: bool) -> Dict[str, 
         "pending_feature_statistics": values.get("pending_feature_statistics"),
         "pending_subagent": values.get("pending_subagent"),
         "context_usage": values.get("context_usage"),
+        "todos": values.get("todos") or [],
         "context_window": _context_window_for_model(values.get("model")),
         "running": running,
     }

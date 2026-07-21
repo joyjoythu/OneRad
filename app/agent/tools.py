@@ -243,6 +243,32 @@ def build_tools(
             ensure_ascii=False,
         )
 
+    @tool
+    def update_todo_list(todos: List[Any]) -> str:
+        """全量更新右侧计划面板的步骤列表，向用户展示宏观分析进度。
+        todos 为步骤数组，每项 {"content": 步骤描述, "status": "pending" |
+        "in_progress" | "completed"}；同一时刻至多一个 in_progress。
+        多步骤任务（如完整影像组学分析流程）开始时先建立完整列表，之后每
+        进入/完成一个阶段就整体提交一次更新。免确认，立即生效。"""
+        valid_status = {"pending", "in_progress", "completed"}
+        normalized = []
+        for item in todos if isinstance(todos, list) else []:
+            if not isinstance(item, dict):
+                continue
+            content = str(item.get("content", "")).strip()
+            if not content:
+                continue
+            status = str(item.get("status", "pending")).strip()
+            if status not in valid_status:
+                status = "pending"
+            normalized.append({"content": content, "status": status})
+        if not normalized:
+            return json.dumps(
+                {"success": False, "error": "todos 不能为空，每项需包含 content"},
+                ensure_ascii=False,
+            )
+        return json.dumps({"success": True, "todos": normalized}, ensure_ascii=False)
+
     tools["list_directory"] = list_directory
     tools["find_files"] = find_files
     tools["get_file_info"] = get_file_info
@@ -258,6 +284,7 @@ def build_tools(
         tools["extract_radiomics_features"] = extract_radiomics_features
         tools["run_radiomics_analysis"] = run_radiomics_analysis
         tools["run_feature_statistics"] = run_feature_statistics
+        tools["update_todo_list"] = update_todo_list
 
     if allow_subagent and not readonly:
         @tool

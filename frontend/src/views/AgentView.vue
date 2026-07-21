@@ -36,12 +36,13 @@
         </div>
         <template v-if="!isSidePanelCollapsed">
           <div class="side-panel-content">
+            <TodoPanel v-if="agentStore.todos.length > 0" />
             <PlanDisplay v-if="showPlan" />
             <CommandPanel v-else-if="showCommand" />
             <ScriptPanel v-else-if="showScript" />
             <RadiomicsPanel v-else-if="showRadiomics" />
             <AnalysisPanel v-else-if="showAnalysis" />
-            <div v-else class="side-panel-empty">暂无待审批的计划/文件</div>
+            <div v-else-if="agentStore.todos.length === 0" class="side-panel-empty">暂无待审批的计划/文件</div>
           </div>
 
           <el-collapse v-if="agentStore.operationLog.length > 0">
@@ -71,6 +72,7 @@ import AgentChat from '@/components/AgentChat.vue'
 import ConversationTitle from '@/components/ConversationTitle.vue'
 import { Expand, Fold } from '@element-plus/icons-vue'
 import PlanDisplay from '@/components/PlanDisplay.vue'
+import TodoPanel from '@/components/TodoPanel.vue'
 import CommandPanel from '@/components/CommandPanel.vue'
 import ScriptPanel from '@/components/ScriptPanel.vue'
 import RadiomicsPanel from '@/components/RadiomicsPanel.vue'

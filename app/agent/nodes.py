@@ -284,6 +284,21 @@ def process_tool_calls(state: AgentState, config: Optional[RunnableConfig] = Non
             ))
             continue
 
+        # 计划面板更新：免确认，直接写入 state.todos，随 SSE 同步到前端。
+        if name == "update_todo_list" and isinstance(parsed, dict):
+            if parsed.get("success"):
+                todos = parsed["todos"]
+                updates["todos"] = todos
+                done = sum(1 for t in todos if t.get("status") == "completed")
+                updates["operation_log"] = [
+                    f"计划面板已更新（{done}/{len(todos)} 已完成）"
+                ]
+            updates["messages"].append(ToolMessage(
+                content=json.dumps(parsed, ensure_ascii=False),
+                tool_call_id=tool_call_id,
+            ))
+            continue
+
         # 只读探索模式的子 agent 派发：免确认，不占 confirmation 名额，
         # 直接在本节点内并行执行并把汇总结果作为 ToolMessage 返回。
         if (

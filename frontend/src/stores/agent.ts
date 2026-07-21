@@ -18,6 +18,7 @@ import type {
   RadiomicsProgress,
   ThinkingState,
   ThreadSummary,
+  TodoItem,
 } from '@/api/agent'
 
 export const AUTO_APPROVE_STORAGE_KEY = 'onerad:agent:autoApprove'
@@ -104,6 +105,8 @@ export const useAgentStore = defineStore('agent', () => {
   const autoApproveSyncing = ref(false)
   // 影像组学特征提取的实时进度（由后端节点线程推送，null 表示无提取在进行）。
   const radiomicsProgress = ref<RadiomicsProgress | null>(null)
+  // 计划面板步骤列表（模型通过 update_todo_list 工具全量更新，随 state 快照同步）。
+  const todos = ref<TodoItem[]>([])
   // 当前轮 LLM 的流式思考内容（推理模型的 reasoning_content；null 表示无）。
   // 独立于 messages：快照会整体替换 messages，流式文本必须走独立 ref。
   const currentThinking = ref<ThinkingState | null>(null)
@@ -233,6 +236,9 @@ export const useAgentStore = defineStore('agent', () => {
     if (state.radiomics_progress !== undefined) {
       radiomicsProgress.value = state.radiomics_progress
     }
+    if (state.todos !== undefined) {
+      todos.value = state.todos ?? []
+    }
     if (state.thinking !== undefined) {
       currentThinking.value = state.thinking
     }
@@ -262,6 +268,7 @@ export const useAgentStore = defineStore('agent', () => {
     currentThread.value = null
     busy.value = false
     radiomicsProgress.value = null
+    todos.value = []
     currentThinking.value = null
     contextUsage.value = null
     contextWindow.value = null
@@ -605,6 +612,7 @@ export const useAgentStore = defineStore('agent', () => {
     pendingSubagent,
     subagentStatuses,
     radiomicsProgress,
+    todos,
     currentThinking,
     contextUsage,
     contextWindow,

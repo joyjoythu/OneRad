@@ -23,6 +23,7 @@ class AgentState(TypedDict):
     pending_feature_statistics: Optional[Dict[str, Any]]    # {"tool_call_id": str, ...stats meta}
 
     context_usage: Optional[Dict[str, Any]]      # 最近一次 LLM 调用的 token 用量
+    todos: NotRequired[List[Dict[str, str]]]     # 计划面板步骤列表，由 update_todo_list 工具全量替换
     confirmed: Optional[bool]
     other_instruction: Optional[str]             # 审批 "other" 动作时用户给出的替代指令
     tool_outputs: Annotated[list, lambda x, y: (x or []) + y]
