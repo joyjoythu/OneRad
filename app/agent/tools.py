@@ -123,7 +123,9 @@ def build_tools(
     @tool
     def execute_python_script(description: str, code: str) -> str:
         """生成 Python 脚本并在项目虚拟环境中运行。所有脚本均需用户确认后执行；
-        高风险脚本会在确认面板中以高危标记展示，不再直接拒绝。"""
+        高风险脚本会在确认面板中以高危标记展示，不再直接拒绝。
+        禁止用本工具提取影像组学特征（如自行调用 pyradiomics 或解析 h5 特征缓存）：
+        特征提取必须改用 extract_radiomics_features 内置工具。"""
         meta = prepare_script(code, description, project_path)
         return json.dumps({"_pending_tool": "execute_python_script", "script": meta})
 

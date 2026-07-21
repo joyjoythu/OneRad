@@ -88,6 +88,16 @@ def test_prompt_builders_read_their_mapped_markdown_skills():
     assert "分析这批 MRI" in title_user
 
 
+def test_radiomics_workflow_forbids_script_feature_extraction():
+    """radiomics-workflow 技能必须把「特征提取只能走内置工具、禁止自写脚本」
+    写成硬规则，防止 agent 用 execute_python_script 自行调用 pyradiomics。"""
+    content = load_skill("radiomics-workflow")
+    assert "extract_radiomics_features" in content
+    lowered = content.lower()
+    assert "never" in lowered or "must" in lowered
+    assert "execute_python_script" in content
+
+
 def test_main_agent_loads_core_and_radiomics_skills_on_every_call(tmp_path):
     state = {
         "messages": [],

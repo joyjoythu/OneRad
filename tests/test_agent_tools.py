@@ -380,6 +380,16 @@ def test_update_json_returns_pending(tmp_path):
     assert data["args"]["updates"] == {"a.b": 2}
 
 
+def test_execute_python_script_forbids_diy_feature_extraction(tmp_path):
+    """工具描述必须明确禁止用脚本自行提取影像组学特征，并指向内置工具：
+    否则 agent 会绕过 extract_radiomics_features 自己写 pyradiomics 脚本。"""
+    fake_llm = MagicMock()
+    tools = build_tools(str(tmp_path), fake_llm)
+    desc = tools["execute_python_script"].description
+    assert "禁止" in desc
+    assert "extract_radiomics_features" in desc
+
+
 def test_inspect_image_spacing_registered_in_all_tool_sets(tmp_path):
     fake_llm = MagicMock()
     full = build_tools(str(tmp_path), fake_llm)
