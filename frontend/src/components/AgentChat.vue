@@ -360,7 +360,6 @@ import {
   Delete,
   Document,
   Download,
-  List,
   Loading,
   Odometer,
   Operation,
@@ -445,22 +444,6 @@ const QUICK_ACTIONS = [
     icon: DataAnalysis,
     divided: false,
     prompt: '请检查当前项目配置与数据完整性，并开始执行完整的影像组学分析流程。',
-  },
-  {
-    command: 'structured-conclusion',
-    label: '生成结构化结论',
-    icon: List,
-    divided: true,
-    prompt:
-      '请基于当前分析结果生成结构化结论，按研究目的、数据概况、核心发现、统计证据、局限性和下一步建议组织。',
-  },
-  {
-    command: 'export-report',
-    label: '导出报告',
-    icon: Download,
-    divided: false,
-    prompt:
-      '请将当前分析结果整理并导出为正式报告，保存到项目输出目录，并返回生成文件的完整路径。',
   },
   {
     command: 'reanalyze',
