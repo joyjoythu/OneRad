@@ -17,6 +17,9 @@
         <el-icon v-else-if="todo.status === 'in_progress'" class="todo-icon todo-icon--running is-loading">
           <Loading />
         </el-icon>
+        <el-icon v-else-if="todo.status === 'cancelled'" class="todo-icon todo-icon--cancelled">
+          <WarningFilled />
+        </el-icon>
         <span v-else class="todo-icon todo-icon--pending" />
         <span class="todo-content">{{ todo.content }}</span>
       </li>
@@ -27,7 +30,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
-import { CircleCheckFilled, Loading } from '@element-plus/icons-vue'
+import { CircleCheckFilled, Loading, WarningFilled } from '@element-plus/icons-vue'
 import { useAgentStore } from '@/stores/agent'
 
 const agentStore = useAgentStore()
@@ -103,6 +106,10 @@ const doneCount = computed(
 
 .todo-icon--running {
   color: var(--el-color-primary);
+}
+
+.todo-icon--cancelled {
+  color: var(--el-color-warning);
 }
 
 .todo-icon--pending {

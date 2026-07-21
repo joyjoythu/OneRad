@@ -284,10 +284,11 @@ def build_tools(
     def update_todo_list(todos: List[Any]) -> str:
         """全量更新右侧计划面板的步骤列表，向用户展示宏观分析进度。
         todos 为步骤数组，每项 {"content": 步骤描述, "status": "pending" |
-        "in_progress" | "completed"}；同一时刻至多一个 in_progress。
+        "in_progress" | "completed" | "cancelled"}；同一时刻至多一个
+        in_progress；cancelled 仅用于标记已被用户停止的步骤。
         多步骤任务（如完整影像组学分析流程）开始时先建立完整列表，之后每
         进入/完成一个阶段就整体提交一次更新。免确认，立即生效。"""
-        valid_status = {"pending", "in_progress", "completed"}
+        valid_status = {"pending", "in_progress", "completed", "cancelled"}
         normalized = []
         for item in todos if isinstance(todos, list) else []:
             if not isinstance(item, dict):

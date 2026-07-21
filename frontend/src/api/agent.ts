@@ -146,7 +146,8 @@ export interface PendingChoice {
 
 export interface TodoItem {
   content: string
-  status: 'pending' | 'in_progress' | 'completed'
+  // cancelled：步骤进行中被用户停止，由 /stop 定格，面板显示黄色标识
+  status: 'pending' | 'in_progress' | 'completed' | 'cancelled'
 }
 
 export interface OperationLogEntry {

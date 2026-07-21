@@ -988,6 +988,25 @@ async def stop_stream(
             await _ensure_message_timestamps(graph, config)
         snapshot = await graph.aget_state(config)
 
+    # 计划面板里仍在进行的步骤定格为「已停止」（仿子任务面板的
+    # running→cancelled 定格）：否则刷新/重连后前端仍按 in_progress
+    # 渲染，计划面板会一直显示运行中动画。只在确有 in_progress 步骤时
+    # 追加一次状态更新，不影响无计划面板场景的快照读取次数。
+    todos = snapshot.values.get("todos") if snapshot.values else None
+    if todos and any(t.get("status") == "in_progress" for t in todos):
+        await graph.aupdate_state(
+            config,
+            {
+                "todos": [
+                    {**t, "status": "cancelled"}
+                    if isinstance(t, dict) and t.get("status") == "in_progress"
+                    else t
+                    for t in todos
+                ]
+            },
+        )
+        snapshot = await graph.aget_state(config)
+
     bridge = get_bridge(request)
     await bridge.publish(
         "agent", thread_id, _sync_payload(snapshot.values, running=False)

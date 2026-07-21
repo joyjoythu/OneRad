@@ -59,6 +59,21 @@ def test_update_todo_list_normalizes_items(tmp_path):
     assert data["todos"] == TODOS + [{"content": "报告", "status": "pending"}]
 
 
+def test_update_todo_list_preserves_cancelled(tmp_path):
+    """stop 定格的 cancelled 步骤在模型全量回传列表时应原样保留。"""
+    tools = build_tools(str(tmp_path), MagicMock())
+    result = tools["update_todo_list"].invoke({"todos": [
+        {"content": "项目勘察", "status": "completed"},
+        {"content": "特征提取", "status": "cancelled"},
+    ]})
+    data = json.loads(result)
+    assert data["success"] is True
+    assert data["todos"] == [
+        {"content": "项目勘察", "status": "completed"},
+        {"content": "特征提取", "status": "cancelled"},
+    ]
+
+
 def test_update_todo_list_rejects_empty(tmp_path):
     tools = build_tools(str(tmp_path), MagicMock())
     result = tools["update_todo_list"].invoke({"todos": []})

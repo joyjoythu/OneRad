@@ -1097,6 +1097,68 @@ def test_stop_cancels_stream_and_repairs_history(client, app):
     assert last_payload["running"] is False
 
 
+def test_stop_marks_in_progress_todos_cancelled(client, app):
+    """stop 应把计划面板中 in_progress 的步骤定格为 cancelled：
+    否则恢复会话/刷新后前端计划面板会一直显示运行中动画。"""
+    project = _create_project(client)
+    thread_id = _create_thread(client, project['id'])["thread_id"]
+
+    todos = [
+        {"content": "项目勘察", "status": "completed"},
+        {"content": "特征提取", "status": "in_progress"},
+        {"content": "统计分析", "status": "pending"},
+    ]
+    snapshots = [
+        SimpleNamespace(values={"interrupt_type": None}),      # send_message 前检查
+        SimpleNamespace(values={"interrupt_type": None}),      # stop 存在性检查
+        SimpleNamespace(values={"messages": []}),              # 流式 finally 补打时间戳读取
+        SimpleNamespace(values={"messages": [], "todos": todos}),  # 取消后读取
+        SimpleNamespace(values={"messages": [], "todos": todos}),  # 定格后读取（最终发布）
+    ]
+
+    async def blocking_astream(input_value=None, config=None, stream_mode=None):
+        yield {"messages": [], "interrupt_type": None, "operation_log": []}
+        await asyncio.sleep(3600)
+
+    mock_graph = AsyncMock()
+    mock_graph.aget_state = AsyncMock(side_effect=snapshots)
+    mock_graph.astream = blocking_astream
+    app.dependency_overrides[get_agent_graph] = lambda: mock_graph
+
+    response = client.post(
+        f"/api/agent/threads/{thread_id}/messages",
+        json={"role": "user", "content": "hi"},
+    )
+    assert response.status_code == 202, response.text
+
+    deadline = time.time() + 2
+    while time.time() < deadline and thread_id not in app.state.agent_stream_tasks:
+        time.sleep(0.05)
+    assert thread_id in app.state.agent_stream_tasks
+
+    deadline = time.time() + 2
+    while (
+        time.time() < deadline
+        and not app.state.event_bridge.store.list_sse_events("agent", thread_id)
+    ):
+        time.sleep(0.05)
+    assert app.state.event_bridge.store.list_sse_events("agent", thread_id)
+
+    response = client.post(f"/api/agent/threads/{thread_id}/stop")
+    assert response.status_code == 202, response.text
+
+    todo_calls = [
+        call
+        for call in mock_graph.aupdate_state.await_args_list
+        if "todos" in call.args[1]
+    ]
+    assert todo_calls, "stop 未定格 in_progress 的计划步骤"
+    updated = todo_calls[-1].args[1]["todos"]
+    assert [t["status"] for t in updated] == ["completed", "cancelled", "pending"]
+    # 未触及的步骤内容保持不变
+    assert [t["content"] for t in updated] == ["项目勘察", "特征提取", "统计分析"]
+
+
 def test_get_thread_reports_running(client, app):
     """get_thread 应报告线程是否有正在运行的流式任务。"""
     project = _create_project(client)
