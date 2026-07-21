@@ -157,6 +157,11 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _log_entry(text: str) -> Dict[str, str]:
+    """操作日志条目：记录写入时间，供前端展示。"""
+    return {"time": _utc_now_iso(), "text": text}
+
+
 def _render_messages(values: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Convert LangChain message objects stored in state into plain dicts."""
     rendered: List[Dict[str, Any]] = []
@@ -349,7 +354,7 @@ async def _stream_agent(
             {
                 "messages": [],
                 "interrupt_type": None,
-                "operation_log": [f"stream error: {exc}"],
+                "operation_log": [_log_entry(f"stream error: {exc}")],
                 "pending_plan": None,
                 "pending_command": None,
                 "pending_script": None,
@@ -905,7 +910,7 @@ async def stop_stream(
                 "script_risk_level": None,
                 "confirmed": None,
                 "other_instruction": None,
-                "operation_log": ["用户停止了当前任务"],
+                "operation_log": [_log_entry("用户停止了当前任务")],
             },
         )
         snapshot = await graph.aget_state(config)
@@ -925,7 +930,7 @@ async def stop_stream(
                     )
                     for tc_id in missing_ids
                 ],
-                "operation_log": ["用户停止了当前任务"],
+                "operation_log": [_log_entry("用户停止了当前任务")],
             },
         )
         # 补打同样是 best-effort：失败不应把已成功的 stop 变成 500

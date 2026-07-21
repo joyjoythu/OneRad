@@ -149,11 +149,17 @@ export interface TodoItem {
   status: 'pending' | 'in_progress' | 'completed'
 }
 
+export interface OperationLogEntry {
+  time?: string
+  text: string
+}
+
 export interface AgentState {
   thread_id?: string
   messages: AgentMessage[]
   interrupt_type: string | null
-  operation_log: string[]
+  // 旧会话中的条目为纯字符串，新条目为 {time, text}。
+  operation_log: (string | OperationLogEntry)[]
   todos?: TodoItem[]
   pending_plan: PendingPlan | null
   pending_command: PendingCommand | null

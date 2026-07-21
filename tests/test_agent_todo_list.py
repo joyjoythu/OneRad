@@ -72,7 +72,10 @@ def test_process_tool_calls_writes_todos_without_interrupt(tmp_path):
     updates = process_tool_calls(state, {"configurable": {}})
     assert updates.get("interrupt_type") is None
     assert updates["todos"] == TODOS
-    assert any("计划面板已更新（1/3 已完成）" in log for log in updates["operation_log"])
+    assert any(
+        isinstance(log, dict) and log["text"] == "计划面板已更新（1/3 已完成）" and log["time"]
+        for log in updates["operation_log"]
+    )
     assert len(updates["messages"]) == 1
     assert updates["messages"][0].tool_call_id == "tc1"
 

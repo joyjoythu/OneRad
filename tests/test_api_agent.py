@@ -954,7 +954,9 @@ def test_stop_cancels_stream_and_repairs_history(client, app):
         SimpleNamespace(
             values={
                 "messages": repaired_messages,
-                "operation_log": ["用户停止了当前任务"],
+                "operation_log": [
+                    {"time": "2026-01-01T00:00:00+00:00", "text": "用户停止了当前任务"}
+                ],
             }
         ),
     ]
@@ -1011,7 +1013,8 @@ def test_stop_cancels_stream_and_repairs_history(client, app):
     assert isinstance(tool_msg, ToolMessage)
     assert tool_msg.tool_call_id == "call_1"
     assert json.loads(tool_msg.content)["cancelled"] is True
-    assert updates["operation_log"] == ["用户停止了当前任务"]
+    assert [e["text"] for e in updates["operation_log"]] == ["用户停止了当前任务"]
+    assert updates["operation_log"][0]["time"]
 
     # 任务收尾：线程离开 active 集合，映射清理
     assert thread_id not in app.state.active_agent_streams
@@ -1020,7 +1023,7 @@ def test_stop_cancels_stream_and_repairs_history(client, app):
     # 最终状态已通过 SSE 桥发布
     events = app.state.event_bridge.store.list_sse_events("agent", thread_id)
     last_payload = json.loads(events[-1]["data"])
-    assert last_payload["operation_log"] == ["用户停止了当前任务"]
+    assert [e["text"] for e in last_payload["operation_log"]] == ["用户停止了当前任务"]
     assert last_payload["messages"][-1]["role"] == "tool"
     assert last_payload["running"] is False
 

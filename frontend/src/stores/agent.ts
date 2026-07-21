@@ -6,6 +6,7 @@ import type {
   AgentState,
   AgentMessage,
   ContextUsage,
+  OperationLogEntry,
   PendingPlan,
   PendingCommand,
   PendingScript,
@@ -65,7 +66,7 @@ export const useAgentStore = defineStore('agent', () => {
   const threadId = ref<string | null>(null)
   const messages = ref<AgentMessage[]>([])
   const interrupt = ref<string | null>(null)
-  const operationLog = ref<string[]>([])
+  const operationLog = ref<(string | OperationLogEntry)[]>([])
   const pendingPlan = ref<PendingPlan | null>(null)
   const pendingCommand = ref<PendingCommand | null>(null)
   const pendingScript = ref<PendingScript | null>(null)

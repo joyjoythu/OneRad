@@ -4,6 +4,7 @@ import logging
 import os
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 
@@ -290,9 +291,10 @@ def process_tool_calls(state: AgentState, config: Optional[RunnableConfig] = Non
                 todos = parsed["todos"]
                 updates["todos"] = todos
                 done = sum(1 for t in todos if t.get("status") == "completed")
-                updates["operation_log"] = [
-                    f"计划面板已更新（{done}/{len(todos)} 已完成）"
-                ]
+                updates["operation_log"] = [{
+                    "time": datetime.now(timezone.utc).isoformat(),
+                    "text": f"计划面板已更新（{done}/{len(todos)} 已完成）",
+                }]
             updates["messages"].append(ToolMessage(
                 content=json.dumps(parsed, ensure_ascii=False),
                 tool_call_id=tool_call_id,

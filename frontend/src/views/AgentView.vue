@@ -53,7 +53,7 @@
                   :key="index"
                   class="operation-log-entry"
                 >
-                  {{ log }}
+                  <span v-if="logTime(log)" class="operation-log-time">{{ logTime(log) }}</span>{{ logText(log) }}
                 </div>
               </div>
             </el-collapse-item>
@@ -78,6 +78,17 @@ import ScriptPanel from '@/components/ScriptPanel.vue'
 import RadiomicsPanel from '@/components/RadiomicsPanel.vue'
 import AnalysisPanel from '@/components/AnalysisPanel.vue'
 import { vAutoHideScrollbar } from '@/directives/autoHideScrollbar'
+import { formatMessageTime } from '@/utils/time'
+import type { OperationLogEntry } from '@/api/agent'
+
+/** 操作日志条目兼容两种形态：旧会话为纯字符串，新条目为 {time, text}。 */
+function logText(log: string | OperationLogEntry): string {
+  return typeof log === 'string' ? log : log.text
+}
+
+function logTime(log: string | OperationLogEntry): string {
+  return typeof log === 'string' || !log.time ? '' : formatMessageTime(log.time)
+}
 
 const agentStore = useAgentStore()
 const projectStore = useProjectStore()
@@ -315,6 +326,11 @@ watch(
 .operation-log-entry {
   white-space: pre-wrap;
   word-break: break-all;
+}
+
+.operation-log-time {
+  color: var(--app-text-muted);
+  margin-right: 0.375rem;
 }
 
 .operation-log-entry + .operation-log-entry {
