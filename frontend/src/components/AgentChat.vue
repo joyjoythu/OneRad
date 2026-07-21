@@ -832,6 +832,15 @@ defineExpose({ clearInput })
   overflow-y: auto;
   padding: clamp(0.75rem, 2vw, 1.25rem);
   /* 无框设计：消息气泡直接落在页面背景上，依靠气泡自身的底色区分层次 */
+  /* 列表本体占满聊天区宽度，滚动条贴到右缘（靠近右侧面板），
+     给滚轮操作留出更大空间；消息内容再由下面的子元素规则限宽居中。 */
+  max-width: none;
+  margin-inline: 0;
+}
+
+.message-list > * {
+  max-width: 880px;
+  margin-inline: auto;
 }
 
 .message-row {
