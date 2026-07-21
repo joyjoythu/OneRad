@@ -18,6 +18,7 @@
         role="log"
         aria-live="polite"
         aria-atomic="false"
+        @scroll.passive="handleMessagesScroll"
       >
         <div
           v-for="(message, index) in agentStore.messages"
@@ -240,6 +241,15 @@
       </div>
 
       <div class="input-container">
+        <el-button
+          v-show="!isAtBottom"
+          class="scroll-bottom-btn"
+          circle
+          :icon="ArrowDown"
+          aria-label="滚动到底部"
+          data-testid="scroll-to-bottom"
+          @click="handleScrollToBottom"
+        />
         <el-mention
           ref="mentionRef"
           v-model="input"
@@ -355,6 +365,7 @@
 <script setup lang="ts">
 import { ref, computed, watchEffect, nextTick } from 'vue'
 import {
+  ArrowDown,
   ArrowUp,
   CircleClose,
   DataAnalysis,
@@ -853,6 +864,23 @@ function scrollToBottom(): void {
   if (messageContainer.value) {
     messageContainer.value.scrollTop = messageContainer.value.scrollHeight
   }
+}
+
+/** 距底部小于该阈值（px）视为"已在底部"，不显示回到底部按钮。 */
+const BOTTOM_THRESHOLD_PX = 40
+
+const isAtBottom = ref(true)
+
+function handleMessagesScroll(): void {
+  const el = messageContainer.value
+  if (!el) return
+  isAtBottom.value = el.scrollHeight - el.scrollTop - el.clientHeight < BOTTOM_THRESHOLD_PX
+}
+
+function handleScrollToBottom(): void {
+  const el = messageContainer.value
+  if (!el) return
+  el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
 }
 
 function handleKeydown(event: KeyboardEvent): void {
@@ -1386,6 +1414,7 @@ defineExpose({ clearInput })
 }
 
 .input-container {
+  position: relative;
   border: 1px solid var(--app-border-strong);
   border-radius: var(--app-radius-lg);
   background-color: var(--app-bg-panel);
@@ -1404,6 +1433,15 @@ defineExpose({ clearInput })
 .input-container:focus-within {
   border-color: var(--app-accent);
   box-shadow: 0 0 0 3px var(--app-focus-ring), var(--app-shadow-sm);
+}
+
+/* 回到底部按钮：悬浮在输入框右上方，仅不在底部时显示 */
+.scroll-bottom-btn {
+  position: absolute;
+  top: -2.5rem;
+  right: 0.75rem;
+  z-index: 5;
+  box-shadow: var(--app-shadow-sm);
 }
 
 .input-container :deep(.el-textarea__inner) {
