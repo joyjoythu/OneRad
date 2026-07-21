@@ -181,6 +181,53 @@ def test_delete_thread_cleans_checkpoints(client, app):
     assert _list_threads(client, project["id"]) == []
 
 
+def test_delete_thread_cancels_running_stream(client, app, monkeypatch):
+    """删除会话时若仍有运行中的流式任务（如特征提取），必须先协作式取消
+    （置位 cancel_event 并取消 asyncio 任务）再删除，否则提取会在后台继续。"""
+    from app.agent import runtime
+
+    project = _create_project(client)
+    thread_id = _create_thread(client, project['id'])["thread_id"]
+
+    async def blocking_astream(input_value=None, config=None, stream_mode=None):
+        yield {"messages": [], "interrupt_type": None, "operation_log": []}
+        await asyncio.sleep(3600)
+
+    mock_graph = AsyncMock()
+    mock_graph.aget_state = AsyncMock(
+        return_value=SimpleNamespace(values={"messages": [], "interrupt_type": None})
+    )
+    mock_graph.astream = blocking_astream
+    app.dependency_overrides[get_agent_graph] = lambda: mock_graph
+
+    cancelled_threads = []
+    original = runtime.request_cancel
+    monkeypatch.setattr(
+        runtime,
+        "request_cancel",
+        lambda tid: cancelled_threads.append(tid) or original(tid),
+    )
+
+    response = client.post(
+        f"/api/agent/threads/{thread_id}/messages",
+        json={"role": "user", "content": "hi"},
+    )
+    assert response.status_code == 202, response.text
+
+    deadline = time.time() + 2
+    while time.time() < deadline and thread_id not in app.state.agent_stream_tasks:
+        time.sleep(0.05)
+    assert thread_id in app.state.agent_stream_tasks
+
+    response = client.delete(f"/api/agent/threads/{thread_id}")
+    assert response.status_code == 204, response.text
+    assert cancelled_threads == [thread_id]
+
+    # 流式任务应已收尾：取消事件置位 + asyncio 任务取消并清理登记
+    assert thread_id not in app.state.active_agent_streams
+    assert thread_id not in app.state.agent_stream_tasks
+
+
 def test_rename_thread(client):
     project = _create_project(client)
     thread_id = _create_thread(client, project["id"])["thread_id"]

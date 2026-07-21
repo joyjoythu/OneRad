@@ -492,6 +492,17 @@ async def delete_thread(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="thread not found"
         )
+    # 删除前必须先停掉仍在运行的流式任务：先置位取消事件让耗时任务
+    # （如特征提取的工作线程）协作式退出，再取消 asyncio 流式任务并等其收尾。
+    # 否则删除后提取仍在后台继续，运行中的任务还会写已删除的 checkpoint。
+    cancelled = agent_runtime.request_cancel(thread_id)
+    if cancelled:
+        logger.info("delete_thread: 已请求取消运行中任务 thread_id=%s", thread_id)
+    task = request.app.state.agent_stream_tasks.get(thread_id)
+    if task is not None:
+        task.cancel()
+        with suppress(asyncio.CancelledError, Exception):
+            await task
     checkpointer = request.app.state.checkpointer
     try:
         await checkpointer.adelete_thread(thread_id)
