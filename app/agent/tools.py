@@ -49,6 +49,20 @@ def build_tools(
         )
 
     @tool
+    def read_tabular_file(path: str, sheet_name: str = "", head: int = 20,
+                          columns: List[str] = None) -> str:
+        """读取项目内的 CSV 或 Excel 文件（按扩展名自动识别），返回智能预览：
+        完整行列数、全部列名与类型、前 head 行数据。
+        CSV 自动尝试 utf-8/gbk 编码；Excel 可用 sheet_name 指定工作表（默认第一个）；
+        columns 可只读取指定列；head=0 时只看结构不取数据。执行前需要用户确认。"""
+        return json.dumps(
+            {"_pending_tool": "read_tabular_file",
+             "args": {"path": path, "sheet_name": sheet_name,
+                      "head": head, "columns": columns}},
+            ensure_ascii=False,
+        )
+
+    @tool
     def update_yaml(path: str, updates: Dict[str, Any]) -> str:
         """修改项目内的 YAML 文件。updates 为点号路径到值的映射，例如
         {"setting.binWidth": 10, "setting.normalize": True}。
@@ -218,6 +232,7 @@ def build_tools(
     tools["find_files"] = find_files
     tools["get_file_info"] = get_file_info
     tools["read_yaml"] = read_yaml
+    tools["read_tabular_file"] = read_tabular_file
     tools["discover_radiomics_pairs"] = discover_radiomics_pairs
     if not readonly:
         # 只读模式（explore 子 agent）不注册写/重操作工具。

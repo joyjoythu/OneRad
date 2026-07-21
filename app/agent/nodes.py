@@ -90,7 +90,7 @@ def _allow_subagent(config: Optional[RunnableConfig] = None) -> bool:
 
 
 def _readonly_tools(config: Optional[RunnableConfig] = None) -> bool:
-    """是否只挂载只读探索工具（list/find/info/discover_pairs）。
+    """是否只挂载只读探索工具（list/find/info/read_yaml/read_tabular_file/discover_pairs）。
     explore 模式的子 agent 置 True，使其免确认也无法写文件或跑脚本。"""
     if config is None:
         return False
@@ -310,6 +310,7 @@ def process_tool_calls(state: AgentState, config: Optional[RunnableConfig] = Non
             "find_files",
             "get_file_info",
             "read_yaml",
+            "read_tabular_file",
             "update_yaml",
             "plan_file_operations",
             "discover_radiomics_pairs",
@@ -337,7 +338,7 @@ def process_tool_calls(state: AgentState, config: Optional[RunnableConfig] = Non
                 continue
             confirmation_pending = True
             if name in {"list_directory", "find_files", "get_file_info",
-                        "read_yaml", "update_yaml"}:
+                        "read_yaml", "read_tabular_file", "update_yaml"}:
                 interrupt_type = "system_command"
                 updates["pending_command"] = {"tool_call_id": tool_call_id, **parsed}
             elif name == "dispatch_subagent":
@@ -1070,6 +1071,57 @@ def _run_system_command(command: dict, project_path: str) -> dict:
                     else:
                         return {"error": f"键不存在: {key}（在 '{part}' 处中断）"}
             return {"tool": tool, "result": data}
+        elif tool == "read_tabular_file":
+            path = args.get("path")
+            if path is None:
+                return {"error": "missing required argument: path"}
+            target = sandbox.resolve(path, must_exist=True)
+            import pandas as pd
+            suffix = target.suffix.lower()
+            if suffix == ".csv":
+                try:
+                    df = pd.read_csv(target, encoding="utf-8")
+                except UnicodeDecodeError:
+                    df = pd.read_csv(target, encoding="gbk")
+            elif suffix in {".xlsx", ".xls"}:
+                sheet = args.get("sheet_name") or 0
+                df = pd.read_excel(target, sheet_name=sheet)
+            else:
+                return {"error": f"不支持的文件类型: {suffix or target.name}"
+                                 f"（仅支持 .csv/.xlsx/.xls）"}
+            columns_arg = args.get("columns")
+            if columns_arg:
+                missing = [c for c in columns_arg if c not in df.columns]
+                if missing:
+                    return {"error": f"列不存在: {missing}，"
+                                     f"可用列: {[str(c) for c in df.columns][:50]}"}
+                df = df[list(columns_arg)]
+            try:
+                head = int(args.get("head") if args.get("head") is not None else 20)
+            except (TypeError, ValueError):
+                head = 20
+            head = max(0, min(head, 100))
+            # to_json 自动把 NaN 转 null、numpy 类型转原生类型，保证结果可 JSON 序列化
+            head_rows = json.loads(df.head(head).to_json(
+                orient="records", force_ascii=False, date_format="iso"))
+            columns_meta = [{"name": str(c), "dtype": str(df[c].dtype)}
+                            for c in df.columns]
+            result = {
+                "path": str(target.relative_to(sandbox.root)),
+                "shape": [int(df.shape[0]), int(df.shape[1])],
+                "columns": columns_meta[:200],
+                "columns_truncated": len(columns_meta) > 200,
+                "head": head,
+                "truncated": bool(df.shape[0] > head),
+                "head_rows": head_rows,
+            }
+            # 宽表（如上千列的特征 CSV）预览可能超长：逐步减半行数，守住上下文体积
+            while head_rows and len(json.dumps(
+                    result, ensure_ascii=False)) > 12000:
+                head_rows = head_rows[: len(head_rows) // 2]
+                result["head_rows"] = head_rows
+                result["truncated"] = True
+            return {"tool": tool, "result": result}
         elif tool == "update_yaml":
             path = args.get("path")
             updates = args.get("updates")
