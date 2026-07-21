@@ -117,7 +117,7 @@ describe('useAgentStore', () => {
     expect(store.busy).toBe(false)
   })
 
-  it('clears the subagent stage when the parent stream ends', async () => {
+  it('keeps the subagent stage frozen when the parent stream ends', async () => {
     const store = useAgentStore()
     await store.ensureThread('project-1')
     await store.sendMessage('Hello')
@@ -137,7 +137,32 @@ describe('useAgentStore', () => {
     es.emit('agent_end', {})
 
     expect(store.busy).toBe(false)
-    expect(store.subagentStatuses).toEqual({})
+    // 结束后子任务面板保留定格，下一轮运行开始才清除。
+    expect(store.subagentStatuses['sub-1']?.status).toBe('done')
+  })
+
+  it('freezes running subagents as cancelled on stop', async () => {
+    const store = useAgentStore()
+    await store.ensureThread('project-1')
+    store.subagentStatuses = {
+      'sub-1': {
+        id: 'sub-1',
+        task: '检查文件',
+        status: 'running',
+        entries: [],
+      },
+      'sub-2': {
+        id: 'sub-2',
+        task: '统计数据',
+        status: 'done',
+        entries: [],
+      },
+    }
+
+    await store.stop()
+
+    expect(store.subagentStatuses['sub-1']?.status).toBe('cancelled')
+    expect(store.subagentStatuses['sub-2']?.status).toBe('done')
   })
 
   it('does not show a previous subagent stage in a new run', async () => {

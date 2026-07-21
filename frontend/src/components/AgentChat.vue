@@ -157,7 +157,7 @@
           <div class="subagent-panel">
             <div class="subagent-header">
               <div class="subagent-heading">
-                <span class="subagent-eyebrow">内部执行阶段</span>
+                <span class="subagent-eyebrow">子 Agent · 内部执行阶段</span>
                 <span class="subagent-title">{{ sub.task }}</span>
               </div>
               <el-icon
@@ -494,15 +494,12 @@ const showThinkingStream = computed(() => {
   )
 })
 
-// 子任务面板：仅在父 agent 运行期间展示（结束后结论在历史消息的
-// 工具结果里，面板随之收起）。并行分派时每个子 agent 一个面板，
-// 展开/收起状态按子线程 id 分别记录，新子任务默认展开。
+// 子任务面板：运行期间滚动展示，父流程结束后保留定格（下一轮运行开始才清除）。
+// 并行分派时每个子 agent 一个面板，展开/收起状态按子线程 id 分别记录，
+// 新子任务默认展开。
 const subagentExpanded = ref<Record<string, boolean>>({})
 
-const subagentPanels = computed(() => {
-  if (!agentStore.busy) return []
-  return Object.values(agentStore.subagentStatuses)
-})
+const subagentPanels = computed(() => Object.values(agentStore.subagentStatuses))
 
 function subagentStatusLabel(status: string): string {
   switch (status) {
@@ -520,6 +517,9 @@ function subagentStatusLabel(status: string): string {
 }
 
 function subagentStatusHint(status: string): string {
+  // “主任务仍在处理”类提示只在父流程运行中有意义；结束后面板定格，
+  // 终态由状态标签本身表达。
+  if (!agentStore.busy) return ''
   switch (status) {
     case 'done':
       return '该内部子任务已经返回结果，主任务仍在整理结果或继续执行。'

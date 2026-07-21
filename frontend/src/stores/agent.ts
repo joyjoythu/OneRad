@@ -414,7 +414,8 @@ export const useAgentStore = defineStore('agent', () => {
       onEnd: () => {
         // 本轮流式运行结束（正常完成或在中断处暂停）。
         busy.value = false
-        subagentStatuses.value = {}
+        // 子任务阶段面板在结束后保留（定格在终态），下一轮运行开始时
+        // 才由 clearSubagentStatus 清除。
         radiomicsProgress.value = null
         currentThinking.value = null
         // 当前线程的结束由用户实时看着，转入完成提示点集合无意义。
@@ -559,7 +560,13 @@ export const useAgentStore = defineStore('agent', () => {
       // 无论成功与否都复位忙碌；失败原因由 axios 拦截器 toast，
       // 若后端仍在运行，后续发送会被 409 兜底，状态自愈。
       busy.value = false
-      subagentStatuses.value = {}
+      // 子任务面板保留并定格：仍在“运行中”的按已停止处理。
+      subagentStatuses.value = Object.fromEntries(
+        Object.entries(subagentStatuses.value).map(([id, s]) => [
+          id,
+          s.status === 'running' ? { ...s, status: 'cancelled' as const } : s,
+        ])
+      )
       radiomicsProgress.value = null
       currentThinking.value = null
     }

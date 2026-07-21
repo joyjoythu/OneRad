@@ -1056,7 +1056,7 @@ describe('AgentChat subagent panel', () => {
     expect(panels[1].text()).toContain('结果已返回')
   })
 
-  it('hides the subagent panel when the agent is not busy', async () => {
+  it('keeps the subagent panel frozen after the run ends', async () => {
     const projectStore = useProjectStore()
     projectStore.currentProject = mockProject()
 
@@ -1070,7 +1070,12 @@ describe('AgentChat subagent panel', () => {
     const wrapper = setupWrapper()
     await flushPromises()
 
-    expect(wrapper.find('.subagent-panel').exists()).toBe(false)
+    const panel = wrapper.find('.subagent-panel')
+    expect(panel.exists()).toBe(true)
+    expect(panel.text()).toContain('子 Agent')
+    expect(panel.text()).toContain('结果已返回')
+    // 结束后不再显示“主任务仍在处理”类运行期提示。
+    expect(panel.text()).not.toContain('主任务仍在')
   })
 
   it('shows terminal status labels on the tag', async () => {
