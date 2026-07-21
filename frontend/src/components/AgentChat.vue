@@ -295,10 +295,8 @@
           </div>
           <div class="input-toolbar-right">
             <el-select
-              ref="modelSelectRef"
               :model-value="agentStore.selectedModel"
               class="model-select"
-              :style="{ width: modelSelectWidth }"
               size="small"
               aria-label="模型选择"
               data-testid="model-select"
@@ -343,7 +341,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, watchEffect, nextTick, onMounted } from 'vue'
+import { ref, computed, watchEffect, nextTick } from 'vue'
 import {
   ArrowUp,
   CircleClose,
@@ -669,32 +667,6 @@ function formatTokens(n: number): string {
   }
   return String(n)
 }
-
-// 选择框宽度 = 选中文字的实际渲染宽度 + 固有部分（内边距与下拉箭头约 40px），
-// 避免估算宽度在文字与箭头之间留出空隙。jsdom 无布局，量不到时回退为 CSS 默认。
-const modelSelectRef = ref<{ $el?: HTMLElement } | null>(null)
-const modelTextWidth = ref(0)
-const modelSelectWidth = computed(() =>
-  modelTextWidth.value ? `${modelTextWidth.value + 40}px` : ''
-)
-
-async function measureModelSelectText(): Promise<void> {
-  await nextTick()
-  const root = modelSelectRef.value?.$el
-  const label = root?.querySelector('.el-select__selected-item')
-  modelTextWidth.value = label instanceof HTMLElement ? label.offsetWidth : 0
-}
-
-watch(
-  () => agentStore.selectedModel,
-  () => {
-    void measureModelSelectText()
-  },
-  { flush: 'post' }
-)
-onMounted(() => {
-  void measureModelSelectText()
-})
 
 /** badge 文案：当前上下文用量/窗口 · 百分比；无数据显示 --。 */
 const contextUsageText = computed(() => {
@@ -1330,6 +1302,22 @@ defineExpose({ clearInput })
   align-items: center;
   gap: 0.5rem;
   margin-left: auto;
+}
+
+/* 模型选择框：固定宽度，按最长模型名 deepseek-v4-flash 留足文字 + 箭头空间。
+ * 选中文字与箭头显式使用高对比令牌色，避免深色模式下落到 EP 变量链里的
+ * 弱对比色（placeholder 灰）上看不清。 */
+.model-select {
+  width: 170px;
+  flex-shrink: 0;
+}
+
+.model-select :deep(.el-select__placeholder) {
+  color: var(--app-text);
+}
+
+.model-select :deep(.el-select__caret) {
+  color: var(--app-text-secondary);
 }
 
 .context-usage {
