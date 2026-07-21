@@ -726,6 +726,75 @@ def test_answer_rejects_blank_answer(client, app):
     assert response.status_code == 400, response.text
 
 
+def test_export_empty_conversation_rejected(client, app):
+    """没有对话内容时导出返回 400。"""
+    project = _create_project(client)
+    thread_id = _create_thread(client, project["id"])["thread_id"]
+
+    response = client.post(
+        f"/api/agent/threads/{thread_id}/export",
+        json={"format": "md"},
+    )
+    assert response.status_code == 400, response.text
+
+
+def test_export_conversation_writes_file(client, app, tmp_path):
+    """导出端点把会话写成 md 文件并返回路径。"""
+    project = _create_project(client)
+    thread_id = _create_thread(client, project["id"])["thread_id"]
+
+    mock_graph = AsyncMock()
+    mock_graph.aget_state = AsyncMock(
+        return_value=SimpleNamespace(values={
+            "messages": [
+                HumanMessage(content="导出测试"),
+                AIMessage(content="好的"),
+            ],
+            "project_path": str(tmp_path),
+        })
+    )
+    app.dependency_overrides[get_agent_graph] = lambda: mock_graph
+
+    response = client.post(
+        f"/api/agent/threads/{thread_id}/export",
+        json={"format": "md"},
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["format"] == "md"
+    from pathlib import Path
+    exported = Path(data["path"])
+    assert exported.exists()
+    assert exported.parent.name == "conversation_exports"
+    content = exported.read_text(encoding="utf-8")
+    assert "导出测试" in content
+    assert "好的" in content
+
+
+def test_export_conversation_docx(client, app, tmp_path):
+    project = _create_project(client)
+    thread_id = _create_thread(client, project["id"])["thread_id"]
+
+    mock_graph = AsyncMock()
+    mock_graph.aget_state = AsyncMock(
+        return_value=SimpleNamespace(values={
+            "messages": [HumanMessage(content="导出测试")],
+            "project_path": str(tmp_path),
+        })
+    )
+    app.dependency_overrides[get_agent_graph] = lambda: mock_graph
+
+    response = client.post(
+        f"/api/agent/threads/{thread_id}/export",
+        json={"format": "docx"},
+    )
+    assert response.status_code == 200, response.text
+    from pathlib import Path
+    exported = Path(response.json()["path"])
+    assert exported.exists()
+    assert exported.suffix == ".docx"
+
+
 def test_unanswered_tool_call_ids_all_answered():
     messages = [
         AIMessage(

@@ -293,6 +293,17 @@ export const answer = async (
   return res.data
 }
 
+export const exportConversation = async (
+  threadId: string,
+  format: 'md' | 'docx'
+): Promise<{ path: string; format: string }> => {
+  const res = await client.post(
+    `/agent/threads/${encodeURIComponent(threadId)}/export`,
+    { format }
+  )
+  return res.data
+}
+
 export const setAutoApprove = async (
   threadId: string,
   enabled: boolean

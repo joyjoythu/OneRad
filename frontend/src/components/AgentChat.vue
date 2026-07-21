@@ -358,6 +358,7 @@ import {
   CircleClose,
   DataAnalysis,
   Delete,
+  Document,
   Download,
   List,
   Loading,
@@ -366,10 +367,11 @@ import {
   Promotion,
   Refresh,
 } from '@element-plus/icons-vue'
-import { ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAgentStore, AVAILABLE_MODELS } from '@/stores/agent'
 import { useProjectStore } from '@/stores/project'
 import type { AgentMessage } from '@/api/agent'
+import { exportConversation } from '@/api/agent'
 import { listProjectEntries } from '@/api/projects'
 import AgentAvatar from './AgentAvatar.vue'
 import ApprovalPanel from './ApprovalPanel.vue'
@@ -467,6 +469,20 @@ const QUICK_ACTIONS = [
     divided: true,
     prompt:
       '请基于当前项目配置重新执行完整分析；开始前先说明将复用的数据、参数以及会覆盖或新生成的结果。',
+  },
+  {
+    command: 'export-md',
+    label: '导出对话（Markdown）',
+    icon: Download,
+    divided: true,
+    prompt: '',
+  },
+  {
+    command: 'export-docx',
+    label: '导出对话（Word）',
+    icon: Document,
+    divided: false,
+    prompt: '',
   },
   {
     command: 'clear-task',
@@ -603,6 +619,12 @@ async function handleAutoApproveChange(value: string | number | boolean): Promis
 }
 
 async function handleQuickAction(command: string): Promise<void> {
+  // 导出只读取会话快照，运行中也可用，不受输入禁用影响。
+  if (command === 'export-md' || command === 'export-docx') {
+    await handleExportConversation(command === 'export-md' ? 'md' : 'docx')
+    return
+  }
+
   if (inputDisabled.value) return
 
   if (command === 'clear-task') {
@@ -630,6 +652,25 @@ async function handleQuickAction(command: string): Promise<void> {
   const draft = input.value.trimEnd()
   input.value = draft ? `${draft}\n${action.prompt}` : action.prompt
   mentionRef.value?.focus?.()
+}
+
+const exportingConversation = ref(false)
+
+async function handleExportConversation(format: 'md' | 'docx'): Promise<void> {
+  if (exportingConversation.value) return
+  if (!agentStore.threadId) {
+    ElMessage.warning('暂无可导出的对话')
+    return
+  }
+  exportingConversation.value = true
+  try {
+    const res = await exportConversation(agentStore.threadId, format)
+    ElMessage.success(`对话已导出：${res.path}`)
+  } catch {
+    // 错误已由 axios 拦截器统一提示。
+  } finally {
+    exportingConversation.value = false
+  }
 }
 
 // 根据运行状态推导用户可见的状态文案。

@@ -25,6 +25,7 @@ from app.agent import runtime as agent_runtime
 from app.api.deps import get_general_settings_store, get_project_store
 from app.api.runner import get_bridge
 from app.constants import DEEPSEEK_MODELS
+from app.conversation_export import export_conversation
 from app.llm import LLMClient, build_thread_title_prompt
 from app.projects import ProjectStore
 from app.settings import GeneralSettingsStore
@@ -74,6 +75,12 @@ class AnswerRequest(BaseModel):
     """Request body for resuming a user_choice interrupt with the chosen answer."""
 
     answer: str
+
+
+class ExportRequest(BaseModel):
+    """Request body for exporting a conversation."""
+
+    format: Literal["md", "docx"] = "md"
 
 
 class ThreadPatchRequest(BaseModel):
@@ -835,6 +842,49 @@ async def answer_interrupt(
         Command(resume={"action": "answer", "answer": answer}),
     )
     return {"thread_id": thread_id}
+
+
+@router.post(
+    "/threads/{thread_id}/export",
+    response_model=Dict[str, Any],
+)
+async def export_thread(
+    thread_id: str,
+    payload: ExportRequest,
+    request: Request,
+    store: ProjectStore = Depends(get_project_store),
+    graph=Depends(get_agent_graph),
+) -> Dict[str, Any]:
+    """把当前会话导出为 Markdown/Word 文档，写入项目目录 conversation_exports/。"""
+    config = await _agent_config(thread_id, request.app)
+    try:
+        snapshot = await graph.aget_state(config)
+    except KeyError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="thread not found"
+        )
+
+    values = snapshot.values or {}
+    messages = _render_messages(values)
+    if not any(m.get("role") in ("user", "assistant") for m in messages):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="当前对话没有可导出的内容",
+        )
+    project_path = values.get("project_path")
+    if not project_path:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="缺少项目路径，无法导出",
+        )
+
+    meta = await _run_store_sync(store.get_thread_meta, thread_id)
+    title = (meta or {}).get("title") or "未命名对话"
+    path = await run_in_threadpool(
+        export_conversation, project_path, title, messages, payload.format
+    )
+    logger.info("会话已导出 thread_id=%s path=%s", thread_id, path)
+    return {"path": str(path), "format": payload.format}
 
 
 @router.post(
