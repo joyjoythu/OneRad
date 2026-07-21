@@ -334,6 +334,52 @@ def test_update_yaml_returns_pending(tmp_path):
     assert data["args"]["updates"] == {"setting.binWidth": 10}
 
 
+def test_json_tools_registered(tmp_path):
+    fake_llm = MagicMock()
+    tools = build_tools(str(tmp_path), fake_llm)
+    assert "read_json" in tools
+    assert "create_json" in tools
+    assert "update_json" in tools
+
+
+def test_json_tools_readonly_mode(tmp_path):
+    """只读模式（explore 子 agent）：read_json 可用，create/update_json 不注册。"""
+    fake_llm = MagicMock()
+    tools = build_tools(str(tmp_path), fake_llm, readonly=True)
+    assert "read_json" in tools
+    assert "create_json" not in tools
+    assert "update_json" not in tools
+
+
+def test_read_json_returns_pending(tmp_path):
+    fake_llm = MagicMock()
+    tools = build_tools(str(tmp_path), fake_llm)
+    result = tools["read_json"].invoke({"path": "config.json", "key": "a.b"})
+    data = json.loads(result)
+    assert data["_pending_tool"] == "read_json"
+    assert data["args"] == {"path": "config.json", "key": "a.b"}
+
+
+def test_create_json_returns_pending(tmp_path):
+    fake_llm = MagicMock()
+    tools = build_tools(str(tmp_path), fake_llm)
+    result = tools["create_json"].invoke(
+        {"path": "out/result.json", "content": {"a": 1}})
+    data = json.loads(result)
+    assert data["_pending_tool"] == "create_json"
+    assert data["args"]["content"] == {"a": 1}
+
+
+def test_update_json_returns_pending(tmp_path):
+    fake_llm = MagicMock()
+    tools = build_tools(str(tmp_path), fake_llm)
+    result = tools["update_json"].invoke(
+        {"path": "config.json", "updates": {"a.b": 2}})
+    data = json.loads(result)
+    assert data["_pending_tool"] == "update_json"
+    assert data["args"]["updates"] == {"a.b": 2}
+
+
 def test_inspect_image_spacing_registered_in_all_tool_sets(tmp_path):
     fake_llm = MagicMock()
     full = build_tools(str(tmp_path), fake_llm)

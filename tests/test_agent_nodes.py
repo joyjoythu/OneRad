@@ -573,6 +573,149 @@ def test_yaml_tools_reject_sandbox_escape(tmp_path):
         assert "error" in res
 
 
+# ---------- read_json / create_json / update_json ----------
+
+def _write_json(tmp_path, data, name="config.json"):
+    p = tmp_path / name
+    p.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    return p
+
+
+def test_read_json_full(tmp_path):
+    _write_json(tmp_path, {"setting": {"binWidth": 25}, "label": 1})
+    res = _run_system_command(
+        {"_pending_tool": "read_json", "args": {"path": "config.json"}},
+        str(tmp_path),
+    )
+    assert res["tool"] == "read_json"
+    assert res["result"] == {"setting": {"binWidth": 25}, "label": 1}
+
+
+def test_read_json_key_path(tmp_path):
+    _write_json(tmp_path, {"setting": {"binWidth": 25}})
+    res = _run_system_command(
+        {"_pending_tool": "read_json",
+         "args": {"path": "config.json", "key": "setting.binWidth"}},
+        str(tmp_path),
+    )
+    assert res["result"] == 25
+
+
+def test_read_json_missing_key_returns_error(tmp_path):
+    _write_json(tmp_path, {"setting": {"binWidth": 25}})
+    res = _run_system_command(
+        {"_pending_tool": "read_json",
+         "args": {"path": "config.json", "key": "setting.nope"}},
+        str(tmp_path),
+    )
+    assert "键不存在" in res["error"]
+
+
+def test_read_json_invalid_json_returns_error(tmp_path):
+    (tmp_path / "bad.json").write_text("{not json", encoding="utf-8")
+    res = _run_system_command(
+        {"_pending_tool": "read_json", "args": {"path": "bad.json"}},
+        str(tmp_path),
+    )
+    assert "error" in res
+
+
+def test_create_json_success(tmp_path):
+    res = _run_system_command(
+        {"_pending_tool": "create_json",
+         "args": {"path": "out/result.json", "content": {"a": 1, "b": [1, 2]}}},
+        str(tmp_path),
+    )
+    assert res["tool"] == "create_json"
+    data = json.loads((tmp_path / "out" / "result.json").read_text(encoding="utf-8"))
+    assert data == {"a": 1, "b": [1, 2]}
+
+
+def test_create_json_existing_returns_error(tmp_path):
+    _write_json(tmp_path, {"a": 1})
+    res = _run_system_command(
+        {"_pending_tool": "create_json",
+         "args": {"path": "config.json", "content": {"b": 2}}},
+        str(tmp_path),
+    )
+    assert "已存在" in res["error"]
+    # 原文件未被改动
+    data = json.loads((tmp_path / "config.json").read_text(encoding="utf-8"))
+    assert data == {"a": 1}
+
+
+def test_create_json_invalid_content(tmp_path):
+    res = _run_system_command(
+        {"_pending_tool": "create_json",
+         "args": {"path": "x.json", "content": "not-a-dict"}},
+        str(tmp_path),
+    )
+    assert "error" in res
+
+
+def test_update_json_partial_and_nested(tmp_path):
+    _write_json(tmp_path, {"setting": {"binWidth": 25, "label": 1}})
+    res = _run_system_command(
+        {"_pending_tool": "update_json",
+         "args": {"path": "config.json",
+                  "updates": {"setting.binWidth": 10, "newSection.key": "v"}}},
+        str(tmp_path),
+    )
+    assert res["tool"] == "update_json"
+    assert set(res["result"]["updated"]) == {"setting.binWidth", "newSection.key"}
+    data = json.loads((tmp_path / "config.json").read_text(encoding="utf-8"))
+    assert data == {"setting": {"binWidth": 10, "label": 1},
+                    "newSection": {"key": "v"}}
+
+
+def test_update_json_null_deletes_key(tmp_path):
+    _write_json(tmp_path, {"a": 1, "b": {"c": 2, "d": 3}})
+    res = _run_system_command(
+        {"_pending_tool": "update_json",
+         "args": {"path": "config.json", "updates": {"a": None, "b.c": None}}},
+        str(tmp_path),
+    )
+    assert res["tool"] == "update_json"
+    data = json.loads((tmp_path / "config.json").read_text(encoding="utf-8"))
+    assert data == {"b": {"d": 3}}
+
+
+def test_update_json_errors(tmp_path):
+    _write_json(tmp_path, {"a": 1})
+    # 空 updates
+    res = _run_system_command(
+        {"_pending_tool": "update_json",
+         "args": {"path": "config.json", "updates": {}}},
+        str(tmp_path),
+    )
+    assert "updates" in res["error"]
+    # 文件不存在
+    res = _run_system_command(
+        {"_pending_tool": "update_json",
+         "args": {"path": "missing.json", "updates": {"a": 1}}},
+        str(tmp_path),
+    )
+    assert "error" in res
+    # 点号路径经过非映射节点
+    res = _run_system_command(
+        {"_pending_tool": "update_json",
+         "args": {"path": "config.json", "updates": {"a.b": 1}}},
+        str(tmp_path),
+    )
+    assert "非映射节点" in res["error"]
+
+
+def test_json_tools_reject_sandbox_escape(tmp_path):
+    for t in ("read_json", "create_json", "update_json"):
+        args = {"path": "../outside.json"}
+        if t == "create_json":
+            args["content"] = {"a": 1}
+        if t == "update_json":
+            args["updates"] = {"a": 1}
+        res = _run_system_command({"_pending_tool": t, "args": args}, str(tmp_path))
+        assert "error" in res
+
+
 # ---------- inspect_image_spacing ----------
 
 def test_run_system_command_inspect_image_spacing(tmp_path):

@@ -49,6 +49,39 @@ def build_tools(
         )
 
     @tool
+    def read_json(path: str, key: str = "") -> str:
+        """读取项目内的 JSON 文件，返回解析后的内容。
+        key 可选：用点号路径取子节点，如 "setting.binWidth"，
+        留空返回整个文件内容。执行前需要用户确认。"""
+        return json.dumps(
+            {"_pending_tool": "read_json", "args": {"path": path, "key": key}},
+            ensure_ascii=False,
+        )
+
+    @tool
+    def create_json(path: str, content: Any) -> str:
+        """在项目内新建 JSON 文件。content 为要写入的 JSON 内容（dict 或 list），
+        格式化写入（缩进 2 空格、保留中文）。目标文件已存在时报错而不会覆盖；
+        父目录不存在时自动创建。执行前需要用户确认。"""
+        return json.dumps(
+            {"_pending_tool": "create_json",
+             "args": {"path": path, "content": content}},
+            ensure_ascii=False,
+        )
+
+    @tool
+    def update_json(path: str, updates: Dict[str, Any]) -> str:
+        """修改项目内的 JSON 文件。updates 为点号路径到值的映射，例如
+        {"setting.binWidth": 10}；某个键的值传 null 表示删除该键。
+        缺失的中间层级会自动创建为对象；目标文件必须已存在且是合法 JSON。
+        执行前需要用户确认。"""
+        return json.dumps(
+            {"_pending_tool": "update_json",
+             "args": {"path": path, "updates": updates}},
+            ensure_ascii=False,
+        )
+
+    @tool
     def read_tabular_file(path: str, sheet_name: str = "", head: int = 20,
                           columns: List[str] = None) -> str:
         """读取项目内的 CSV 或 Excel 文件（按扩展名自动识别），返回智能预览：
@@ -297,12 +330,15 @@ def build_tools(
     tools["find_files"] = find_files
     tools["get_file_info"] = get_file_info
     tools["read_yaml"] = read_yaml
+    tools["read_json"] = read_json
     tools["read_tabular_file"] = read_tabular_file
     tools["discover_radiomics_pairs"] = discover_radiomics_pairs
     tools["inspect_image_spacing"] = inspect_image_spacing
     if not readonly:
         # 只读模式（explore 子 agent）不注册写/重操作工具。
         tools["update_yaml"] = update_yaml
+        tools["create_json"] = create_json
+        tools["update_json"] = update_json
         tools["plan_file_operations"] = plan_file_operations
         tools["execute_python_script"] = execute_python_script
         tools["extract_radiomics_features"] = extract_radiomics_features

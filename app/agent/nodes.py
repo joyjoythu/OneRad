@@ -91,7 +91,7 @@ def _allow_subagent(config: Optional[RunnableConfig] = None) -> bool:
 
 
 def _readonly_tools(config: Optional[RunnableConfig] = None) -> bool:
-    """是否只挂载只读探索工具（list/find/info/read_yaml/read_tabular_file/discover_pairs/inspect_image_spacing）。
+    """是否只挂载只读探索工具（list/find/info/read_yaml/read_json/read_tabular_file/discover_pairs/inspect_image_spacing）。
     explore 模式的子 agent 置 True，使其免确认也无法写文件或跑脚本。"""
     if config is None:
         return False
@@ -327,8 +327,11 @@ def process_tool_calls(state: AgentState, config: Optional[RunnableConfig] = Non
             "find_files",
             "get_file_info",
             "read_yaml",
+            "read_json",
             "read_tabular_file",
             "update_yaml",
+            "create_json",
+            "update_json",
             "plan_file_operations",
             "discover_radiomics_pairs",
             "inspect_image_spacing",
@@ -357,7 +360,8 @@ def process_tool_calls(state: AgentState, config: Optional[RunnableConfig] = Non
                 continue
             confirmation_pending = True
             if name in {"list_directory", "find_files", "get_file_info",
-                        "read_yaml", "read_tabular_file", "update_yaml",
+                        "read_yaml", "read_json", "read_tabular_file", "update_yaml",
+                        "create_json", "update_json",
                         "inspect_image_spacing"}:
                 interrupt_type = "system_command"
                 updates["pending_command"] = {"tool_call_id": tool_call_id, **parsed}
@@ -1212,6 +1216,85 @@ def _run_system_command(command: dict, project_path: str) -> dict:
                 "result": {
                     "path": str(target.relative_to(sandbox.root)),
                     "updated": applied,
+                },
+            }
+        elif tool == "read_json":
+            path = args.get("path")
+            if path is None:
+                return {"error": "missing required argument: path"}
+            target = sandbox.resolve(path, must_exist=True)
+            try:
+                with open(target, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            except json.JSONDecodeError as e:
+                return {"error": f"JSON 解析失败: {e}"}
+            key = args.get("key") or ""
+            if key:
+                for part in key.split("."):
+                    if isinstance(data, dict) and part in data:
+                        data = data[part]
+                    else:
+                        return {"error": f"键不存在: {key}（在 '{part}' 处中断）"}
+            return {"tool": tool, "result": data}
+        elif tool == "create_json":
+            path = args.get("path")
+            if path is None:
+                return {"error": "missing required argument: path"}
+            content = args.get("content")
+            if not isinstance(content, (dict, list)):
+                return {"error": "content 必须是 JSON 对象（dict）或数组（list）"}
+            target = sandbox.resolve(path)
+            if target.exists():
+                return {"error": f"文件已存在: {target.relative_to(sandbox.root)}"}
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with open(target, "w", encoding="utf-8") as f:
+                json.dump(content, f, ensure_ascii=False, indent=2)
+                f.write("\n")
+            return {"tool": tool,
+                    "result": {"path": str(target.relative_to(sandbox.root))}}
+        elif tool == "update_json":
+            path = args.get("path")
+            updates = args.get("updates")
+            if path is None:
+                return {"error": "missing required argument: path"}
+            if not isinstance(updates, dict) or not updates:
+                return {"error": "updates 必须是非空的 {点号路径: 值} 映射"}
+            target = sandbox.resolve(path, must_exist=True)
+            try:
+                with open(target, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            except json.JSONDecodeError as e:
+                return {"error": f"JSON 解析失败: {e}"}
+            if not isinstance(data, dict):
+                return {"error": "顶层不是 JSON 对象，无法按点号路径更新"}
+            applied = []
+            deleted = []
+            for dotted, value in updates.items():
+                parts = str(dotted).split(".")
+                node = data
+                for part in parts[:-1]:
+                    nxt = node.get(part) if isinstance(node, dict) else None
+                    if nxt is None:
+                        nxt = {}
+                        node[part] = nxt
+                    if not isinstance(nxt, dict):
+                        return {"error": f"路径 '{dotted}' 经过非映射节点: '{part}'"}
+                    node = nxt
+                if value is None:
+                    node.pop(parts[-1], None)
+                    deleted.append(str(dotted))
+                else:
+                    node[parts[-1]] = value
+                    applied.append(str(dotted))
+            with open(target, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+                f.write("\n")
+            return {
+                "tool": tool,
+                "result": {
+                    "path": str(target.relative_to(sandbox.root)),
+                    "updated": applied,
+                    "deleted": deleted,
                 },
             }
         elif tool == "inspect_image_spacing":
