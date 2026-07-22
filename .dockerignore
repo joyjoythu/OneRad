@@ -19,9 +19,6 @@ pyradiomics-master/
 reference_code/
 docs/
 
-# Lock files (not needed in build context)
-requirements.lock
-
 # IDE / editor
 .idea/
 .vscode/

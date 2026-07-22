@@ -13,28 +13,31 @@ RUN npm run build
 
 
 # Stage 2: Python runtime
-FROM python:3.12-slim
+FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies for SimpleITK / PyRadiomics / OpenCV
+# Install system dependencies for SimpleITK / PyRadiomics / h5py
 RUN apt-get update && apt-get install -y \
     build-essential \
     libglib2.0-0 \
+    libgl1 \
     libsm6 \
     libxext6 \
-    libxrender-dev \
-    libgl1-mesa-glx \
-    libglib2.0-data \
-    shared-mime-info \
+    libxrender1 \
+    libhdf5-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies.
+# Use requirements.lock (uv pip compile output) for reproducible builds.
 # pyradiomics 3.1.0 has broken PyPI metadata (declares version 3.0.1a1);
-# install 3.0.1 without build isolation so its setup.py can see numpy.
+# we drop that pin, install the rest of the locked set, then install
+# pyradiomics 3.0.1 without build isolation so its setup.py can see numpy.
 # See: https://github.com/AIM-Harvard/pyradiomics/issues/933
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt && \
+COPY requirements.lock .
+RUN pip install --no-cache-dir setuptools wheel numpy && \
+    sed -i '/^pyradiomics==/d' requirements.lock && \
+    pip install --no-cache-dir -r requirements.lock && \
     pip install --no-cache-dir --no-build-isolation pyradiomics==3.0.1
 
 # Copy backend source code

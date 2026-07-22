@@ -1,0 +1,14 @@
+# 离线部署 — 评委导入镜像后直接启动，无需联网构建
+services:
+  autoradiomics:
+    image: autoradiomic-agent-autoradiomics:latest
+    container_name: autoradiomics
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./output:/app/output
+    environment:
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - BASE_URL=${BASE_URL:-https://api.deepseek.com/v1}
