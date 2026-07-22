@@ -443,8 +443,13 @@ def _render_markdown_report(analysis_result: Dict[str, Any],
                             n_matched: int,
                             covariates: List[str],
                             output_dir: str,
-                            n_splits: int = 5) -> str:
-    """Render a Markdown report next to the Word one; returns its path."""
+                            n_splits: int = 5,
+                            interpretation: Optional[Dict[str, str]] = None) -> str:
+    """Render a Markdown report next to the Word one; returns its path.
+
+    ``interpretation`` 为 None 时不生成"结果解读"小节（现状行为）；
+    提供时追加 ``## 6. 结果解读`` 及三个子节。报告整体重写，重复生成幂等。
+    """
     m = analysis_result["metrics"]
     lines = [
         "# 影像组学分析报告",
@@ -555,6 +560,23 @@ def _render_markdown_report(analysis_result: Dict[str, Any],
             caption = os.path.splitext(os.path.basename(path))[0]
             lines.append(f"![{caption}]({_rel_img(path)})")
             lines.append("")
+    if interpretation:
+        lines += [
+            "",
+            "## 6. 结果解读",
+            "",
+            "### 模型性能解读",
+            "",
+            interpretation.get("performance", ""),
+            "",
+            "### 特征意义解读",
+            "",
+            interpretation.get("features", ""),
+            "",
+            "### SHAP 可解释性解读",
+            "",
+            interpretation.get("shap", ""),
+        ]
     report_path = os.path.join(output_dir, "report.md")
     with open(report_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
@@ -725,6 +747,21 @@ def run_radiomics_cv_analysis(
     feat_path = os.path.join(output_dir, "selected_features.csv")
     feat_df.to_csv(feat_path, index=False)
     outputs["selected_features"] = feat_path
+
+    # analysis_result 的 JSON 安全子集落盘：供结果解读工具
+    # （interpret_analysis_results）离线重建数值摘要，无需重跑分析。
+    analysis_json = {
+        "metrics": analysis_result.get("metrics"),
+        "cv_metrics": analysis_result.get("cv_metrics"),
+        "model_results": analysis_result.get("model_results"),
+        "selected_features": analysis_result.get("selected_features"),
+        "n_samples": analysis_result.get("n_samples"),
+        "oof_probabilities": analysis_result.get("oof_probabilities"),
+    }
+    analysis_json_path = os.path.join(output_dir, "analysis_result.json")
+    with open(analysis_json_path, "w", encoding="utf-8") as f:
+        json.dump(analysis_json, f, ensure_ascii=False, indent=2)
+    outputs["analysis_result_json"] = analysis_json_path
 
     # 曲线（单张失败只记 warning，不中断）
     new_plots: List[str] = []

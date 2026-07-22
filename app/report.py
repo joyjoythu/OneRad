@@ -19,7 +19,8 @@ class ReportAgent:
     def run(self, analysis_result: Dict[str, Any], output_dir: str,
             modality: str, n_features: int, covariates: List[str],
             plot_paths: Optional[List[str]] = None,
-            llm_client=None) -> Dict[str, Any]:
+            llm_client=None,
+            interpretation: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
         """Build and save the DOCX report.
 
         Parameters
@@ -45,6 +46,11 @@ class ReportAgent:
         llm_client: object | None
             Optional client with a ``call(system, prompt, ...)`` method used to
             polish the methodology paragraph.
+        interpretation: dict | None
+            Optional LLM-generated interpretation with ``performance`` /
+            ``features`` / ``shap`` markdown strings. When provided, a
+            ``结果解读`` section with three subsections is appended; ``None``
+            keeps the current behaviour (no interpretation section).
 
         Returns
         -------
@@ -200,6 +206,19 @@ class ReportAgent:
                     else:
                         skipped_plots.append(plot_path)
 
+            # 结果解读（LLM 生成的中文解读；interpretation 为 None 时不生成该节，
+            # 报告整体重写，重复生成幂等）
+            if interpretation:
+                doc.add_heading("结果解读", level=1)
+                for subtitle, key in (("模型性能解读", "performance"),
+                                      ("特征意义解读", "features"),
+                                      ("SHAP 可解释性解读", "shap")):
+                    text = (interpretation.get(key) or "").strip()
+                    if not text:
+                        continue
+                    doc.add_heading(subtitle, level=2)
+                    self._add_markdown_text(doc, text)
+
             # Save
             report_path = os.path.join(output_dir, "AutoRadiomics_Report.docx")
             doc.save(report_path)
@@ -277,6 +296,28 @@ class ReportAgent:
             return polished or raw
         except Exception:
             return raw
+
+    @staticmethod
+    def _add_markdown_text(doc, text: str):
+        """Write an LLM-generated markdown fragment as plain Word paragraphs.
+
+        Lines starting with ``- ``/``* `` become bullet paragraphs; heading
+        markers and ``**`` bold markers are stripped; blank lines are skipped.
+        """
+        for line in text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            bullet = line.startswith(("- ", "* "))
+            if bullet:
+                line = line[2:].strip()
+            line = line.lstrip("#").strip().replace("**", "")
+            if not line:
+                continue
+            if bullet:
+                doc.add_paragraph(line, style="List Bullet")
+            else:
+                doc.add_paragraph(line)
 
     def _add_table(self, doc, df: pd.DataFrame):
         """Append a pandas DataFrame as a styled Word table.

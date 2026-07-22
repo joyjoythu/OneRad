@@ -322,6 +322,16 @@ def process_tool_calls(state: AgentState, config: Optional[RunnableConfig] = Non
             ))
             continue
 
+        # 结果解读：免确认，立即在本节点内执行（一次 LLM 调用 + 幂等重写报告），
+        # 与分析成功后的自动补全流程衔接，不再额外打断用户。
+        if name == "interpret_analysis_results":
+            results = _run_interpretation(state, config)
+            updates["messages"].append(ToolMessage(
+                content=json.dumps(results, ensure_ascii=False),
+                tool_call_id=tool_call_id,
+            ))
+            continue
+
         needs_confirmation = name in {
             "list_directory",
             "find_files",
@@ -1505,6 +1515,92 @@ def _json_safe_stats_result(result: dict) -> dict:
         "n_missing_features": result.get("n_missing_features", 0),
         "outputs": result.get("outputs", {}),
     }
+
+
+# 结果解读：在项目中定位分析输出目录的扫描深度（与分析输入扫描一致）。
+_INTERPRETATION_SCAN_DEPTH = 2
+
+
+def _find_latest_analysis_dir(project_path: str) -> Optional[str]:
+    """在项目内定位最新一次分析的输出目录（含 analysis_result.json）。
+
+    不接受用户传入路径；多个候选按文件修改时间取最新，找不到返回 None。
+    """
+    candidates = []
+    for dirpath, dirnames, filenames in os.walk(project_path):
+        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+        depth = len(Path(dirpath).relative_to(project_path).parts)
+        if depth >= _INTERPRETATION_SCAN_DEPTH:
+            del dirnames[:]
+        if "analysis_result.json" in filenames:
+            candidates.append(os.path.join(dirpath, "analysis_result.json"))
+    if not candidates:
+        return None
+    latest = max(candidates, key=os.path.getmtime)
+    return os.path.dirname(latest)
+
+
+def _run_interpretation(
+    state: AgentState,
+    config: Optional[RunnableConfig] = None,
+) -> dict:
+    """免确认执行结果解读：定位最新分析输出目录，生成 LLM 解读并注入报告。
+
+    任何失败（无 API key、LLM 异常、返回格式异常、旧输出目录缺
+    analysis_result.json）都优雅返回错误说明，不影响既有产物。
+    """
+    from app.interpretation import apply_to_reports, build_summary, interpret
+    from app.llm import LLMClient
+
+    project_path = state["project_path"]
+    try:
+        output_dir = _find_latest_analysis_dir(project_path)
+        if output_dir is None:
+            return {
+                "success": False,
+                "error": "未找到 analysis_result.json：请先运行 "
+                         "run_radiomics_analysis 完成一次分析"
+                         "（旧版输出目录缺少该文件，需重新运行分析）。",
+            }
+        result_path = os.path.join(output_dir, "analysis_result.json")
+        with open(result_path, "r", encoding="utf-8") as f:
+            analysis_result = json.load(f)
+
+        summary = build_summary(analysis_result, output_dir)
+        api_key = _resolve_api_key(state, config)
+        llm_client = LLMClient(
+            api_key=api_key or None,
+            base_url=state.get("base_url") or "https://api.deepseek.com/v1",
+        )
+        interpretation = interpret(summary, llm_client)
+        reports = apply_to_reports(analysis_result, output_dir, interpretation)
+
+        interpretation_path = os.path.join(output_dir, "interpretation.md")
+        with open(interpretation_path, "w", encoding="utf-8") as f:
+            f.write("# 结果解读\n\n")
+            for key, title in (("performance", "模型性能解读"),
+                               ("features", "特征意义解读"),
+                               ("shap", "SHAP 可解释性解读")):
+                f.write(f"## {title}\n\n{interpretation.get(key, '')}\n\n")
+
+        return {
+            "success": True,
+            "message": "结果解读已生成并注入 report.md 与 report.docx",
+            "output_dir": output_dir,
+            "section_previews": {
+                k: v[:200] for k, v in interpretation.items()},
+            "outputs": {
+                "report_md": reports["report_md"],
+                "report_docx": reports["report_docx"],
+                "interpretation": interpretation_path,
+            },
+        }
+    except Exception as e:
+        logger.warning("结果解读失败", exc_info=True)
+        return {
+            "success": False,
+            "error": f"结果解读失败: {e}（基础报告与既有产物不受影响，可稍后重试）",
+        }
 
 
 def _clear_interrupt(updates: dict) -> dict:

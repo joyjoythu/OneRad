@@ -294,6 +294,18 @@ def build_tools(
         )
 
     @tool
+    def interpret_analysis_results() -> str:
+        """对最近一次 run_radiomics_analysis 的分析结果生成 LLM 中文解读并注入
+        报告：report.md 追加"结果解读"小节，report.docx 同步更新，解读原文保存为
+        interpretation.md。无需参数：自动定位项目内最新的分析输出目录
+        （含 analysis_result.json）。免确认，立即执行；重复调用幂等，报告不会
+        叠加小节。分析成功、报告生成后应主动调用一次补全报告；用户要求
+        "重新解读/再解读一次"时再次调用。若返回缺少 analysis_result.json 的错误，
+        说明尚未运行分析或输出目录来自旧版本，需先重新运行分析。"""
+        return json.dumps({"_pending_tool": "interpret_analysis_results"},
+                          ensure_ascii=False)
+
+    @tool
     def update_todo_list(todos: List[Any]) -> str:
         """全量更新右侧计划面板的步骤列表，向用户展示宏观分析进度。
         todos 为步骤数组，每项 {"content": 步骤描述, "status": "pending" |
@@ -358,6 +370,7 @@ def build_tools(
         tools["extract_radiomics_features"] = extract_radiomics_features
         tools["run_radiomics_analysis"] = run_radiomics_analysis
         tools["run_feature_statistics"] = run_feature_statistics
+        tools["interpret_analysis_results"] = interpret_analysis_results
         tools["update_todo_list"] = update_todo_list
         tools["ask_user_choice"] = ask_user_choice
 
