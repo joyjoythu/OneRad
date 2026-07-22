@@ -10,3 +10,6 @@ reference_code/
 frontend/node_modules/
 frontend/dist/
 
+# Environment (contains API keys)
+.env
+
