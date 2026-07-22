@@ -7,6 +7,7 @@ const emptySettings = (): GeneralSettings => ({
   api_key: '',
   api_key_configured: false,
   api_key_source: 'none',
+  memory_enabled: true,
 })
 
 export const useSettingsStore = defineStore('settings', () => {
@@ -46,6 +47,11 @@ export const useSettingsStore = defineStore('settings', () => {
     return settings.value
   }
 
+  async function saveMemoryEnabled(enabled: boolean): Promise<GeneralSettings> {
+    settings.value = await api.updateSettings(settings.value.api_key, enabled)
+    return settings.value
+  }
+
   function requestApiKey(): void {
     apiKeyRequired.value = true
   }
@@ -59,6 +65,7 @@ export const useSettingsStore = defineStore('settings', () => {
     loadSettings,
     ensureLoaded,
     saveApiKey,
+    saveMemoryEnabled,
     requestApiKey,
   }
 })

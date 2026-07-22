@@ -59,6 +59,21 @@
 
         <div class="general-setting-divider" />
 
+        <div class="general-setting-row">
+          <div class="general-setting-row__copy">
+            <h4>长期记忆</h4>
+            <p>开启后，智能体会在会话结束后自动提取关键事实，同一项目内的新对话可自动回忆。注意：记忆仅在当前项目内生效，不同项目之间不共享。</p>
+          </div>
+          <el-switch
+            :model-value="memoryEnabled"
+            :loading="memoryToggleLoading"
+            aria-label="长期记忆开关"
+            @change="handleMemoryToggle"
+          />
+        </div>
+
+        <div class="general-setting-divider" />
+
         <div class="general-setting-row general-setting-row--api">
           <div class="general-setting-row__copy">
             <h4>DeepSeek API 密钥</h4>
@@ -111,6 +126,8 @@ const settingsStore = useSettingsStore()
 
 const currentTheme = ref<Theme>(getTheme())
 const generalApiKey = ref('')
+const memoryEnabled = ref(true)
+const memoryToggleLoading = ref(false)
 const apiKeyInputRef = ref<InputInstance>()
 const generalSaveStatus = ref<SaveStatus>('idle')
 const generalSavedAt = ref<Date | null>(null)
@@ -139,6 +156,19 @@ function handleThemeChange(value: string | number | boolean): void {
   const theme: Theme = value === 'dark' ? 'dark' : 'light'
   currentTheme.value = theme
   setTheme(theme)
+}
+
+async function handleMemoryToggle(enabled: boolean): Promise<void> {
+  memoryToggleLoading.value = true
+  try {
+    await settingsStore.saveMemoryEnabled(enabled)
+    memoryEnabled.value = enabled
+  } catch {
+    // 回退到服务端实际值
+    memoryEnabled.value = settingsStore.settings.memory_enabled
+  } finally {
+    memoryToggleLoading.value = false
+  }
 }
 
 function clearGeneralDebounce(): void {
@@ -218,6 +248,7 @@ onMounted(async () => {
   try {
     await settingsStore.ensureLoaded()
     generalApiKey.value = settingsStore.settings.api_key
+    memoryEnabled.value = settingsStore.settings.memory_enabled
     lastGeneralSaved = generalApiKey.value
     generalSaveStatus.value = 'idle'
   } finally {

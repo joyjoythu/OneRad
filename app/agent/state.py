@@ -5,6 +5,7 @@ from langgraph.graph.message import add_messages
 class AgentState(TypedDict):
     messages: Annotated[list, add_messages]
     project_path: str
+    project_id: str
     base_url: str
     model: str
     # Legacy checkpoints may contain this field. New threads keep secrets only

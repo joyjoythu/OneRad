@@ -336,6 +336,55 @@ def get_agent_graph(request: Request):
     return request.app.state.agent_graph
 
 
+async def _maybe_extract_memories(
+    thread_id: str, graph, config: Dict[str, Any], app
+) -> None:
+    """在流式运行正常结束后，用 LLM 从本轮对话中提取长期记忆。
+
+    仅当有 API key 且 state 中存在 project_id 时才执行；失败静默跳过，
+    不影响正常消息响应。
+    """
+    try:
+        snapshot = await graph.aget_state(config)
+        values = snapshot.values if snapshot else None
+        if not values:
+            return
+        project_id = values.get("project_id", "")
+        if not project_id:
+            return
+        api_key = getattr(app.state, "agent_api_keys", {}).get(thread_id, "")
+        if not api_key:
+            return
+        messages = _render_messages(values)
+        if not messages:
+            return
+        from app.agent.memory import extract_memories
+        from app.llm import LLMClient
+
+        llm_client = LLMClient(api_key=api_key)
+        memories = await asyncio.to_thread(
+            extract_memories, messages, llm_client
+        )
+        if not memories:
+            return
+        # 检查全局记忆开关
+        settings_store = getattr(app.state, "settings_store", None)
+        if settings_store is not None and not settings_store.is_memory_enabled():
+            logger.debug("记忆功能已关闭，跳过提取 thread_id=%s", thread_id)
+            return
+        store = app.state.project_store
+        inserted = await asyncio.to_thread(
+            store.add_memories, project_id, memories
+        )
+        if inserted:
+            logger.info(
+                "长期记忆已提取 thread_id=%s project_id=%s inserted=%d",
+                thread_id, project_id, inserted,
+            )
+    except Exception:
+        logger.warning("长期记忆提取失败 thread_id=%s", thread_id, exc_info=True)
+
+
 async def _stream_agent(
     thread_id: str,
     graph,
@@ -350,11 +399,13 @@ async def _stream_agent(
     """
     task = asyncio.current_task()
     app.state.pipeline_tasks.add(task)
+    errored = False
     try:
         async for values in graph.astream(input_value, config, stream_mode="values"):
             payload = _sync_payload(values, running=True)
             await bridge.publish("agent", thread_id, payload)
     except Exception as exc:
+        errored = True
         await bridge.publish(
             "agent",
             thread_id,
@@ -377,6 +428,10 @@ async def _stream_agent(
         try:
             with suppress(Exception):
                 await _ensure_message_timestamps(graph, config)
+            # 正常结束后提取长期记忆（异常/取消不提取）
+            if not errored:
+                with suppress(Exception):
+                    await _maybe_extract_memories(thread_id, graph, config, app)
         finally:
             app.state.active_agent_streams.discard(thread_id)
             app.state.pipeline_tasks.discard(task)

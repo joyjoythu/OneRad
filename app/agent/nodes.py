@@ -26,6 +26,7 @@ from app.agent.state import AgentState
 from app.agent.tools import build_tools
 from app.agent.safety import Sandbox
 from app.agent import runtime as agent_runtime
+from app.agent.memory import build_memory_prompt
 from app.actions import execute_plan
 from app.code_runner import execute_script_if_safe
 from app.feature import FeatureAgent
@@ -109,15 +110,24 @@ def call_llm(state: AgentState, config: Optional[RunnableConfig] = None) -> dict
         readonly=_readonly_tools(config),
     )
     thread_id = (config or {}).get("configurable", {}).get("thread_id")
+    # 注入项目长期记忆（跨线程共享的关键事实），放在 skill bundle 之前
+    memory_block = ""
+    project_id = state.get("project_id", "")
+    if project_id:
+        from app.projects import ProjectStore
+        from app.settings import GeneralSettingsStore
+        gs = GeneralSettingsStore()
+        if gs.is_memory_enabled():
+            memory_block = build_memory_prompt(project_id, ProjectStore())
+    skill_text = load_skill_bundle(
+        ("agent-core", "radiomics-workflow", "word-report"))
+    system_parts = [p for p in (memory_block, skill_text) if p]
     response = _stream_chat_completion(
         api_key=api_key,
         base_url=state["base_url"],
         model=_resolve_model(state, config),
         messages=[
-            SystemMessage(
-                content=load_skill_bundle(
-                    ("agent-core", "radiomics-workflow", "word-report"))
-            ),
+            SystemMessage(content="\n\n".join(system_parts)),
             *state["messages"],
         ],
         tools=list(tools.values()),

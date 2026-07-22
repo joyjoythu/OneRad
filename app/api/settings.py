@@ -16,6 +16,7 @@ class UpdateGeneralSettingsRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     api_key: str = ""
+    memory_enabled: bool | None = None
 
 
 @router.get("", response_model=Dict[str, Any])
@@ -30,4 +31,4 @@ def update_settings(
     payload: UpdateGeneralSettingsRequest,
     store: GeneralSettingsStore = Depends(get_general_settings_store),
 ) -> Dict[str, Any]:
-    return store.save(payload.api_key)
+    return store.save(payload.api_key, memory_enabled=payload.memory_enabled)

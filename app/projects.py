@@ -96,6 +96,22 @@ class ProjectStore:
                 "CREATE INDEX IF NOT EXISTS idx_threads_project_updated "
                 "ON threads(project_id, updated_at DESC)"
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS memories (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    category TEXT NOT NULL,
+                    fact TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+                )
+                """
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_memories_project "
+                "ON memories(project_id, created_at DESC)"
+            )
         finally:
             conn.close()
 
@@ -345,6 +361,60 @@ class ProjectStore:
             conn.commit()
         finally:
             conn.close()
+
+    # ── memories ────────────────────────────────────────────────────────
+
+    def add_memories(self, project_id: str, memories: List[Dict[str, str]]) -> int:
+        """Persist extracted facts; returns count of newly inserted rows.
+
+        Each dict must contain ``category`` and ``fact``.  Duplicate facts
+        (same project + category + fact text) are silently skipped.
+        """
+        if not memories:
+            return 0
+        now = self._now()
+        conn = self._connect()
+        inserted = 0
+        try:
+            for m in memories:
+                fact = (m.get("fact") or "").strip()
+                category = (m.get("category") or "general").strip()
+                if not fact:
+                    continue
+                existing = conn.execute(
+                    "SELECT 1 FROM memories WHERE project_id=? AND category=? AND fact=?",
+                    (project_id, category, fact),
+                ).fetchone()
+                if existing:
+                    continue
+                conn.execute(
+                    "INSERT INTO memories (id, project_id, category, fact, created_at) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (str(uuid.uuid4()), project_id, category, fact, now),
+                )
+                inserted += 1
+            conn.commit()
+            return inserted
+        finally:
+            conn.close()
+
+    def get_memories(
+        self, project_id: str, limit: int = 20
+    ) -> List[Dict[str, str]]:
+        """Return the most recent memories for *project_id*, newest first."""
+        conn = self._connect()
+        try:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT id, category, fact, created_at FROM memories "
+                "WHERE project_id = ? ORDER BY created_at DESC LIMIT ?",
+                (project_id, limit),
+            ).fetchall()
+            return [dict(row) for row in rows]
+        finally:
+            conn.close()
+
+    # ── threads (continued) ────────────────────────────────────────────
 
     def delete_thread(self, thread_id: str) -> None:
         conn = self._connect()

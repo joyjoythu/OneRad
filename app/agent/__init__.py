@@ -12,6 +12,7 @@ def build_initial_state(project: dict) -> AgentState:
     return {
         "messages": [],
         "project_path": project["path"],
+        "project_id": project["id"],
         "base_url": "https://api.deepseek.com/v1",
         "model": DEEPSEEK_MODEL,
         "interrupt_type": None,
