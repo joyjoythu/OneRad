@@ -21,9 +21,9 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import pandas as pd
 from docx import Document
-from docx.shared import Pt
 from scipy import stats
 
+from app.docx_style import apply_academic_style, style_table
 from app.radiomics_analysis import _load_table
 from app.utils import (
     _load_feature_csv,
@@ -405,16 +405,19 @@ def _write_word_report(
     n_group1: int,
     output_path: str,
 ) -> None:
-    """Write a Word document with a feature statistics summary table."""
+    """Write a Word document with a feature statistics summary table.
+
+    Uses the centralized academic style from ``docx_style``, consistent with
+    the AutoRadiomics report: Title 黑体三号、Heading 黑体、正文宋体小四、
+    表格五号，西文/数字 Times New Roman。
+    """
     doc = Document()
+    apply_academic_style(doc)
 
-    # Title
-    title = doc.add_heading(level=0)
-    run = title.add_run("影像组学特征统计分析报告")
-    run.font.size = Pt(18)
-    run.bold = True
+    # Title — 由 Title 样式统一控制（黑体三号 16pt 加粗居中）
+    doc.add_heading("影像组学特征统计分析报告", level=0)
 
-    # Summary paragraph
+    # Summary paragraphs（正文宋体小四 12pt）
     doc.add_paragraph(
         f"对 {len(results)} 个筛选后影像组学特征进行分组统计分析。"
         f"Label=0: {n_group0} 例，Label=1: {n_group1} 例。"
@@ -448,10 +451,6 @@ def _write_word_report(
     hdr = table.rows[0].cells
     for i, col in enumerate(columns):
         hdr[i].text = col
-        for paragraph in hdr[i].paragraphs:
-            for run in paragraph.runs:
-                run.bold = True
-                run.font.size = Pt(9)
 
     # Data rows
     for r in results:
@@ -473,11 +472,8 @@ def _write_word_report(
         cells[5].text = fmt_num(r.get("mw_u"))
         cells[6].text = fmt_p(r.get("mw_pvalue"))
 
-        # Apply font size
-        for cell in cells:
-            for paragraph in cell.paragraphs:
-                for run in paragraph.runs:
-                    run.font.size = Pt(9)
+    # 统一表格字体：五号 10.5pt，表头加粗居中，中文字体宋体
+    style_table(table)
 
     doc.save(output_path)
     logger.info("统计分析报告已保存: %s", output_path)
