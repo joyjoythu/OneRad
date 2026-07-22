@@ -202,6 +202,38 @@ class ClinicalAgent:
         }
 
 
+def translate_column_names(names: List[str], llm_client) -> Dict[str, str]:
+    """用一次 LLM 调用把中文等非 ASCII 临床列名翻译为医学通用英文。
+
+    仅保留纯 ASCII、非空的译名；非法译名对应的原名不出现在结果中（调用方
+    对其保持原名）。``llm_client`` 为 None 或 ``names`` 为空时返回 {}。
+    LLM 调用失败或返回无法解析时抛异常，由调用方捕获并回退为保持原名。
+
+    Args:
+        names: 待翻译的列名列表。
+        llm_client: 具备 ``call_json`` 方法的 LLM 客户端。
+
+    Returns:
+        ``{原列名: 英文列名}`` 映射。
+    """
+    if llm_client is None or not names:
+        return {}
+    from app.llm import build_column_translation_prompt
+    system, user = build_column_translation_prompt(list(names))
+    parsed = llm_client.call_json(system, user, temperature=0.1)
+    if not isinstance(parsed, dict):
+        raise ValueError("LLM 未返回有效的列名翻译 JSON")
+    mapping: Dict[str, str] = {}
+    for name in names:
+        eng = parsed.get(name)
+        if not isinstance(eng, str):
+            continue
+        eng = eng.strip()
+        if eng and eng.isascii():
+            mapping[name] = eng
+    return mapping
+
+
 def _normalize_id(id_str: str) -> str:
     if not isinstance(id_str, str):
         id_str = str(id_str)

@@ -1,12 +1,16 @@
+import glob
 import json
+import logging
 import os
 
 import numpy as np
 import pandas as pd
 import pytest
 
+from app.clinical import translate_column_names
 from app.radiomics_analysis import (
     _render_markdown_report,
+    _resolve_translation_conflicts,
     inspect_analysis_inputs,
     run_radiomics_cv_analysis,
 )
@@ -510,3 +514,174 @@ def test_run_analysis_writes_reproduction_files(tmp_path):
     assert "analysis_params.json" in script
     assert "run_radiomics_cv_analysis" in script
     assert "project_root" in script
+
+
+# ---------------------------------------------------------------------------
+# 中文临床列名自动翻译
+# ---------------------------------------------------------------------------
+
+class _FakeLLMClient:
+    """模拟 LLMClient：call_json 返回预设翻译映射；call 原样返回（方法学润色）。"""
+
+    def __init__(self, mapping=None, fail=False):
+        self._mapping = mapping or {}
+        self._fail = fail
+
+    def call_json(self, system, user, **kwargs):
+        if self._fail:
+            raise RuntimeError("LLM unavailable")
+        return dict(self._mapping)
+
+    def call(self, system, user, **kwargs):
+        return user
+
+
+def _make_chinese_clinical_inputs(tmp_path, n=60, seed=42, label_name="Label"):
+    ids = [f"P{i:03d}" for i in range(n)]
+    feat = tmp_path / "features.csv"
+    clin = tmp_path / "clinical.csv"
+    label = _write_feature_csv(feat, ids, seed=seed)
+    rng = np.random.RandomState(1)
+    pd.DataFrame({"patient_id": ids, label_name: label,
+                  "年龄": rng.randint(30, 80, n)}).to_csv(clin, index=False)
+    return str(feat), str(clin)
+
+
+def test_translate_column_names_filters_invalid():
+    """非法译名（非 ASCII / 空 / 缺失）被过滤，原名保持不译。"""
+    llm = _FakeLLMClient({"年龄": "Age", "性别": "性Gender", "吸烟史": " "})
+    mapping = translate_column_names(["年龄", "性别", "吸烟史", " BMI "], llm)
+    assert mapping == {"年龄": "Age"}
+    # 无 llm_client 或空列表直接返回 {}
+    assert translate_column_names(["年龄"], None) == {}
+    assert translate_column_names([], llm) == {}
+
+
+def test_translate_column_names_raises_on_bad_response():
+    llm = _FakeLLMClient()
+    llm.call_json = lambda *a, **k: None
+    with pytest.raises(ValueError):
+        translate_column_names(["年龄"], llm)
+
+
+def test_resolve_translation_conflicts():
+    """译名与既有列名或彼此冲突时追加 _2、_3 后缀。"""
+    resolved = _resolve_translation_conflicts(
+        {"年龄": "Age", "岁数": "Age"}, taken={"Age"})
+    assert resolved == {"年龄": "Age_2", "岁数": "Age_3"}
+
+
+def test_run_analysis_translates_chinese_column_names(tmp_path):
+    """mock LLM 翻译后跑完整分析：产物全部为英文名，映射与复现文件齐备。"""
+    feat, clin = _make_chinese_clinical_inputs(tmp_path)
+    out_dir = str(tmp_path / "analysis_out")
+    result = run_radiomics_cv_analysis(
+        feature_csv=feat, clinical=clin, output_dir=out_dir,
+        id_col="patient_id", label_col="Label", covariates=["年龄"],
+        project_path=str(tmp_path),
+        llm_client=_FakeLLMClient({"年龄": "Age"}))
+    assert result["success"] is True
+    outputs = result["outputs"]
+
+    # 映射 CSV 落盘
+    map_df = pd.read_csv(outputs["covariate_name_mapping"])
+    assert list(map_df.columns) == ["original_name", "english_name"]
+    assert dict(zip(map_df["original_name"],
+                    map_df["english_name"])) == {"年龄": "Age"}
+
+    # 产物中不再出现中文特征名，英文协变量进入模型
+    coefs = result["analysis_result"]["model_results"]["coefficients"]
+    assert "Age" in coefs
+    assert all(str(k).isascii() for k in coefs)
+    feat_df = pd.read_csv(outputs["selected_features"])
+    assert all(str(v).isascii() for v in feat_df["feature"])
+    analysis_json = json.loads(
+        open(outputs["analysis_result_json"], encoding="utf-8").read())
+    assert all(str(k).isascii()
+               for k in analysis_json["model_results"]["coefficients"])
+    for shap_csv in glob.glob(os.path.join(out_dir, "shap", "shap_values_fold*.csv")):
+        cols = pd.read_csv(shap_csv, nrows=0).columns
+        assert all(str(c).isascii() for c in cols), shap_csv
+
+    # report.md 与 docx 方法小节以 "Age（年龄）" 对照呈现
+    md = open(outputs["report_md"], encoding="utf-8").read()
+    assert "临床协变量：Age（年龄）" in md
+    from docx import Document
+    doc = Document(outputs["report_docx"])
+    text = "\n".join(p.text for p in doc.paragraphs)
+    assert "Age（年龄）" in text
+
+    # analysis_params.json 含 column_name_mapping，协变量已英文化
+    params = json.loads(
+        open(outputs["params_snapshot"], encoding="utf-8").read())
+    assert params["column_name_mapping"] == {"年龄": "Age"}
+    assert params["covariates"] == ["Age"]
+
+    # 复现脚本应用映射（查表重命名，不调 LLM）
+    script = open(outputs["reproduction_script"], encoding="utf-8").read()
+    assert "column_name_mapping" in script
+
+
+def test_run_analysis_translates_chinese_label_column(tmp_path):
+    """中文标签列名也一并翻译，保持数据一致。"""
+    feat, clin = _make_chinese_clinical_inputs(tmp_path, label_name="结局")
+    result = run_radiomics_cv_analysis(
+        feature_csv=feat, clinical=clin,
+        output_dir=str(tmp_path / "out"),
+        id_col="patient_id", label_col="结局",
+        llm_client=_FakeLLMClient({"结局": "Outcome", "年龄": "Age"}))
+    assert result["success"] is True
+    params = json.loads(open(
+        result["outputs"]["params_snapshot"], encoding="utf-8").read())
+    assert params["column_name_mapping"] == {"结局": "Outcome", "年龄": "Age"}
+
+
+def test_run_analysis_applies_column_name_mapping_without_llm(tmp_path):
+    """复跑路径：按快照映射直接重命名，不调 LLM 也不重写映射 CSV。"""
+    feat, clin = _make_chinese_clinical_inputs(tmp_path)
+    result = run_radiomics_cv_analysis(
+        feature_csv=feat, clinical=clin,
+        output_dir=str(tmp_path / "out"),
+        id_col="patient_id", label_col="Label", covariates=["Age"],
+        column_name_mapping={"年龄": "Age"})
+    assert result["success"] is True
+    coefs = result["analysis_result"]["model_results"]["coefficients"]
+    assert "Age" in coefs
+    assert "covariate_name_mapping" not in result["outputs"]
+    params = json.loads(open(
+        result["outputs"]["params_snapshot"], encoding="utf-8").read())
+    assert params["column_name_mapping"] == {}
+
+
+def test_run_analysis_chinese_columns_without_llm_keeps_original(tmp_path, caplog):
+    """无 llm_client：记 warning 保持原名，不写映射文件。"""
+    feat, clin = _make_chinese_clinical_inputs(tmp_path)
+    with caplog.at_level(logging.WARNING, logger="app.radiomics_analysis"):
+        result = run_radiomics_cv_analysis(
+            feature_csv=feat, clinical=clin,
+            output_dir=str(tmp_path / "out"),
+            id_col="patient_id", label_col="Label", covariates=["年龄"])
+    assert result["success"] is True
+    assert any("非 ASCII" in r.message for r in caplog.records)
+    assert "covariate_name_mapping" not in result["outputs"]
+    coefs = result["analysis_result"]["model_results"]["coefficients"]
+    assert "年龄" in coefs
+    params = json.loads(open(
+        result["outputs"]["params_snapshot"], encoding="utf-8").read())
+    assert params["column_name_mapping"] == {}
+    assert params["covariates"] == ["年龄"]
+
+
+def test_run_analysis_translation_failure_keeps_original(tmp_path, caplog):
+    """翻译调用失败：记 warning 保持原名，分析照常完成。"""
+    feat, clin = _make_chinese_clinical_inputs(tmp_path)
+    with caplog.at_level(logging.WARNING, logger="app.radiomics_analysis"):
+        result = run_radiomics_cv_analysis(
+            feature_csv=feat, clinical=clin,
+            output_dir=str(tmp_path / "out"),
+            id_col="patient_id", label_col="Label", covariates=["年龄"],
+            llm_client=_FakeLLMClient(fail=True))
+    assert result["success"] is True
+    assert any("翻译失败" in r.message for r in caplog.records)
+    assert "covariate_name_mapping" not in result["outputs"]
+    assert "年龄" in result["analysis_result"]["model_results"]["coefficients"]

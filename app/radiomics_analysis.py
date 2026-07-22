@@ -43,6 +43,20 @@ DEFAULT_RANDOM_STATE = 42
 
 _APP_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+
+def _resolve_translation_conflicts(mapping: Dict[str, str], taken: set) -> Dict[str, str]:
+    """译名去重并避开既有列名：冲突时依次追加 _2、_3… 后缀。"""
+    used = set(taken)
+    resolved: Dict[str, str] = {}
+    for orig, eng in mapping.items():
+        name, i = eng, 2
+        while name in used:
+            name = f"{eng}_{i}"
+            i += 1
+        used.add(name)
+        resolved[orig] = name
+    return resolved
+
 _REPRODUCTION_SCRIPT_TEMPLATE = '''# -*- coding: utf-8 -*-
 """OneRad 影像组学分析复跑脚本（自动生成）。
 
@@ -78,6 +92,7 @@ def main() -> None:
         id_col=params.get("id_col"),
         label_col=params.get("label_col"),
         covariates=params.get("covariates") or [],
+        column_name_mapping=params.get("column_name_mapping") or {},
         max_lasso_features=params.get("max_lasso_features", 100),
         n_splits=params.get("n_splits", 5),
         random_state=params.get("random_state", 42),
@@ -115,6 +130,9 @@ def write_reproduction_files(project_path: str, output_dir: str,
         "id_col": params.get("id_col"),
         "label_col": params.get("label_col"),
         "covariates": list(params.get("covariates") or []),
+        # 中文列名 → 英文列名映射（无翻译时为空 dict），复跑时直接查表
+        # 重命名临床列，不再调用 LLM，保证复现确定性。
+        "column_name_mapping": dict(params.get("column_name_mapping") or {}),
         "max_lasso_features": params.get(
             "max_lasso_features", DEFAULT_MAX_LASSO_FEATURES),
         "n_splits": params.get("n_splits", DEFAULT_N_SPLITS),
@@ -445,11 +463,14 @@ def _render_markdown_report(analysis_result: Dict[str, Any],
                             covariates: List[str],
                             output_dir: str,
                             n_splits: int = 5,
-                            interpretation: Optional[Dict[str, str]] = None) -> str:
+                            interpretation: Optional[Dict[str, str]] = None,
+                            covariate_display: Optional[List[str]] = None) -> str:
     """Render a Markdown report next to the Word one; returns its path.
 
     ``interpretation`` 为 None 时不生成"结果解读"小节（现状行为）；
     提供时追加 ``## 6. 结果解读`` 及三个子节。报告整体重写，重复生成幂等。
+    ``covariate_display`` 为协变量的展示名（如 ``Age（年龄）`` 对照），
+    缺省时直接使用 ``covariates``。
     """
     m = analysis_result["metrics"]
     lines = [
@@ -464,7 +485,8 @@ def _render_markdown_report(analysis_result: Dict[str, Any],
         "各折选中特征取交集作为稳定特征集，并在全量数据上拟合最终模型。",
     ]
     if covariates:
-        lines.append(f"临床协变量：{', '.join(covariates)}。")
+        display = covariate_display if covariate_display is not None else covariates
+        lines.append(f"临床协变量：{', '.join(display)}。")
     lines += [
         "",
         "## 2. 模型性能",
@@ -590,6 +612,7 @@ def run_radiomics_cv_analysis(
     random_state: int = 42,
     project_path: Optional[str] = None,
     llm_client=None,
+    column_name_mapping: Optional[Dict[str, str]] = None,
     should_cancel: Optional[Callable[[], bool]] = None,
 ) -> Dict[str, Any]:
     """Run LASSO + logistic regression CV analysis and export all artifacts.
@@ -602,8 +625,12 @@ def run_radiomics_cv_analysis(
     每次运行在输出目录写入 analysis_params.json 与 run_analysis.py
     （见 ``write_reproduction_files``），便于日后按相同输入与参数复现。
     ``project_path`` 缺省时取 output_dir 的父目录作为项目根。
+    临床表中的非 ASCII 列名（协变量/标签列）在合并后经 ``llm_client``
+    翻译为英文再进入分析；``column_name_mapping`` 非空时（复跑路径）按映射
+    直接重命名临床列，不再调用 LLM。
     """
     from app.analysis import AnalysisAgent
+    from app.clinical import translate_column_names
     from app.report import ReportAgent
 
     def _cancelled() -> bool:
@@ -614,6 +641,16 @@ def run_radiomics_cv_analysis(
         clinical_df = _load_table(clinical)
     except (FileNotFoundError, ValueError) as e:
         return {"success": False, "message": str(e)}
+
+    column_name_mapping = dict(column_name_mapping or {})
+    if column_name_mapping:
+        # 复跑路径：按参数快照中的映射直接重命名临床列（不调 LLM），
+        # id/label 列名同步映射，保证与首次运行后的英文名一致。
+        clinical_df = clinical_df.rename(columns=column_name_mapping)
+        if id_col:
+            id_col = column_name_mapping.get(id_col, id_col)
+        if label_col:
+            label_col = column_name_mapping.get(label_col, label_col)
 
     if id_col is None:
         return {"success": False,
@@ -654,6 +691,36 @@ def run_radiomics_cv_analysis(
     except ValueError as e:
         return {"success": False, "message": str(e)}
 
+    # 中文等非 ASCII 临床列名（协变量；标签列名不进模型但也一并翻译以保持
+    # 数据一致）经 LLM 翻译为英文，避免 matplotlib 渲染 SHAP 图乱码及报告
+    # 出现中文特征名。复跑路径已由 column_name_mapping 完成重命名，此处跳过；
+    # 无 llm_client 或翻译失败时记 warning 保持原名。
+    translation_mapping: Dict[str, str] = {}
+    if not column_name_mapping:
+        non_ascii_cols = [c for c in merged_df.columns if not str(c).isascii()]
+        if non_ascii_cols:
+            if llm_client is None:
+                logger.warning("临床列名含非 ASCII 字符但未配置 LLM，保持原名: %s",
+                               non_ascii_cols)
+            else:
+                try:
+                    translation_mapping = translate_column_names(
+                        non_ascii_cols, llm_client)
+                except Exception:
+                    logger.warning("临床列名翻译失败，保持原名: %s",
+                                   non_ascii_cols, exc_info=True)
+                    translation_mapping = {}
+            if translation_mapping:
+                translation_mapping = _resolve_translation_conflicts(
+                    translation_mapping,
+                    taken=set(merged_df.columns) - set(translation_mapping))
+                merged_df = merged_df.rename(columns=translation_mapping)
+                clinical_df = clinical_df.rename(columns=translation_mapping)
+                if label_col in translation_mapping:
+                    label_col = translation_mapping[label_col]
+                covariates = [translation_mapping.get(c, c)
+                              for c in (covariates or [])]
+
     if merged_df[label_col].isna().any():
         return {"success": False, "message": f"标签列 '{label_col}' 存在缺失值"}
     if merged_df[label_col].nunique() < 2:
@@ -687,6 +754,7 @@ def run_radiomics_cv_analysis(
             "id_col": id_col,
             "label_col": label_col,
             "covariates": covariates,
+            "column_name_mapping": translation_mapping,
             "max_lasso_features": max_lasso_features,
             "n_splits": n_splits,
             "random_state": random_state,
@@ -712,6 +780,16 @@ def run_radiomics_cv_analysis(
         "shap_plots": analysis_result.get("shap_plot_paths", []),
     }
     outputs.update(repro_outputs)
+
+    # 中文列名 → 英文列名映射落盘（无翻译时不写不加）
+    if translation_mapping:
+        map_df = pd.DataFrame({
+            "original_name": list(translation_mapping.keys()),
+            "english_name": list(translation_mapping.values()),
+        })
+        map_path = os.path.join(output_dir, "covariate_name_mapping.csv")
+        map_df.to_csv(map_path, index=False)
+        outputs["covariate_name_mapping"] = map_path
 
     # 每病例预测概率
     oof = analysis_result.get("oof_probabilities", [])
@@ -783,12 +861,18 @@ def run_radiomics_cv_analysis(
         return {"success": False, "cancelled": True, "message": "用户取消了分析"}
 
     # Word 报告（现有 ReportAgent，新图随 plot_paths 一并嵌入）
+    # 被翻译的协变量以 "Age（年龄）" 对照形式呈现；复跑路径用快照映射。
+    display_mapping = translation_mapping or column_name_mapping
+    inv_mapping = {eng: orig for orig, eng in display_mapping.items()}
+    covariate_display = [f"{c}（{inv_mapping[c]}）" if c in inv_mapping else c
+                         for c in covariates]
     report_result = ReportAgent().run(
         analysis_result=analysis_result,
         output_dir=output_dir,
         modality="auto",
         n_features=n_features,
         covariates=covariates,
+        covariate_display=covariate_display,
         plot_paths=analysis_result.get("plot_paths", []) + new_plots,
         llm_client=llm_client,
     )
@@ -799,7 +883,7 @@ def run_radiomics_cv_analysis(
 
     outputs["report_md"] = _render_markdown_report(
         analysis_result, outputs, int(len(merged_df)), covariates, output_dir,
-        n_splits=n_splits)
+        n_splits=n_splits, covariate_display=covariate_display)
 
     message = "分析完成"
     if ambiguous_ids:

@@ -332,7 +332,7 @@ def build_tools(
         """把最近一次分析输出的 AutoRadiomics_Report.docx 重排为中文学术论文
         格式（正文宋体小四、标题黑体、1.5 倍行距、表格五号）。无需参数：自动
         定位项目内最新的分析输出目录（含 analysis_result.json）。免确认，立即
-        执行；原文件自动备份为 .bak.docx，重复调用幂等。用户觉得报告格式乱或
+        执行；原地保存不生成备份，重复调用幂等。用户觉得报告格式乱或
         要求"排版/重排报告"时调用。"""
         return json.dumps({"_pending_tool": "reformat_report"},
                           ensure_ascii=False)

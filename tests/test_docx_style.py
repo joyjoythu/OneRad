@@ -185,7 +185,7 @@ def test_append_to_document_requires_existing_file(tmp_path):
     assert doc.paragraphs[-1].style.name == "List Bullet"
 
 
-def test_reformat_docx_normalizes_runs_and_creates_backup(tmp_path):
+def test_reformat_docx_normalizes_runs_in_place(tmp_path):
     # 构造一个格式混乱的文档：标题显式 Pt(18) 红色、正文显式 Pt(9)
     path = str(tmp_path / "messy.docx")
     doc = Document()
@@ -200,9 +200,9 @@ def test_reformat_docx_normalizes_runs_and_creates_backup(tmp_path):
     bold_run.bold = True
     doc.save(path)
 
-    backup = reformat_docx(path)
-    assert backup == str(tmp_path / "messy.bak.docx")
-    assert os.path.exists(backup)
+    result = reformat_docx(path)
+    assert result == path  # 原地保存，返回原路径
+    assert not os.path.exists(str(tmp_path / "messy.bak.docx"))  # 不再生成备份
 
     fixed = Document(path)
     h_run = fixed.paragraphs[0].runs[0]
@@ -214,9 +214,8 @@ def test_reformat_docx_normalizes_runs_and_creates_backup(tmp_path):
     assert _run_east(b_run) == "宋体"
     assert bold_run.bold is True  # 正文加粗不被抹掉
 
-    # 幂等：再次重排结果一致，备份被覆盖
-    backup2 = reformat_docx(path)
-    assert backup2 == backup
+    # 幂等：再次重排结果一致
+    assert reformat_docx(path) == path
     refixed = Document(path)
     assert refixed.paragraphs[0].runs[0].font.size == Pt(14)
     assert refixed.paragraphs[1].runs[0].font.size == Pt(12)
@@ -227,7 +226,9 @@ def test_reformat_document_delegates(tmp_path):
     create_document(path, "内容")
     result = reformat_document(path)
     assert result["success"] is True
-    assert os.path.exists(result["backup"])
+    assert result["path"] == path
+    assert "backup" not in result
+    assert not os.path.exists(str(tmp_path / "doc.bak.docx"))
 
 
 # ---------------------------------------------------------------------------
@@ -312,8 +313,9 @@ def test_process_tool_calls_reformat_report_runs_immediately(tmp_path):
     assert updates["interrupt_type"] is None
     content = json.loads(updates["messages"][0].content)
     assert content["success"] is True
-    assert os.path.exists(content["backup"])
-    assert content["backup"].endswith(".bak.docx")
+    assert content["report_path"].endswith("AutoRadiomics_Report.docx")
+    assert "backup" not in content
+    assert not (out_dir / "AutoRadiomics_Report.bak.docx").exists()
 
 
 def test_process_tool_calls_reformat_report_without_analysis_dir(tmp_path):

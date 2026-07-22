@@ -46,6 +46,18 @@ def build_thread_title_prompt(content: str) -> Tuple[str, str]:
     return system, f"用户消息：\n{content[:500]}"
 
 
+def build_column_translation_prompt(names: List[str]) -> Tuple[str, str]:
+    """构造临床列名中译英 prompt：一次翻译全部列名，返回 {中文名: 英文名}。"""
+    system = (
+        "你是医学翻译助手。把给定的临床表格列名（中文或其他非英文）翻译为医学领域"
+        "通用的英文列名，如 年龄→Age、性别→Gender、吸烟史→Smoking_History。"
+        "译名只能包含 ASCII 字符（字母、数字、下划线），简洁且不带空格。"
+        "只返回一个 JSON 对象，键为原列名、值为英文译名，不要输出任何其他内容。"
+    )
+    user = "待翻译列名（JSON）：\n" + json.dumps(list(names), ensure_ascii=False)
+    return system, user
+
+
 class LLMClient:
     def __init__(
         self,

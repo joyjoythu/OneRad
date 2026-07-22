@@ -29,7 +29,8 @@ class ReportAgent:
             modality: str, n_features: int, covariates: List[str],
             plot_paths: Optional[List[str]] = None,
             llm_client=None,
-            interpretation: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+            interpretation: Optional[Dict[str, str]] = None,
+            covariate_display: Optional[List[str]] = None) -> Dict[str, Any]:
         """Build and save the DOCX report.
 
         Parameters
@@ -60,6 +61,9 @@ class ReportAgent:
             ``features`` / ``shap`` markdown strings. When provided, a
             ``结果解读`` section with three subsections is appended; ``None``
             keeps the current behaviour (no interpretation section).
+        covariate_display: list[str] | None
+            Optional display names for the covariates (e.g. translated
+            ``Age（年龄）`` pairs); defaults to ``covariates`` when None.
 
         Returns
         -------
@@ -108,7 +112,8 @@ class ReportAgent:
             methodology = self._build_methodology(
                 analysis_result["n_samples"], modality, n_features,
                 len(analysis_result["selected_features"]), covariates,
-                analysis_result["metrics"]["auc"]
+                analysis_result["metrics"]["auc"],
+                covariate_display=covariate_display,
             )
             if llm_client:
                 methodology = self._polish_methodology(methodology, llm_client)
@@ -240,6 +245,7 @@ class ReportAgent:
         n_selected: int,
         covariates: List[str],
         auc: float,
+        covariate_display: Optional[List[str]] = None,
     ) -> str:
         """Compose the methodology paragraph for the report.
 
@@ -257,13 +263,17 @@ class ReportAgent:
             Clinical covariates; omitted from the text when empty.
         auc: float
             Model AUC value.
+        covariate_display: list[str] | None
+            Optional display names for the covariates (e.g. translated
+            ``Age（年龄）`` pairs); defaults to ``covariates`` when None.
 
         Returns
         -------
         str
             Methodology paragraph.
         """
-        cov_str = ", ".join(covariates)
+        display = covariate_display if covariate_display is not None else covariates
+        cov_str = ", ".join(display)
         cov_clause = (
             f"，并纳入临床协变量 {cov_str}" if covariates else ""
         )

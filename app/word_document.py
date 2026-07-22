@@ -43,8 +43,8 @@ def append_to_document(path: str, markdown: str) -> dict:
 
 
 def reformat_document(path: str) -> dict:
-    """重排已有 docx 为学术格式（委托 ``reformat_docx``，自动备份，幂等）。"""
+    """重排已有 docx 为学术格式（委托 ``reformat_docx``，原地保存，幂等）。"""
     if not os.path.exists(path):
         return {"success": False, "error": f"文件不存在: {path}"}
-    backup = reformat_docx(path)
-    return {"success": True, "path": path, "backup": backup}
+    reformat_docx(path)
+    return {"success": True, "path": path}

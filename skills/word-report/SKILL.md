@@ -21,7 +21,7 @@ description: Word 文档的中文学术论文格式规范，以及 word_create /
 - `word_append(filename, content_markdown)`：向已有 docx 追加内容；文件必须已存在；
   需要用户确认。
 - `reformat_report()`：把最近一次分析输出的 AutoRadiomics_Report.docx 重排为上述
-  格式。免确认、幂等，原文件自动备份为 .bak.docx。用户反馈报告格式混乱或要求
+  格式。免确认、幂等，原地保存不生成备份。用户反馈报告格式混乱或要求
   "排版/重排报告"时调用。
 
 content_markdown 一律用 markdown 组织：`#`/`##`/`###` 为各级标题，`- ` 或 `* ` 为

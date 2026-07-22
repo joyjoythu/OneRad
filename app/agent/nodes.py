@@ -333,7 +333,7 @@ def process_tool_calls(state: AgentState, config: Optional[RunnableConfig] = Non
             ))
             continue
 
-        # 报告重排：免确认，幂等且自动保留 .bak 备份，直接在本节点内执行。
+        # 报告重排：免确认，幂等且原地保存（不生成 .bak 备份），直接在本节点内执行。
         if name == "reformat_report":
             results = _run_reformat_report(state)
             updates["messages"].append(ToolMessage(
@@ -835,6 +835,8 @@ def execute_confirmed(state: AgentState, config: Optional[RunnableConfig] = None
             state["pending_radiomics_analysis"],
             state["project_path"],
             cancel_event=cancel_event,
+            state=state,
+            config=config,
         )
     elif itype == "feature_statistics":
         results = _run_feature_statistics(
@@ -1440,6 +1442,8 @@ def _run_radiomics_analysis(
     pending: dict,
     project_path: str,
     cancel_event=None,
+    state: Optional[AgentState] = None,
+    config: Optional[RunnableConfig] = None,
 ) -> dict:
     """执行已确认的影像组学分析任务。"""
     sandbox = Sandbox(project_path)
@@ -1450,6 +1454,17 @@ def _run_radiomics_analysis(
             sandbox,
             pending.get("output_dir") or str(Path(project_path) / "radiomics_analysis"),
         )
+        # 有 API key 时构造 LLMClient：供分析前把中文临床列名翻译为英文
+        # （参考 _run_interpretation 的构造方式）；无 key 时为 None，保持原名。
+        llm_client = None
+        if state is not None:
+            api_key = _resolve_api_key(state, config)
+            if api_key:
+                from app.llm import LLMClient
+                llm_client = LLMClient(
+                    api_key=api_key,
+                    base_url=state.get("base_url") or "https://api.deepseek.com/v1",
+                )
         should_cancel = (lambda: cancel_event.is_set()) if cancel_event is not None else None
         result = run_radiomics_cv_analysis(
             feature_csv=feature_csv,
@@ -1464,6 +1479,7 @@ def _run_radiomics_analysis(
             random_state=(pending.get("random_state")
                           if pending.get("random_state") is not None else 42),
             project_path=project_path,
+            llm_client=llm_client,
             should_cancel=should_cancel,
         )
         return _json_safe_analysis_result(result)
@@ -1637,7 +1653,7 @@ def _run_interpretation(
 def _run_reformat_report(state: AgentState) -> dict:
     """免确认重排最新分析输出目录中的 AutoRadiomics_Report.docx。
 
-    幂等：重复执行结果一致；重排前自动备份原文件为 .bak.docx。
+    幂等：重复执行结果一致；直接原地保存，不再生成 .bak 备份。
     任何失败都优雅返回错误说明，不影响既有产物。
     """
     from app.docx_style import reformat_docx
@@ -1657,12 +1673,11 @@ def _run_reformat_report(state: AgentState) -> dict:
                 "success": False,
                 "error": f"报告不存在: {report_path}，请先生成报告。",
             }
-        backup = reformat_docx(report_path)
+        reformat_docx(report_path)
         return {
             "success": True,
             "message": "报告已按中文学术论文格式重排",
             "report_path": report_path,
-            "backup": backup,
         }
     except Exception as e:
         logger.warning("报告重排失败", exc_info=True)

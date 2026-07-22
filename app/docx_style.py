@@ -4,7 +4,7 @@
 1.5 倍行距、标题黑体、表格五号。提供三个入口：
 
 - ``apply_academic_style(doc)``：在新建文档上设置样式级格式；
-- ``reformat_docx(path)``：重排已有 docx（保存前备份为 ``<name>.bak.docx``），幂等；
+- ``reformat_docx(path)``：原地重排已有 docx（不生成备份），幂等；
 - ``markdown_to_docx(doc, text)``：把 markdown 片段渲染为 Word 段落。
 
 技术要点：中文字体必须同时在 ``style.font.name``（西文）之外，通过
@@ -12,9 +12,7 @@
 样式是蓝色，需要显式覆盖为黑色。
 """
 
-import os
 import re
-import shutil
 
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
@@ -146,16 +144,13 @@ def markdown_to_docx(doc, text: str) -> None:
 
 
 def reformat_docx(path: str) -> str:
-    """重排已有 docx 为学术论文格式，返回备份文件路径。
+    """原地重排已有 docx 为学术论文格式，返回该文件路径。
 
     按段落 style 名（Title/Heading 1/Heading 2/Normal/List Bullet 等）
     归一化所有 run 的字体/字号/颜色（覆盖显式 Pt() 等 run 级设置；正文 run
-    的加粗保持不变），表格单元格统一五号。保存前把原文件备份为
-    ``<name>.bak.docx``（已存在备份则覆盖）。重复执行幂等。
+    的加粗保持不变），表格单元格统一五号。直接保存到原文件，不生成
+    .bak 备份。重复执行幂等。
     """
-    backup = os.path.splitext(path)[0] + ".bak.docx"
-    shutil.copy2(path, backup)
-
     from docx import Document
     doc = Document(path)
     apply_academic_style(doc)
@@ -173,4 +168,4 @@ def reformat_docx(path: str) -> str:
     for table in doc.tables:
         style_table(table)
     doc.save(path)
-    return backup
+    return path
