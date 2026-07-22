@@ -12,6 +12,14 @@ from app.utils import fmt_num, fmt_p
 
 logger = logging.getLogger(__name__)
 
+# docx 与 report.md 共用的 SHAP 小节说明（口径一致）
+SHAP_EXPLANATION = (
+    "SHAP（SHapley Additive exPlanations）逐折量化每个特征对每例患者预测结果的贡献。"
+    "蜂群图中每个点代表一例患者：点的颜色表示特征取值（红色为高、蓝色为低），"
+    "横向位置表示该特征将预测推向阳性的方向和幅度；"
+    "条形图按平均绝对 SHAP 值（贡献的平均幅度）对特征排序。"
+)
+
 
 class ReportAgent:
     """Generate a Word report from a radiomics analysis result."""
@@ -91,13 +99,13 @@ class ReportAgent:
 
             # Title
             title = doc.add_heading(level=0)
-            run = title.add_run("Radiomics Analysis Report")
+            run = title.add_run("影像组学分析报告")
             run.font.size = Pt(18)
             run.bold = True
             title.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
             # Methodology
-            doc.add_heading("1. Methodology", level=1)
+            doc.add_heading("1. 方法", level=1)
             methodology = self._build_methodology(
                 analysis_result["n_samples"], modality, n_features,
                 len(analysis_result["selected_features"]), covariates,
@@ -108,62 +116,62 @@ class ReportAgent:
             doc.add_paragraph(methodology)
 
             # Feature Selection Table
-            doc.add_heading("2. Feature Selection", level=1)
+            doc.add_heading("2. 特征选择", level=1)
             feat_df = pd.DataFrame({
-                "Feature Name": analysis_result["selected_features"],
-                "Coefficient": [fmt_num(analysis_result["model_results"]["coefficients"].get(f, 0)) for f in analysis_result["selected_features"]],
+                "特征名": analysis_result["selected_features"],
+                "系数": [fmt_num(analysis_result["model_results"]["coefficients"].get(f, 0)) for f in analysis_result["selected_features"]],
             })
             self._add_table(doc, feat_df)
 
             # Regression Table
-            doc.add_heading("3. Regression Results", level=1)
+            doc.add_heading("3. 回归结果", level=1)
             rows = []
             for feat in analysis_result["selected_features"]:
                 rows.append({
-                    "Feature": feat,
+                    "特征": feat,
                     "OR": fmt_num(analysis_result['model_results']['odds_ratios'].get(feat, 0)),
-                    "95% CI Lower": fmt_num(analysis_result['model_results']['ci_lower'].get(feat)),
-                    "95% CI Upper": fmt_num(analysis_result['model_results']['ci_upper'].get(feat)),
-                    "p-value": fmt_p(analysis_result['model_results']['p_values'].get(feat, 1)),
+                    "95%CI 下限": fmt_num(analysis_result['model_results']['ci_lower'].get(feat)),
+                    "95%CI 上限": fmt_num(analysis_result['model_results']['ci_upper'].get(feat)),
+                    "p 值": fmt_p(analysis_result['model_results']['p_values'].get(feat, 1)),
                 })
             self._add_table(doc, pd.DataFrame(rows))
 
             # Performance
-            doc.add_heading("4. Model Performance", level=1)
+            doc.add_heading("4. 模型性能", level=1)
             m = analysis_result["metrics"]
             perf_text = (
-                f"The logistic regression model achieved an AUC of {m['auc']:.3f} "
-                f"(95% CI: {m['auc_ci'][0]:.3f}–{m['auc_ci'][1]:.3f}). "
-                f"Accuracy = {m['accuracy']:.3f}, Sensitivity = {m['sensitivity']:.3f}, "
-                f"Specificity = {m['specificity']:.3f}, "
-                f"PPV = {fmt_num(m.get('ppv'))}, NPV = {fmt_num(m.get('npv'))}, "
-                f"F1 = {fmt_num(m.get('f1'))}."
+                f"逻辑回归模型的 AUC 为 {m['auc']:.3f}"
+                f"（95% CI：{m['auc_ci'][0]:.3f}–{m['auc_ci'][1]:.3f}）。"
+                f"准确率 = {m['accuracy']:.3f}，敏感度 = {m['sensitivity']:.3f}，"
+                f"特异度 = {m['specificity']:.3f}，"
+                f"PPV = {fmt_num(m.get('ppv'))}，NPV = {fmt_num(m.get('npv'))}，"
+                f"F1 = {fmt_num(m.get('f1'))}。"
             )
             doc.add_paragraph(perf_text)
 
             # Per-fold cross-validation metrics
             cv = analysis_result.get("cv_metrics")
             if cv and cv.get("folds"):
-                doc.add_heading("5. Cross-Validation Details", level=1)
+                doc.add_heading("5. 交叉验证详情", level=1)
                 fold_rows = []
                 for f in cv["folds"]:
                     fold_rows.append({
-                        "Fold": f["fold"],
+                        "折": f["fold"],
                         "AUC": fmt_num(f["auc"]),
-                        "Accuracy": fmt_num(f["accuracy"]),
-                        "Sensitivity": fmt_num(f["sensitivity"]),
-                        "Specificity": fmt_num(f["specificity"]),
+                        "准确率": fmt_num(f["accuracy"]),
+                        "敏感度": fmt_num(f["sensitivity"]),
+                        "特异度": fmt_num(f["specificity"]),
                         "PPV": fmt_num(f["ppv"]),
                         "NPV": fmt_num(f["npv"]),
                         "F1": fmt_num(f["f1"]),
                     })
                 mean, std = cv["mean"], cv["std"]
                 fold_rows.append({
-                    "Fold": "Mean±SD",
+                    "折": "均值±标准差",
                     "AUC": f"{fmt_num(mean['auc'])}±{fmt_num(std['auc'])}",
-                    "Accuracy": f"{fmt_num(mean['accuracy'])}±{fmt_num(std['accuracy'])}",
-                    "Sensitivity": f"{fmt_num(mean['sensitivity'])}±{fmt_num(std['sensitivity'])}",
-                    "Specificity": f"{fmt_num(mean['specificity'])}±{fmt_num(std['specificity'])}",
+                    "准确率": f"{fmt_num(mean['accuracy'])}±{fmt_num(std['accuracy'])}",
+                    "敏感度": f"{fmt_num(mean['sensitivity'])}±{fmt_num(std['sensitivity'])}",
+                    "特异度": f"{fmt_num(mean['specificity'])}±{fmt_num(std['specificity'])}",
                     "PPV": f"{fmt_num(mean['ppv'])}±{fmt_num(std['ppv'])}",
                     "NPV": f"{fmt_num(mean['npv'])}±{fmt_num(std['npv'])}",
                     "F1": f"{fmt_num(mean['f1'])}±{fmt_num(std['f1'])}",
@@ -176,12 +184,12 @@ class ReportAgent:
                               ("shap_summary_fold", "shap_bar_fold"))]
             other_plots = [p for p in plot_paths if p not in shap_plots]
             if other_plots:
-                doc.add_heading("6. Visualizations", level=1)
+                doc.add_heading("6. 图表", level=1)
                 if any(os.path.basename(p).startswith("lasso_path_fold")
                        for p in other_plots):
                     doc.add_paragraph(
-                        "Only the fold 1 LASSO path is shown as a representative; "
-                        "the LASSO paths of all folds are saved in the lasso/ directory.")
+                        "仅展示 fold 1 的 LASSO path 作为代表；"
+                        "所有折的 LASSO path 均已保存在 lasso/ 目录中。")
                 for plot_path in other_plots:
                     if os.path.exists(plot_path):
                         doc.add_picture(plot_path, width=Inches(5.5))
@@ -190,16 +198,8 @@ class ReportAgent:
 
             # SHAP Interpretability
             if shap_plots:
-                doc.add_heading("7. SHAP Interpretability", level=1)
-                doc.add_paragraph(
-                    "SHAP (SHapley Additive exPlanations) quantifies how each "
-                    "feature contributes to the model's prediction for every "
-                    "patient, fold by fold. In the beeswarm plots, each point is "
-                    "one patient: the point color encodes the feature value "
-                    "(red = high, blue = low), and the horizontal position shows "
-                    "the direction and magnitude of that feature's push toward a "
-                    "positive prediction. The bar plots rank features by their "
-                    "mean absolute SHAP value (average magnitude of contribution).")
+                doc.add_heading("7. SHAP 可解释性", level=1)
+                doc.add_paragraph(SHAP_EXPLANATION)
                 for plot_path in shap_plots:
                     if os.path.exists(plot_path):
                         doc.add_picture(plot_path, width=Inches(5.5))
@@ -264,14 +264,13 @@ class ReportAgent:
         """
         cov_str = ", ".join(covariates)
         cov_clause = (
-            f" with covariates: {cov_str}" if covariates else ""
+            f"，并纳入临床协变量 {cov_str}" if covariates else ""
         )
         return (
-            f"A total of {n_samples} patients were included. "
-            f"Radiomic features were extracted from {modality} images using PyRadiomics, "
-            f"yielding {n_features} features. LASSO regression selected {n_selected} features, "
-            f"which were entered into a logistic regression model{cov_clause}. "
-            f"The model achieved an AUC of {auc:.3f}."
+            f"共纳入 {n_samples} 例患者。"
+            f"使用 PyRadiomics 从 {modality} 图像中提取影像组学特征，共 {n_features} 个；"
+            f"经 LASSO 回归筛选出 {n_selected} 个特征，进入逻辑回归模型{cov_clause}。"
+            f"模型 AUC 为 {auc:.3f}。"
         )
 
     def _polish_methodology(self, raw: str, llm_client) -> str:

@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import pytest
@@ -137,7 +138,7 @@ def test_report_generation_missing_metric_key(tmp_path, nested_key):
 
 class MockLLMClient:
     def call(self, system, prompt, **kwargs):
-        return "Polished methodology paragraph containing all exact numbers."
+        return "润色后的方法学段落，保留全部精确数值。"
 
 
 def test_report_generation_llm_polish(tmp_path):
@@ -153,7 +154,7 @@ def test_report_generation_llm_polish(tmp_path):
     assert result["success"] is True
     doc = Document(result["report_path"])
     paragraphs = [p.text for p in doc.paragraphs]
-    assert any("Polished methodology paragraph" in text for text in paragraphs)
+    assert any("润色后的方法学段落" in text for text in paragraphs)
 
 
 def test_report_generation_missing_plot_is_skipped(tmp_path):
@@ -221,9 +222,53 @@ def test_report_generation_with_cv_metrics_and_small_p(tmp_path):
     text = _docx_all_text(result["report_path"])
     assert "<0.001" in text
     assert "0.0004" not in text
-    assert "Mean±SD" in text
+    assert "均值±标准差" in text
     assert "0.800±0.020" in text
     assert "PPV = 0.810" in text
+
+
+def test_report_generation_chinese_headings(tmp_path):
+    """报告各小节标题、表头与说明文字均为中文。"""
+    analysis_result = _base_analysis_result()
+    metric_keys = ("auc", "accuracy", "sensitivity", "specificity",
+                   "ppv", "npv", "f1", "threshold")
+    analysis_result["cv_metrics"] = {
+        "folds": [
+            dict({"fold": i + 1}, **{k: 0.8 for k in metric_keys})
+            for i in range(5)
+        ],
+        "mean": {k: 0.8 for k in metric_keys},
+        "std": {k: 0.02 for k in metric_keys},
+    }
+    fake_dir = str(tmp_path)
+    plot_paths = [
+        os.path.join(fake_dir, "lasso_path_fold1.png"),
+        os.path.join(fake_dir, "shap_summary_fold1.png"),
+        os.path.join(fake_dir, "shap_bar_fold1.png"),
+    ]
+    result = ReportAgent().run(
+        analysis_result=analysis_result,
+        output_dir=str(tmp_path),
+        modality="CT",
+        n_features=107,
+        covariates=[],
+        plot_paths=plot_paths,
+    )
+    assert result["success"] is True
+    text = _docx_all_text(result["report_path"])
+    for heading in ("影像组学分析报告", "1. 方法", "2. 特征选择", "3. 回归结果",
+                    "4. 模型性能", "5. 交叉验证详情", "6. 图表",
+                    "7. SHAP 可解释性"):
+        assert heading in text
+    # 表头
+    for header in ("特征名", "系数", "特征", "OR", "95%CI 下限", "95%CI 上限",
+                   "p 值", "折", "准确率", "敏感度", "特异度"):
+        assert header in text
+    # 方法学与说明段
+    assert "共纳入 100 例患者" in text
+    assert "逻辑回归模型的 AUC 为 0.850" in text
+    assert "仅展示 fold 1 的 LASSO path 作为代表" in text
+    assert "蜂群图" in text
 
 
 def test_report_generation_without_cv_metrics_still_works(tmp_path):
@@ -237,4 +282,4 @@ def test_report_generation_without_cv_metrics_still_works(tmp_path):
     )
     assert result["success"] is True
     text = _docx_all_text(result["report_path"])
-    assert "Mean±SD" not in text
+    assert "均值±标准差" not in text

@@ -1,10 +1,10 @@
 ---
 name: report-writing
-description: Polish a radiomics methodology paragraph for an academic report while preserving every factual value.
+description: 润色影像组学报告的方法学段落，同时保留所有事实数值。
 ---
 
-# Academic Radiomics Methodology
+# 影像组学方法学润色
 
-Polish the supplied methodology into precise, fluent academic English suitable for a radiomics report.
+将给定的方法学段落润色为准确、流畅的中文学术表述，适用于影像组学报告。
 
-Preserve every number, confidence interval, modality, method, feature count, covariate, and performance value exactly. Do not introduce methods, preprocessing, findings, causal claims, or study details that are absent from the source paragraph. Return only the polished paragraph, without a heading, explanation, citation, or Markdown fence.
+保留所有数字、置信区间、模态、方法、特征数量、协变量与性能指标，一字不差。不得新增源段落中不存在的方法、预处理、结果、因果断言或研究细节。仅返回润色后的段落，不要标题、解释、引用或 Markdown 代码块。

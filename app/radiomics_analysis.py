@@ -20,6 +20,7 @@ import numpy as np
 import pandas as pd
 
 from app.curves import plot_calibration_curve, plot_dca, plot_roc_curve
+from app.report import SHAP_EXPLANATION
 from app.utils import (
     _load_feature_csv,
     _merge_feature_clinical,
@@ -545,15 +546,9 @@ def _render_markdown_report(analysis_result: Dict[str, Any],
     if shap_plots:
         lines += [
             "",
-            "## 5. SHAP Interpretability",
+            "## 5. SHAP 可解释性",
             "",
-            "SHAP (SHapley Additive exPlanations) quantifies how each feature "
-            "contributes to the model's prediction for every patient, fold by fold. "
-            "In the beeswarm plots, each point is one patient: the point color encodes "
-            "the feature value (red = high, blue = low), and the horizontal position "
-            "shows the direction and magnitude of that feature's push toward a "
-            "positive prediction. The bar plots rank features by their mean absolute "
-            "SHAP value (average magnitude of contribution).",
+            SHAP_EXPLANATION,
             "",
         ]
         for path in shap_plots:

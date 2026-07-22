@@ -154,7 +154,7 @@ def test_plot_paths_contain_all_shap_and_single_lasso(tmp_path):
 
     # report.md 含 SHAP 小节与全部 SHAP 图链接
     md = open(result["outputs"]["report_md"], encoding="utf-8").read()
-    assert "SHAP Interpretability" in md
+    assert "SHAP 可解释性" in md
     for fold in range(1, 6):
         assert f"shap/shap_summary_fold{fold}.png" in md
         assert f"shap/shap_bar_fold{fold}.png" in md
