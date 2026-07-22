@@ -518,15 +518,43 @@ def _render_markdown_report(analysis_result: Dict[str, Any],
             f"| {fmt_num(mr['odds_ratios'].get(feat, 0))} | {ci} "
             f"| {fmt_p(mr['p_values'].get(feat, 1))} |")
     lines += ["", "## 4. 图表", ""]
+
+    def _rel_img(path: str) -> str:
+        return os.path.relpath(path, output_dir).replace(os.sep, "/")
+
     for key, caption in (("roc_curve", "ROC 曲线"),
                          ("calibration_curve", "校准曲线"),
                          ("dca_curve", "决策曲线")):
         path = outputs.get(key)
         if path:
-            lines.append(f"![{caption}]({os.path.basename(path)})")
+            lines.append(f"![{caption}]({_rel_img(path)})")
             lines.append("")
+    lasso_paths = outputs.get("lasso_paths") or []
+    if lasso_paths:
+        lines.append(f"![LASSO path（fold 1）]({_rel_img(lasso_paths[0])})")
+        lines.append("")
+        lines.append("注：LASSO path 仅展示 fold 1 作为代表，其余各折见 `lasso/` 目录。")
     lines.append(f"注：预测概率为 {n_splits} 折交叉验证的 out-of-fold 概率，"
                  "用于无偏评估模型性能。")
+    shap_plots = outputs.get("shap_plots") or []
+    if shap_plots:
+        lines += [
+            "",
+            "## 5. SHAP Interpretability",
+            "",
+            "SHAP (SHapley Additive exPlanations) quantifies how each feature "
+            "contributes to the model's prediction for every patient, fold by fold. "
+            "In the beeswarm plots, each point is one patient: the point color encodes "
+            "the feature value (red = high, blue = low), and the horizontal position "
+            "shows the direction and magnitude of that feature's push toward a "
+            "positive prediction. The bar plots rank features by their mean absolute "
+            "SHAP value (average magnitude of contribution).",
+            "",
+        ]
+        for path in shap_plots:
+            caption = os.path.splitext(os.path.basename(path))[0]
+            lines.append(f"![{caption}]({_rel_img(path)})")
+            lines.append("")
     report_path = os.path.join(output_dir, "report.md")
     with open(report_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
@@ -662,7 +690,10 @@ def run_radiomics_cv_analysis(
     if _cancelled():
         return {"success": False, "cancelled": True, "message": "用户取消了分析"}
 
-    outputs: Dict[str, Any] = {"lasso_paths": analysis_result.get("plot_paths", [])}
+    outputs: Dict[str, Any] = {
+        "lasso_paths": analysis_result.get("lasso_paths", []),
+        "shap_plots": analysis_result.get("shap_plot_paths", []),
+    }
     outputs.update(repro_outputs)
 
     # 每病例预测概率

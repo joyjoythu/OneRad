@@ -143,16 +143,16 @@ def test_bootstrap_auc_ci_empty_scores():
 
 
 def test_output_dir_constructor_saves_lasso_plots():
-    """LASSO path plots should be saved when output_dir is set in the constructor."""
+    """LASSO path plots should be saved under ``lasso/`` when output_dir is set."""
     df = _make_df(n=50, n_signal=5, n_noise=5, seed=42)
     with tempfile.TemporaryDirectory() as tmpdir:
         agent = AnalysisAgent(covariates=[], output_dir=tmpdir)
         result = agent.run(df, label_col="Label")
         assert result["success"] is True
-        assert len(result["plot_paths"]) == agent.n_splits
-        for plot_path in result["plot_paths"]:
+        assert len(result["lasso_paths"]) == agent.n_splits
+        for plot_path in result["lasso_paths"]:
             assert os.path.exists(plot_path)
-            assert os.path.dirname(plot_path) == tmpdir
+            assert os.path.dirname(plot_path) == os.path.join(tmpdir, "lasso")
 
 
 def test_output_dir_override_does_not_mutate_agent():
@@ -163,16 +163,16 @@ def test_output_dir_override_does_not_mutate_agent():
 
         result_a = agent.run(df, label_col="Label", output_dir=tmpdir_a)
         assert result_a["success"] is True
-        assert len(result_a["plot_paths"]) == agent.n_splits
-        for plot_path in result_a["plot_paths"]:
-            assert os.path.dirname(plot_path) == tmpdir_a
+        assert len(result_a["lasso_paths"]) == agent.n_splits
+        for plot_path in result_a["lasso_paths"]:
+            assert os.path.dirname(plot_path) == os.path.join(tmpdir_a, "lasso")
         assert agent.output_dir == tmpdir_b
 
         result_b = agent.run(df, label_col="Label")
         assert result_b["success"] is True
-        assert len(result_b["plot_paths"]) == agent.n_splits
-        for plot_path in result_b["plot_paths"]:
-            assert os.path.dirname(plot_path) == tmpdir_b
+        assert len(result_b["lasso_paths"]) == agent.n_splits
+        for plot_path in result_b["lasso_paths"]:
+            assert os.path.dirname(plot_path) == os.path.join(tmpdir_b, "lasso")
 
 
 def test_oof_probabilities_returned():

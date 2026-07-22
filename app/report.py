@@ -164,10 +164,37 @@ class ReportAgent:
                 })
                 self._add_table(doc, pd.DataFrame(fold_rows))
 
-            # Visualizations
-            if plot_paths:
+            # Visualizations（SHAP 图单独成节；LASSO path 仅展示 fold1 一张）
+            shap_plots = [p for p in plot_paths
+                          if os.path.basename(p).startswith(
+                              ("shap_summary_fold", "shap_bar_fold"))]
+            other_plots = [p for p in plot_paths if p not in shap_plots]
+            if other_plots:
                 doc.add_heading("6. Visualizations", level=1)
-                for plot_path in plot_paths:
+                if any(os.path.basename(p).startswith("lasso_path_fold")
+                       for p in other_plots):
+                    doc.add_paragraph(
+                        "Only the fold 1 LASSO path is shown as a representative; "
+                        "the LASSO paths of all folds are saved in the lasso/ directory.")
+                for plot_path in other_plots:
+                    if os.path.exists(plot_path):
+                        doc.add_picture(plot_path, width=Inches(5.5))
+                    else:
+                        skipped_plots.append(plot_path)
+
+            # SHAP Interpretability
+            if shap_plots:
+                doc.add_heading("7. SHAP Interpretability", level=1)
+                doc.add_paragraph(
+                    "SHAP (SHapley Additive exPlanations) quantifies how each "
+                    "feature contributes to the model's prediction for every "
+                    "patient, fold by fold. In the beeswarm plots, each point is "
+                    "one patient: the point color encodes the feature value "
+                    "(red = high, blue = low), and the horizontal position shows "
+                    "the direction and magnitude of that feature's push toward a "
+                    "positive prediction. The bar plots rank features by their "
+                    "mean absolute SHAP value (average magnitude of contribution).")
+                for plot_path in shap_plots:
                     if os.path.exists(plot_path):
                         doc.add_picture(plot_path, width=Inches(5.5))
                     else:

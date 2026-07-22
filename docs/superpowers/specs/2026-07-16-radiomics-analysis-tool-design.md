@@ -117,7 +117,7 @@
 | `roc_curve.png` | ROC 曲线 + AUC(95%CI) 标注 |
 | `calibration_curve.png` | 校准曲线 |
 | `dca_curve.png` | 决策曲线 |
-| `lasso_path_foldN.png` | 每折 LASSO path（现有） |
+| `lasso/lasso_path_foldN.png` | 每折 LASSO path（2026-07-22 起迁入 `lasso/` 子目录，报告中仅展示 fold1） |
 | `report.docx` | Word 报告（现有 ReportAgent，新图随 `plot_paths` 嵌入） |
 | `report.md` | Markdown 报告（新） |
 

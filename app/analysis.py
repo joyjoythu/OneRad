@@ -16,6 +16,13 @@ from scipy import stats
 from scipy.stats import mannwhitneyu
 
 from app.metrics import calculate_metrics
+from app.curves import (
+    plot_calibration_curve,
+    plot_dca,
+    plot_roc_curve,
+    plot_shap_bar,
+    plot_shap_beeswarm,
+)
 
 
 def bootstrap_auc_ci(
@@ -146,6 +153,92 @@ class AnalysisAgent:
         selected_idx = np.argsort(p_values)[:max_features]
         return [radiomic_cols[i] for i in selected_idx]
 
+    @staticmethod
+    def _save_fold_artifacts(
+        fold_idx: int,
+        lr: LogisticRegression,
+        X_train_sel: np.ndarray,
+        val_idx: np.ndarray,
+        train_idx: np.ndarray,
+        y: np.ndarray,
+        val_probs: np.ndarray,
+        fold_threshold: float,
+        feature_cols: List[str],
+        mask: np.ndarray,
+        patient_ids: np.ndarray,
+        shap_dir: str,
+        predictions_dir: str,
+        curves_roc_dir: str,
+        curves_cal_dir: str,
+        curves_dca_dir: str,
+        shap_plot_paths: List[str],
+    ) -> None:
+        """Save per-fold artifacts: SHAP plots/CSV, fold predictions, fold curves.
+
+        Any failure is logged as a warning and never aborts the CV loop.
+        """
+        fold_no = fold_idx + 1
+
+        # SHAP（LinearExplainer 优先，KernelExplainer 回退，取正类）
+        try:
+            import shap
+            fold_feature_names = [str(c) for c in np.asarray(feature_cols)[mask]]
+            try:
+                explainer = shap.LinearExplainer(lr, X_train_sel)
+                shap_values = explainer.shap_values(X_train_sel)
+            except Exception:
+                background = shap.sample(X_train_sel, min(50, len(X_train_sel)))
+                explainer = shap.KernelExplainer(
+                    lambda x: lr.predict_proba(x)[:, 1], background)
+                shap_values = explainer.shap_values(X_train_sel)
+            if isinstance(shap_values, list):
+                shap_values = shap_values[1]  # 正类
+            shap_values = np.asarray(shap_values)
+            if shap_values.ndim == 3:
+                shap_values = shap_values[:, :, 1]
+            summary_path = os.path.join(shap_dir, f"shap_summary_fold{fold_no}.png")
+            plot_shap_beeswarm(shap_values, X_train_sel, fold_feature_names,
+                               summary_path)
+            bar_path = os.path.join(shap_dir, f"shap_bar_fold{fold_no}.png")
+            plot_shap_bar(shap_values, X_train_sel, fold_feature_names, bar_path)
+            shap_plot_paths.extend([summary_path, bar_path])
+            shap_df = pd.DataFrame(shap_values, columns=fold_feature_names)
+            shap_df.insert(0, "patient_id", patient_ids[train_idx])
+            shap_df.to_csv(os.path.join(shap_dir, f"shap_values_fold{fold_no}.csv"),
+                           index=False)
+        except Exception:
+            logger.warning("Fold %d SHAP 分析失败", fold_no, exc_info=True)
+
+        # 当折验证集 predictions（y_pred 用当折 Youden 最优阈值）
+        try:
+            fold_pred_df = pd.DataFrame({
+                "patient_id": patient_ids[val_idx],
+                "y_true": y[val_idx],
+                "prob": np.round(val_probs[val_idx], 3),
+                "y_pred": (val_probs[val_idx] >= fold_threshold).astype(int),
+            })
+            fold_pred_df.to_csv(
+                os.path.join(predictions_dir, f"case_predictions_fold{fold_no}.csv"),
+                index=False)
+        except Exception:
+            logger.warning("Fold %d 验证集 predictions 保存失败", fold_no, exc_info=True)
+
+        # 当折验证集 ROC / 校准 / DCA 曲线（仅落盘，不入报告）
+        try:
+            y_val = y[val_idx].astype(float)
+            p_val = val_probs[val_idx].astype(float)
+            auc = float(metrics.roc_auc_score(y_val, p_val))
+            auc_ci = bootstrap_auc_ci(y_val, p_val)
+            plot_roc_curve(y_val, p_val, auc, auc_ci,
+                           out_path=os.path.join(curves_roc_dir, f"roc_fold{fold_no}.png"))
+            plot_calibration_curve(
+                y_val, p_val,
+                out_path=os.path.join(curves_cal_dir, f"calibration_fold{fold_no}.png"))
+            plot_dca(y_val, p_val,
+                     out_path=os.path.join(curves_dca_dir, f"dca_fold{fold_no}.png"))
+        except Exception:
+            logger.warning("Fold %d 逐折曲线绘制失败", fold_no, exc_info=True)
+
     def run(self, merged_df: pd.DataFrame, label_col: str,
             output_dir: Optional[str] = None) -> Dict[str, Any]:
         """Run the binary classification analysis pipeline.
@@ -161,7 +254,13 @@ class AnalysisAgent:
             selected features, model coefficients, odds ratios, and metrics.
             The confusion matrix is returned as ``[[tn, fp], [fn, tp]]``.
             ``oof_probabilities`` holds the out-of-fold predicted probability
-            for every row of ``merged_df`` (in row order).
+            for every row of ``merged_df`` (in row order). When an output
+            directory is available, per-fold artifacts are written during CV:
+            LASSO paths (``lasso/``), SHAP plots/CSVs (``shap/``), fold
+            predictions (``predictions/``) and fold ROC/calibration/DCA
+            curves (``curves/``). ``plot_paths`` lists the report-bound
+            figures (fold-1 LASSO path + all SHAP plots); ``lasso_paths``
+            and ``shap_plot_paths`` list the full per-fold sets.
         """
         if merged_df is None or merged_df.empty:
             return {"success": False, "message": "merged_df 为空"}
@@ -205,7 +304,25 @@ class AnalysisAgent:
         val_probs = np.zeros(len(y))
         fold_selected_features = []
         fold_metrics = []
-        plot_paths = []
+        lasso_plot_paths = []
+        shap_plot_paths = []
+
+        # 逐折产物目录：lasso/、shap/、predictions/、curves/{roc,calibration,dca}/
+        save_dir = output_dir or self.output_dir
+        if save_dir:
+            lasso_dir = os.path.join(save_dir, "lasso")
+            shap_dir = os.path.join(save_dir, "shap")
+            predictions_dir = os.path.join(save_dir, "predictions")
+            curves_roc_dir = os.path.join(save_dir, "curves", "roc")
+            curves_cal_dir = os.path.join(save_dir, "curves", "calibration")
+            curves_dca_dir = os.path.join(save_dir, "curves", "dca")
+            for d in (lasso_dir, shap_dir, predictions_dir,
+                      curves_roc_dir, curves_cal_dir, curves_dca_dir):
+                os.makedirs(d, exist_ok=True)
+        if "patient_id" in merged_df.columns:
+            patient_ids = merged_df["patient_id"].astype(str).values
+        else:
+            patient_ids = np.array([str(i) for i in range(len(y))])
 
         for fold_idx, (train_idx, val_idx) in enumerate(skf.split(X, y)):
             X_train, X_val = X[train_idx], X[val_idx]
@@ -227,9 +344,7 @@ class AnalysisAgent:
                     radio_mask = np.zeros(len(radiomic_cols), dtype=bool)
                     radio_mask[0] = True
 
-                save_dir = output_dir or self.output_dir
                 if save_dir and len(radiomic_cols) > 0:
-                    os.makedirs(save_dir, exist_ok=True)
                     alphas_path, coefs_path, _ = LassoCV.path(
                         X_train_radio, y_train, random_state=self.random_state, max_iter=10000
                     )
@@ -239,10 +354,10 @@ class AnalysisAgent:
                     plt.xlabel("Alpha")
                     plt.ylabel("Coefficient")
                     plt.title(f"LASSO Path - Fold {fold_idx + 1}")
-                    plot_path = os.path.join(save_dir, f"lasso_path_fold{fold_idx + 1}.png")
+                    plot_path = os.path.join(lasso_dir, f"lasso_path_fold{fold_idx + 1}.png")
                     plt.savefig(plot_path, dpi=150, bbox_inches="tight")
                     plt.close()
-                    plot_paths.append(plot_path)
+                    lasso_plot_paths.append(plot_path)
             else:
                 radio_mask = np.zeros(len(radiomic_cols), dtype=bool)
 
@@ -274,6 +389,17 @@ class AnalysisAgent:
                 "f1": float(fold_res.f1),
                 "threshold": float(fold_res.best_threshold),
             })
+
+            # 逐折产物（单折任何产物失败仅记 warning，不中断后续折）
+            if save_dir:
+                self._save_fold_artifacts(
+                    fold_idx, lr, X_train_sel, val_idx, train_idx,
+                    y, val_probs, fold_res.best_threshold,
+                    feature_cols, mask, patient_ids,
+                    shap_dir, predictions_dir,
+                    curves_roc_dir, curves_cal_dir, curves_dca_dir,
+                    shap_plot_paths,
+                )
 
         # 用稳定出现的特征作为最终选中特征
         selected_features = list(set.intersection(*fold_selected_features) if fold_selected_features else set())
@@ -367,5 +493,8 @@ class AnalysisAgent:
             "cv_metrics": cv_metrics,
             "n_samples": len(y),
             "oof_probabilities": [float(p) for p in val_probs],
-            "plot_paths": plot_paths,
+            # 报告用图：LASSO path 仅 fold1 一张 + 全部逐折 SHAP 图
+            "plot_paths": lasso_plot_paths[:1] + shap_plot_paths,
+            "lasso_paths": lasso_plot_paths,
+            "shap_plot_paths": shap_plot_paths,
         }

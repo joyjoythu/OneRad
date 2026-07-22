@@ -24,6 +24,8 @@ charset-normalizer==3.4.9
     # via requests
 click==8.4.2
     # via uvicorn
+cloudpickle==3.1.2
+    # via shap
 colorama==0.4.6
     # via
     #   click
@@ -108,23 +110,31 @@ langgraph-sdk==0.4.2
     # via langgraph
 langsmith==0.10.0
     # via langchain-core
+llvmlite==0.48.0
+    # via
+    #   numba
+    #   shap
 lxml==6.1.1
     # via python-docx
 matplotlib==3.11.0
     # via -r requirements.txt
 narwhals==2.23.0
     # via scikit-learn
+numba==0.66.0
+    # via shap
 numpy==2.4.6
     # via
     #   -r requirements.txt
     #   contourpy
     #   h5py
     #   matplotlib
+    #   numba
     #   pandas
     #   pyradiomics
     #   pywavelets
     #   scikit-learn
     #   scipy
+    #   shap
 openai==2.44.0
     # via
     #   -r requirements.txt
@@ -143,8 +153,11 @@ packaging==26.2
     #   langsmith
     #   matplotlib
     #   pytest
+    #   shap
 pandas==3.0.3
-    # via -r requirements.txt
+    # via
+    #   -r requirements.txt
+    #   shap
 pillow==12.3.0
     # via matplotlib
 pluggy==1.6.0
@@ -198,11 +211,16 @@ requests-toolbelt==1.0.0
 ruamel-yaml==0.19.1
     # via pykwalify
 scikit-learn==1.9.0
-    # via -r requirements.txt
+    # via
+    #   -r requirements.txt
+    #   shap
 scipy==1.17.1
     # via
     #   -r requirements.txt
     #   scikit-learn
+    #   shap
+shap==0.51.0
+    # via -r requirements.txt
 simpleitk==2.5.5
     # via
     #   -r requirements.txt
@@ -211,6 +229,8 @@ six==1.17.0
     # via
     #   pyradiomics
     #   python-dateutil
+slicer==0.0.8
+    # via shap
 sniffio==1.3.1
     # via
     #   langsmith
@@ -226,7 +246,9 @@ threadpoolctl==3.6.0
 tiktoken==0.13.0
     # via langchain-openai
 tqdm==4.68.3
-    # via openai
+    # via
+    #   openai
+    #   shap
 typing-extensions==4.16.0
     # via
     #   anyio
@@ -238,6 +260,7 @@ typing-extensions==4.16.0
     #   pydantic
     #   pydantic-core
     #   python-docx
+    #   shap
     #   starlette
     #   typing-inspection
 typing-inspection==0.4.2

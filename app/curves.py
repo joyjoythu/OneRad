@@ -105,3 +105,36 @@ def plot_dca(y_true, y_prob, out_path: str) -> str:
     finally:
         plt.close(fig)
     return out_path
+
+
+def plot_shap_beeswarm(shap_values, features, feature_names: Sequence[str],
+                       out_path: str, max_display: int = 20) -> str:
+    """Plot a SHAP beeswarm summary for one fold's model inputs.
+
+    ``shap`` is imported lazily so that importing this module stays cheap
+    (shap pulls in numba). ``features`` is the (scaled) feature matrix the
+    SHAP values were computed on, used for point coloring.
+    """
+    import shap
+    fig = plt.figure(figsize=(8, 6))
+    try:
+        shap.summary_plot(shap_values, features, feature_names=list(feature_names),
+                          max_display=max_display, show=False)
+        fig.savefig(out_path, dpi=150, bbox_inches="tight")
+    finally:
+        plt.close(fig)
+    return out_path
+
+
+def plot_shap_bar(shap_values, features, feature_names: Sequence[str],
+                  out_path: str, max_display: int = 20) -> str:
+    """Plot a SHAP mean-|value| bar summary for one fold's model inputs."""
+    import shap
+    fig = plt.figure(figsize=(8, 6))
+    try:
+        shap.summary_plot(shap_values, features, feature_names=list(feature_names),
+                          max_display=max_display, plot_type="bar", show=False)
+        fig.savefig(out_path, dpi=150, bbox_inches="tight")
+    finally:
+        plt.close(fig)
+    return out_path
