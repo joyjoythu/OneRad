@@ -13,28 +13,28 @@ RUN npm run build
 
 
 # Stage 2: Python runtime
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install system dependencies for SimpleITK / PyRadiomics
+# Install system dependencies for SimpleITK / PyRadiomics / OpenCV
 RUN apt-get update && apt-get install -y \
     build-essential \
     libglib2.0-0 \
     libsm6 \
     libxext6 \
     libxrender-dev \
+    libgl1-mesa-glx \
+    libglib2.0-data \
+    shared-mime-info \
     && rm -rf /var/lib/apt/lists/*
 
-# Install pinned Python dependencies.
-# requirements.lock pins pyradiomics==3.1.0, but that release has inconsistent
-# PyPI metadata (declares version 3.0.1a1) and fails to install. We drop that
-# pin, install the rest of the locked set, then install pyradiomics 3.0.1
-# without build isolation so its setup.py can see numpy.
+# Install Python dependencies.
+# pyradiomics 3.1.0 has broken PyPI metadata (declares version 3.0.1a1);
+# install 3.0.1 without build isolation so its setup.py can see numpy.
 # See: https://github.com/AIM-Harvard/pyradiomics/issues/933
-COPY requirements.lock .
-RUN sed -i '/^pyradiomics==/d' requirements.lock && \
-    pip install --no-cache-dir -r requirements.lock && \
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt && \
     pip install --no-cache-dir --no-build-isolation pyradiomics==3.0.1
 
 # Copy backend source code
@@ -53,11 +53,14 @@ RUN groupadd -g 1000 appuser && useradd -u 1000 -g appuser -m appuser && \
     mkdir -p /app/data /app/output && \
     chown -R appuser:appuser /app/data /app/output /app/frontend/dist
 
-# Persist SQLite databases in the mounted /app/data directory
+# Persist SQLite databases and settings in the mounted /app/data directory
 ENV ONERAD_DATA_DIR=/app/data
 
 USER appuser
 
 EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/')" || exit 1
 
 CMD ["sh", "-c", "exec python main.py --host 0.0.0.0 --port 8000 --base-url ${BASE_URL:-https://api.deepseek.com/v1}"]

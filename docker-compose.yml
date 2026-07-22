@@ -1,11 +1,17 @@
 services:
   autoradiomics:
     build: .
+    container_name: autoradiomics
+    restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "${PORT:-8000}:8000"
     volumes:
+      # Persistent data (SQLite databases, settings, project registry)
       - ./data:/app/data
+      # Analysis outputs (reports, figures, features)
       - ./output:/app/output
     environment:
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
       - BASE_URL=${BASE_URL:-https://api.deepseek.com/v1}
+    # Note: data/ and output/ directories on the host must be writable by UID 1000.
+    # On Linux, run: chown -R 1000:1000 ./data ./output
