@@ -1,3 +1,6 @@
+import json
+import os
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -437,3 +440,73 @@ def test_run_analysis_curve_failure_does_not_abort(tmp_path, monkeypatch):
     assert result["outputs"]["roc_curve"] is None
     assert result["outputs"]["calibration_curve"]
     assert result["outputs"]["report_docx"]
+
+
+def test_inspect_hyperparams_defaults_and_passthrough(tmp_path):
+    feat = tmp_path / "features.csv"
+    clin = tmp_path / "clinical.csv"
+    label = _write_feature_csv(feat, IDS)
+    _write_clinical_csv(clin, IDS, label)
+    # 默认值
+    result = inspect_analysis_inputs(
+        str(tmp_path), feature_csv=str(feat), clinical=str(clin))
+    resolved = result["resolved"]
+    assert resolved["n_splits"] == 5
+    assert resolved["max_lasso_features"] == 100
+    assert resolved["random_state"] == 42
+    # 自定义透传
+    result = inspect_analysis_inputs(
+        str(tmp_path), feature_csv=str(feat), clinical=str(clin),
+        n_splits=3, max_lasso_features=20, random_state=7)
+    resolved = result["resolved"]
+    assert resolved["n_splits"] == 3
+    assert resolved["max_lasso_features"] == 20
+    assert resolved["random_state"] == 7
+
+
+def test_inspect_hyperparams_invalid(tmp_path):
+    feat = tmp_path / "features.csv"
+    clin = tmp_path / "clinical.csv"
+    label = _write_feature_csv(feat, IDS)
+    _write_clinical_csv(clin, IDS, label)
+    for kwargs in ({"n_splits": 1},
+                   {"max_lasso_features": 0},
+                   {"random_state": -1}):
+        result = inspect_analysis_inputs(
+            str(tmp_path), feature_csv=str(feat), clinical=str(clin), **kwargs)
+        assert result["status"] == "error", kwargs
+
+
+def test_run_analysis_writes_reproduction_files(tmp_path):
+    feat, clin = _make_run_inputs(tmp_path)
+    out_dir = str(tmp_path / "analysis_out")
+    result = run_radiomics_cv_analysis(
+        feature_csv=feat, clinical=clin, output_dir=out_dir,
+        id_col="patient_id", label_col="Label",
+        max_lasso_features=50, random_state=7,
+        project_path=str(tmp_path))
+    assert result["success"] is True
+    outputs = result["outputs"]
+    params_path = outputs["params_snapshot"]
+    script_path = outputs["reproduction_script"]
+    assert os.path.exists(params_path)
+    assert os.path.exists(script_path)
+    assert os.path.dirname(params_path) == out_dir
+    assert os.path.dirname(script_path) == out_dir
+
+    params = json.loads(open(params_path, encoding="utf-8").read())
+    # 路径一律相对项目根，项目整体搬迁后仍可复跑
+    assert params["feature_csv"] == "features.csv"
+    assert params["clinical"] == "clinical.csv"
+    assert params["output_dir"] == "analysis_out"
+    assert params["project_root"] == ".."
+    assert params["id_col"] == "patient_id"
+    assert params["label_col"] == "Label"
+    assert params["n_splits"] == 5
+    assert params["max_lasso_features"] == 50
+    assert params["random_state"] == 7
+
+    script = open(script_path, encoding="utf-8").read()
+    assert "analysis_params.json" in script
+    assert "run_radiomics_cv_analysis" in script
+    assert "project_root" in script

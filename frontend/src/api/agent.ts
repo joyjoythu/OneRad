@@ -121,6 +121,10 @@ export interface PendingRadiomicsAnalysis {
   n_feature_cases: number
   n_features: number
   n_matched: number
+  // 分析超参；旧会话快照可能缺失，展示时回退默认值
+  n_splits?: number
+  max_lasso_features?: number
+  random_state?: number
   available_clinical_columns: string[]
 }
 

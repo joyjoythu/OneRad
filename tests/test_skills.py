@@ -98,6 +98,15 @@ def test_radiomics_workflow_forbids_script_feature_extraction():
     assert "execute_python_script" in content
 
 
+def test_radiomics_workflow_requires_param_confirmation_before_analysis():
+    """radiomics-workflow 技能必须要求：调用 run_radiomics_analysis 前先
+    用 ask_user_choice 询问用户是否调整分析参数（折数/特征数/种子/协变量）。"""
+    content = load_skill("radiomics-workflow")
+    assert "run_radiomics_analysis" in content
+    assert "ask_user_choice" in content
+    assert "n_splits" in content
+
+
 def test_main_agent_loads_core_and_radiomics_skills_on_every_call(tmp_path):
     state = {
         "messages": [],

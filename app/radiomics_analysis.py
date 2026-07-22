@@ -11,6 +11,7 @@ Two entry points:
   build Word + Markdown reports.
 """
 
+import json
 import logging
 import os
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -34,6 +35,99 @@ logger = logging.getLogger(__name__)
 _RADIOMIC_PREFIXES = ("original_", "wavelet-", "log-sigma_")
 _CLINICAL_EXTS = {".csv", ".xlsx", ".xls"}
 _MAX_SCAN_DEPTH = 2
+
+DEFAULT_N_SPLITS = 5
+DEFAULT_MAX_LASSO_FEATURES = 100
+DEFAULT_RANDOM_STATE = 42
+
+_APP_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+_REPRODUCTION_SCRIPT_TEMPLATE = '''# -*- coding: utf-8 -*-
+"""OneRad 影像组学分析复跑脚本（自动生成）。
+
+要调整参数请编辑同目录 analysis_params.json，不要改本文件。
+复跑方法（需要 OneRad 应用代码环境及其依赖）：
+    python run_analysis.py
+全部输入与参数取自 analysis_params.json；其中路径相对于项目根目录，
+project_root 字段记录本脚本所在目录到项目根的相对路径。
+"""
+import json
+import sys
+from pathlib import Path
+
+APP_ROOT = Path(r"__APP_ROOT__")  # OneRad 应用代码根目录（生成时记录）
+SCRIPT_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(APP_ROOT))
+
+from app.radiomics_analysis import run_radiomics_cv_analysis
+
+
+def main() -> None:
+    params = json.loads(
+        (SCRIPT_DIR / "analysis_params.json").read_text(encoding="utf-8"))
+    project_root = (SCRIPT_DIR / params["project_root"]).resolve()
+
+    def _abs(rel: str) -> str:
+        return str(project_root / rel)
+
+    result = run_radiomics_cv_analysis(
+        feature_csv=_abs(params["feature_csv"]),
+        clinical=_abs(params["clinical"]),
+        output_dir=_abs(params["output_dir"]),
+        id_col=params.get("id_col"),
+        label_col=params.get("label_col"),
+        covariates=params.get("covariates") or [],
+        max_lasso_features=params.get("max_lasso_features", 100),
+        n_splits=params.get("n_splits", 5),
+        random_state=params.get("random_state", 42),
+        project_path=str(project_root),
+    )
+    print(json.dumps({"success": result.get("success"),
+                      "message": result.get("message")},
+                     ensure_ascii=False, indent=2))
+
+
+if __name__ == "__main__":
+    main()
+'''
+
+
+def write_reproduction_files(project_path: str, output_dir: str,
+                             params: Dict[str, Any]) -> Dict[str, str]:
+    """在输出目录写入 analysis_params.json 参数快照与 run_analysis.py 复跑脚本。
+
+    快照中的文件路径一律存为相对项目根目录的形式，复跑脚本经 project_root
+    （脚本目录到项目根的相对路径）还原，项目目录整体搬迁后仍可复跑。
+    返回 {"params_snapshot": ..., "reproduction_script": ...} 绝对路径。
+    """
+    project_root = os.path.abspath(project_path)
+    out_abs = os.path.abspath(output_dir)
+
+    def _rel(p: str) -> str:
+        return os.path.relpath(os.path.abspath(p), project_root)
+
+    snapshot = {
+        "feature_csv": _rel(params["feature_csv"]),
+        "clinical": _rel(params["clinical"]),
+        "output_dir": _rel(out_abs),
+        "project_root": os.path.relpath(project_root, out_abs),
+        "id_col": params.get("id_col"),
+        "label_col": params.get("label_col"),
+        "covariates": list(params.get("covariates") or []),
+        "max_lasso_features": params.get(
+            "max_lasso_features", DEFAULT_MAX_LASSO_FEATURES),
+        "n_splits": params.get("n_splits", DEFAULT_N_SPLITS),
+        "random_state": params.get("random_state", DEFAULT_RANDOM_STATE),
+    }
+    params_path = os.path.join(out_abs, "analysis_params.json")
+    with open(params_path, "w", encoding="utf-8") as f:
+        json.dump(snapshot, f, ensure_ascii=False, indent=2)
+        f.write("\n")
+
+    script_path = os.path.join(out_abs, "run_analysis.py")
+    with open(script_path, "w", encoding="utf-8") as f:
+        f.write(_REPRODUCTION_SCRIPT_TEMPLATE.replace("__APP_ROOT__", _APP_ROOT))
+    return {"params_snapshot": params_path, "reproduction_script": script_path}
 
 
 def _load_table(path: str) -> pd.DataFrame:
@@ -147,6 +241,9 @@ def inspect_analysis_inputs(
     label_col: str = "",
     covariates: Optional[List[str]] = None,
     output_dir: str = "",
+    n_splits: Optional[int] = None,
+    max_lasso_features: Optional[int] = None,
+    random_state: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Resolve analysis inputs; report ambiguity as clarification questions.
 
@@ -159,6 +256,26 @@ def inspect_analysis_inputs(
     directory. It is designed to be called from a worker thread (the
     LangGraph sync node executor already runs sync nodes in a thread pool).
     """
+    # 0. 分析超参校验（None 表示走默认值）
+    if n_splits is not None and (not isinstance(n_splits, int)
+                                 or isinstance(n_splits, bool) or n_splits < 2):
+        return {"status": "error",
+                "message": f"n_splits 必须是 ≥2 的整数（当前 {n_splits!r}）",
+                "detected": {}}
+    if max_lasso_features is not None and (
+            not isinstance(max_lasso_features, int)
+            or isinstance(max_lasso_features, bool) or max_lasso_features < 1):
+        return {"status": "error",
+                "message": f"max_lasso_features 必须是 ≥1 的整数"
+                           f"（当前 {max_lasso_features!r}）",
+                "detected": {}}
+    if random_state is not None and (not isinstance(random_state, int)
+                                     or isinstance(random_state, bool)
+                                     or random_state < 0):
+        return {"status": "error",
+                "message": f"random_state 必须是 ≥0 的整数（当前 {random_state!r}）",
+                "detected": {}}
+
     # 1. 特征文件
     if not feature_csv:
         feature_csv = os.path.join(
@@ -308,6 +425,11 @@ def inspect_analysis_inputs(
         "label_col": label_col,
         "covariates": valid_covariates,
         "output_dir": output_dir,
+        "n_splits": n_splits if n_splits is not None else DEFAULT_N_SPLITS,
+        "max_lasso_features": (max_lasso_features if max_lasso_features is not None
+                               else DEFAULT_MAX_LASSO_FEATURES),
+        "random_state": (random_state if random_state is not None
+                         else DEFAULT_RANDOM_STATE),
         "n_feature_cases": detected["n_feature_cases"],
         "n_features": n_features,
         "n_matched": detected["n_matched"],
@@ -421,6 +543,7 @@ def run_radiomics_cv_analysis(
     max_lasso_features: int = 100,
     n_splits: int = 5,
     random_state: int = 42,
+    project_path: Optional[str] = None,
     llm_client=None,
     should_cancel: Optional[Callable[[], bool]] = None,
 ) -> Dict[str, Any]:
@@ -430,6 +553,10 @@ def run_radiomics_cv_analysis(
     (see ``inspect_analysis_inputs``). Returns a dict with ``success``,
     ``message``, and on success ``analysis_result`` (the raw AnalysisAgent
     result), ``n_matched`` and ``outputs`` (artifact paths).
+
+    每次运行在输出目录写入 analysis_params.json 与 run_analysis.py
+    （见 ``write_reproduction_files``），便于日后按相同输入与参数复现。
+    ``project_path`` 缺省时取 output_dir 的父目录作为项目根。
     """
     from app.analysis import AnalysisAgent
     from app.report import ReportAgent
@@ -503,6 +630,23 @@ def run_radiomics_cv_analysis(
         return {"success": False, "cancelled": True, "message": "用户取消了分析"}
 
     os.makedirs(output_dir, exist_ok=True)
+    # 复现文件先行落盘：记录本次实际采用的输入与参数（含推断后的协变量），
+    # 即使后续分析中途失败，参数快照也已保留。
+    repro_outputs = write_reproduction_files(
+        project_path or os.path.dirname(os.path.abspath(output_dir)),
+        output_dir,
+        {
+            "feature_csv": feature_csv,
+            "clinical": clinical,
+            "output_dir": output_dir,
+            "id_col": id_col,
+            "label_col": label_col,
+            "covariates": covariates,
+            "max_lasso_features": max_lasso_features,
+            "n_splits": n_splits,
+            "random_state": random_state,
+        },
+    )
     agent = AnalysisAgent(
         covariates=covariates,
         max_lasso_features=max_lasso_features,
@@ -519,6 +663,7 @@ def run_radiomics_cv_analysis(
         return {"success": False, "cancelled": True, "message": "用户取消了分析"}
 
     outputs: Dict[str, Any] = {"lasso_paths": analysis_result.get("plot_paths", [])}
+    outputs.update(repro_outputs)
 
     # 每病例预测概率
     oof = analysis_result.get("oof_probabilities", [])

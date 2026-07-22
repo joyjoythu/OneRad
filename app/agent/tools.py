@@ -2,7 +2,7 @@ import json
 import os
 import re
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 import yaml
 from langchain_core.tools import tool
@@ -207,12 +207,20 @@ def build_tools(
     @tool
     def run_radiomics_analysis(feature_csv: str = "", clinical: str = "",
                                id_col: str = "", label_col: str = "",
-                               covariates: str = "", output_dir: str = "") -> str:
-        """对已提取的影像组学特征和临床表做 LASSO + 逻辑回归五折交叉验证分析，
+                               covariates: str = "", output_dir: str = "",
+                               n_splits: Optional[int] = None,
+                               max_lasso_features: Optional[int] = None,
+                               random_state: Optional[int] = None) -> str:
+        """对已提取的影像组学特征和临床表做 LASSO + 逻辑回归交叉验证分析，
         生成 ROC/校准/DCA 曲线、预测概率表和 Word/Markdown 报告。
-        执行前需要用户确认；若输入文件或列名识别有歧义，
+        调用本工具前必须先用 ask_user_choice 询问用户是否调整分析参数
+        （折数 n_splits 默认 5、LASSO 最大特征数 max_lasso_features 默认 100、
+        随机种子 random_state 默认 42、协变量 covariates），用户要调整时
+        通过对应参数传入。执行前需要用户确认；若输入文件或列名识别有歧义，
         会先返回需要向用户澄清的问题（status=need_clarification），
         此时请向用户提问并用用户回答重新调用本工具。
+        分析会在输出目录保存 analysis_params.json 参数快照与
+        run_analysis.py 复跑脚本，便于日后复现。
         参数均可留空：feature_csv 缺省用 radiomics_features/radiomics_features.csv，
         clinical 缺省时自动在项目内搜索，id_col/label_col 缺省时自动识别，
         covariates 为逗号分隔的临床协变量列名。"""
@@ -235,6 +243,9 @@ def build_tools(
             label_col=label_col,
             covariates=cov_list,
             output_dir=output_dir,
+            n_splits=n_splits,
+            max_lasso_features=max_lasso_features,
+            random_state=random_state,
         )
         if report.get("status") != "ready":
             return json.dumps(report, ensure_ascii=False)

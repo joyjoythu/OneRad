@@ -133,7 +133,9 @@ const view = computed<ApprovalView | null>(() => {
       return {
         type: 'radiomics_analysis',
         label: '影像组学分析',
-        summary: `特征：${analysis.feature_csv}，标签列：${analysis.label_col}，匹配 ${analysis.n_matched} 例`,
+        summary: `特征：${analysis.feature_csv}，标签列：${analysis.label_col}，匹配 ${analysis.n_matched} 例，`
+          + `${analysis.n_splits ?? 5} 折，LASSO≤${analysis.max_lasso_features ?? 100} 特征，`
+          + `种子 ${analysis.random_state ?? 42}`,
         confirmLabel: '确认分析',
       }
     }

@@ -166,6 +166,9 @@ describe('ApprovalPanel', () => {
       n_feature_cases: 100,
       n_features: 120,
       n_matched: 95,
+      n_splits: 3,
+      max_lasso_features: 20,
+      random_state: 7,
       available_clinical_columns: [],
     } as never
 
@@ -175,6 +178,9 @@ describe('ApprovalPanel', () => {
     expect(wrapper.text()).toContain('特征：features/radiomics.csv')
     expect(wrapper.text()).toContain('标签列：label')
     expect(wrapper.text()).toContain('匹配 95 例')
+    expect(wrapper.text()).toContain('3 折')
+    expect(wrapper.text()).toContain('LASSO≤20 特征')
+    expect(wrapper.text()).toContain('种子 7')
     expect(wrapper.text()).toContain('确认分析')
   })
 

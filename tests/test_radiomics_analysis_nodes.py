@@ -56,7 +56,23 @@ def test_process_run_radiomics_analysis_sets_interrupt(tmp_path):
     assert pending["tool_call_id"] == "tc-a1"
     assert pending["label_col"] == "Label"
     assert pending["n_matched"] == 60
+    # 超参默认值随 pending 透传，供确认面板展示与执行使用
+    assert pending["n_splits"] == 5
+    assert pending["max_lasso_features"] == 100
+    assert pending["random_state"] == 42
     assert result["messages"] == []  # 确认类工具不产生 ToolMessage
+
+
+def test_process_run_radiomics_analysis_hyperparam_passthrough(tmp_path):
+    _make_project(tmp_path)
+    state = _tool_call_state(tmp_path, {
+        "feature_csv": "features.csv", "clinical": "clinical.csv",
+        "n_splits": 3, "max_lasso_features": 20, "random_state": 7})
+    result = _run_process(state)
+    pending = result["pending_radiomics_analysis"]
+    assert pending["n_splits"] == 3
+    assert pending["max_lasso_features"] == 20
+    assert pending["random_state"] == 7
 
 
 def test_process_run_radiomics_analysis_clarification_passthrough(tmp_path):
@@ -116,6 +132,42 @@ def test_execute_confirmed_radiomics_analysis(tmp_path):
     assert "oof_probabilities" not in json.dumps(content)
     assert result["interrupt_type"] is None
     assert result["pending_radiomics_analysis"] is None
+
+
+def test_execute_confirmed_radiomics_analysis_forwards_hyperparams(tmp_path):
+    """确认执行时，pending 中的超参与 project_path 必须透传给分析函数。"""
+    fake_result = {"success": True, "message": "分析完成", "n_matched": 60,
+                   "analysis_result": {}, "outputs": {}}
+    state = AgentState(
+        messages=[],
+        project_path=str(tmp_path),
+        base_url="https://api.deepseek.com/v1",
+        model="deepseek-v4-pro",
+        api_key="",
+        interrupt_type="radiomics_analysis",
+        confirmed=True,
+        pending_radiomics_analysis={
+            "tool_call_id": "tc-a1",
+            "feature_csv": str(tmp_path / "features.csv"),
+            "clinical": str(tmp_path / "clinical.csv"),
+            "id_col": "patient_id",
+            "label_col": "Label",
+            "covariates": ["age"],
+            "output_dir": str(tmp_path / "radiomics_analysis"),
+            "n_splits": 3,
+            "max_lasso_features": 20,
+            "random_state": 7,
+        },
+    )
+    with patch("app.agent.nodes.run_radiomics_cv_analysis",
+               return_value=fake_result) as mock_run:
+        execute_confirmed(state)
+
+    kwargs = mock_run.call_args.kwargs
+    assert kwargs["n_splits"] == 3
+    assert kwargs["max_lasso_features"] == 20
+    assert kwargs["random_state"] == 7
+    assert kwargs["project_path"] == str(tmp_path)
 
 
 def test_execute_confirmed_radiomics_analysis_failure(tmp_path):

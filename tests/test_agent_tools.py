@@ -300,6 +300,30 @@ def test_run_radiomics_analysis_passes_explicit_output_dir(tmp_path):
     assert data["meta"]["output_dir"] == str(tmp_path / "my_results")
 
 
+def test_run_radiomics_analysis_passes_hyperparams(tmp_path):
+    _make_analysis_project(tmp_path)
+    tools = build_tools(str(tmp_path), MagicMock())
+    result = tools["run_radiomics_analysis"].invoke(
+        {"feature_csv": "features.csv", "clinical": "clinical.csv",
+         "n_splits": 3, "max_lasso_features": 20, "random_state": 7})
+    data = json.loads(result)
+    assert data["_pending_tool"] == "run_radiomics_analysis"
+    assert data["meta"]["n_splits"] == 3
+    assert data["meta"]["max_lasso_features"] == 20
+    assert data["meta"]["random_state"] == 7
+
+
+def test_run_radiomics_analysis_hyperparam_defaults(tmp_path):
+    _make_analysis_project(tmp_path)
+    tools = build_tools(str(tmp_path), MagicMock())
+    result = tools["run_radiomics_analysis"].invoke(
+        {"feature_csv": "features.csv", "clinical": "clinical.csv"})
+    data = json.loads(result)
+    assert data["meta"]["n_splits"] == 5
+    assert data["meta"]["max_lasso_features"] == 100
+    assert data["meta"]["random_state"] == 42
+
+
 def test_yaml_tools_registered(tmp_path):
     fake_llm = MagicMock()
     tools = build_tools(str(tmp_path), fake_llm)

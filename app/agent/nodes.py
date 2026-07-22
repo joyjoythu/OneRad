@@ -1417,6 +1417,12 @@ def _run_radiomics_analysis(
             id_col=pending.get("id_col"),
             label_col=pending.get("label_col"),
             covariates=pending.get("covariates") or [],
+            # 旧会话的 pending 可能没有超参字段：缺省回退默认值
+            max_lasso_features=pending.get("max_lasso_features") or 100,
+            n_splits=pending.get("n_splits") or 5,
+            random_state=(pending.get("random_state")
+                          if pending.get("random_state") is not None else 42),
+            project_path=project_path,
             should_cancel=should_cancel,
         )
         return _json_safe_analysis_result(result)
