@@ -115,7 +115,8 @@ def call_llm(state: AgentState, config: Optional[RunnableConfig] = None) -> dict
         model=_resolve_model(state, config),
         messages=[
             SystemMessage(
-                content=load_skill_bundle(("agent-core", "radiomics-workflow"))
+                content=load_skill_bundle(
+                    ("agent-core", "radiomics-workflow", "word-report"))
             ),
             *state["messages"],
         ],
@@ -332,6 +333,15 @@ def process_tool_calls(state: AgentState, config: Optional[RunnableConfig] = Non
             ))
             continue
 
+        # 报告重排：免确认，幂等且自动保留 .bak 备份，直接在本节点内执行。
+        if name == "reformat_report":
+            results = _run_reformat_report(state)
+            updates["messages"].append(ToolMessage(
+                content=json.dumps(results, ensure_ascii=False),
+                tool_call_id=tool_call_id,
+            ))
+            continue
+
         needs_confirmation = name in {
             "list_directory",
             "find_files",
@@ -350,6 +360,8 @@ def process_tool_calls(state: AgentState, config: Optional[RunnableConfig] = Non
             "run_feature_statistics",
             "dispatch_subagent",
             "ask_user_choice",
+            "word_create",
+            "word_append",
         } or (
             name == "execute_python_script"
             and isinstance(parsed, dict)
@@ -372,7 +384,8 @@ def process_tool_calls(state: AgentState, config: Optional[RunnableConfig] = Non
             if name in {"list_directory", "find_files", "get_file_info",
                         "read_yaml", "read_json", "read_tabular_file", "update_yaml",
                         "create_json", "update_json",
-                        "inspect_image_spacing"}:
+                        "inspect_image_spacing",
+                        "word_create", "word_append"}:
                 interrupt_type = "system_command"
                 updates["pending_command"] = {"tool_call_id": tool_call_id, **parsed}
             elif name == "dispatch_subagent":
@@ -1307,6 +1320,24 @@ def _run_system_command(command: dict, project_path: str) -> dict:
                     "deleted": deleted,
                 },
             }
+        elif tool == "word_create":
+            filename = args.get("filename")
+            content = args.get("content_markdown")
+            if filename is None or content is None:
+                return {"error": "missing required argument: filename/content_markdown"}
+            target = sandbox.resolve(filename, must_exist=False)
+            from app.word_document import create_document
+            return {"tool": tool,
+                    "result": create_document(str(target), content)}
+        elif tool == "word_append":
+            filename = args.get("filename")
+            content = args.get("content_markdown")
+            if filename is None or content is None:
+                return {"error": "missing required argument: filename/content_markdown"}
+            target = sandbox.resolve(filename, must_exist=False)
+            from app.word_document import append_to_document
+            return {"tool": tool,
+                    "result": append_to_document(str(target), content)}
         elif tool == "inspect_image_spacing":
             from app.image_spacing import inspect_spacing
             pairs = args.get("pairs") or []
@@ -1601,6 +1632,41 @@ def _run_interpretation(
             "success": False,
             "error": f"结果解读失败: {e}（基础报告与既有产物不受影响，可稍后重试）",
         }
+
+
+def _run_reformat_report(state: AgentState) -> dict:
+    """免确认重排最新分析输出目录中的 AutoRadiomics_Report.docx。
+
+    幂等：重复执行结果一致；重排前自动备份原文件为 .bak.docx。
+    任何失败都优雅返回错误说明，不影响既有产物。
+    """
+    from app.docx_style import reformat_docx
+
+    project_path = state["project_path"]
+    try:
+        output_dir = _find_latest_analysis_dir(project_path)
+        if output_dir is None:
+            return {
+                "success": False,
+                "error": "未找到 analysis_result.json：请先运行 "
+                         "run_radiomics_analysis 完成一次分析。",
+            }
+        report_path = os.path.join(output_dir, "AutoRadiomics_Report.docx")
+        if not os.path.exists(report_path):
+            return {
+                "success": False,
+                "error": f"报告不存在: {report_path}，请先生成报告。",
+            }
+        backup = reformat_docx(report_path)
+        return {
+            "success": True,
+            "message": "报告已按中文学术论文格式重排",
+            "report_path": report_path,
+            "backup": backup,
+        }
+    except Exception as e:
+        logger.warning("报告重排失败", exc_info=True)
+        return {"success": False, "error": f"报告重排失败: {e}"}
 
 
 def _clear_interrupt(updates: dict) -> dict:

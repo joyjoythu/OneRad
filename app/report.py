@@ -3,10 +3,11 @@ from typing import Dict, Any, List, Optional
 
 import pandas as pd
 from docx import Document
-from docx.shared import Pt, Inches
+from docx.shared import Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 import logging
+from app.docx_style import apply_academic_style, markdown_to_docx, style_table
 from app.skills import load_skill
 from app.utils import fmt_num, fmt_p
 
@@ -95,14 +96,12 @@ class ReportAgent:
         try:
             os.makedirs(output_dir, exist_ok=True)
             doc = Document()
+            apply_academic_style(doc)
             skipped_plots: List[str] = []
 
-            # Title
+            # Title（字号/加粗/居中由 Title 样式统一控制）
             title = doc.add_heading(level=0)
-            run = title.add_run("影像组学分析报告")
-            run.font.size = Pt(18)
-            run.bold = True
-            title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            title.add_run("影像组学分析报告")
 
             # Methodology
             doc.add_heading("1. 方法", level=1)
@@ -193,6 +192,7 @@ class ReportAgent:
                 for plot_path in other_plots:
                     if os.path.exists(plot_path):
                         doc.add_picture(plot_path, width=Inches(5.5))
+                        doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
                     else:
                         skipped_plots.append(plot_path)
 
@@ -203,6 +203,7 @@ class ReportAgent:
                 for plot_path in shap_plots:
                     if os.path.exists(plot_path):
                         doc.add_picture(plot_path, width=Inches(5.5))
+                        doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
                     else:
                         skipped_plots.append(plot_path)
 
@@ -217,7 +218,7 @@ class ReportAgent:
                     if not text:
                         continue
                     doc.add_heading(subtitle, level=2)
-                    self._add_markdown_text(doc, text)
+                    markdown_to_docx(doc, text)
 
             # Save
             report_path = os.path.join(output_dir, "AutoRadiomics_Report.docx")
@@ -296,28 +297,6 @@ class ReportAgent:
         except Exception:
             return raw
 
-    @staticmethod
-    def _add_markdown_text(doc, text: str):
-        """Write an LLM-generated markdown fragment as plain Word paragraphs.
-
-        Lines starting with ``- ``/``* `` become bullet paragraphs; heading
-        markers and ``**`` bold markers are stripped; blank lines are skipped.
-        """
-        for line in text.splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            bullet = line.startswith(("- ", "* "))
-            if bullet:
-                line = line[2:].strip()
-            line = line.lstrip("#").strip().replace("**", "")
-            if not line:
-                continue
-            if bullet:
-                doc.add_paragraph(line, style="List Bullet")
-            else:
-                doc.add_paragraph(line)
-
     def _add_table(self, doc, df: pd.DataFrame):
         """Append a pandas DataFrame as a styled Word table.
 
@@ -337,3 +316,4 @@ class ReportAgent:
             cells = table.add_row().cells
             for i, val in enumerate(row):
                 cells[i].text = str(val)
+        style_table(table)

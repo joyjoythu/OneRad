@@ -306,6 +306,38 @@ def build_tools(
                           ensure_ascii=False)
 
     @tool
+    def word_create(filename: str, content_markdown: str) -> str:
+        """在项目目录下新建 Word 文档（.docx），套用中文学术论文格式
+        （正文宋体小四、标题黑体、1.5 倍行距）。content_markdown 用 markdown
+        组织内容：#/##/### 为各级标题，- 或 * 为列表项，**粗体** 保留加粗。
+        文件已存在时报错而不会覆盖。执行前需要用户确认。"""
+        return json.dumps(
+            {"_pending_tool": "word_create",
+             "args": {"filename": filename, "content_markdown": content_markdown}},
+            ensure_ascii=False,
+        )
+
+    @tool
+    def word_append(filename: str, content_markdown: str) -> str:
+        """向项目内已有 Word 文档（.docx）追加 markdown 内容（格式同
+        word_create）。目标文件必须已存在。执行前需要用户确认。"""
+        return json.dumps(
+            {"_pending_tool": "word_append",
+             "args": {"filename": filename, "content_markdown": content_markdown}},
+            ensure_ascii=False,
+        )
+
+    @tool
+    def reformat_report() -> str:
+        """把最近一次分析输出的 AutoRadiomics_Report.docx 重排为中文学术论文
+        格式（正文宋体小四、标题黑体、1.5 倍行距、表格五号）。无需参数：自动
+        定位项目内最新的分析输出目录（含 analysis_result.json）。免确认，立即
+        执行；原文件自动备份为 .bak.docx，重复调用幂等。用户觉得报告格式乱或
+        要求"排版/重排报告"时调用。"""
+        return json.dumps({"_pending_tool": "reformat_report"},
+                          ensure_ascii=False)
+
+    @tool
     def update_todo_list(todos: List[Any]) -> str:
         """全量更新右侧计划面板的步骤列表，向用户展示宏观分析进度。
         todos 为步骤数组，每项 {"content": 步骤描述, "status": "pending" |
@@ -371,6 +403,9 @@ def build_tools(
         tools["run_radiomics_analysis"] = run_radiomics_analysis
         tools["run_feature_statistics"] = run_feature_statistics
         tools["interpret_analysis_results"] = interpret_analysis_results
+        tools["word_create"] = word_create
+        tools["word_append"] = word_append
+        tools["reformat_report"] = reformat_report
         tools["update_todo_list"] = update_todo_list
         tools["ask_user_choice"] = ask_user_choice
 
