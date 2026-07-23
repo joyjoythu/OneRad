@@ -13,3 +13,6 @@ frontend/dist/
 # Environment (contains API keys)
 .env
 
+# 自己的开发笔记，不提交
+Docker速查.md
+
