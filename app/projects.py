@@ -12,8 +12,13 @@ import yaml
 from app.constants import DEEPSEEK_MODEL
 
 
-DEFAULT_DB_DIR = Path.home() / ".onerad"
-DEFAULT_DB_PATH = DEFAULT_DB_DIR / "projects.db"
+def _default_db_path() -> Path:
+    data_dir = Path(os.environ.get("ONERAD_DATA_DIR", Path.home() / ".onerad"))
+    data_dir.mkdir(parents=True, exist_ok=True)
+    return data_dir / "projects.db"
+
+
+DEFAULT_DB_PATH = _default_db_path()
 DEFAULT_PARAMS_TEMPLATE = (
     Path(__file__).resolve().parent.parent / "config" / "Params_labels.yaml"
 )
