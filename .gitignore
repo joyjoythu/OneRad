@@ -19,4 +19,9 @@ Docker速查.md
 # 离线部署（给评委的打包文件，不从源码仓库分发）
 评委说明.md
 docker-compose.offline.yml
+autoradiomics.tar.gz
+
+# 数据库文件（运行时生成）
+projects.db
+checkpoints.db
 
