@@ -3,6 +3,15 @@
 The browser is intentionally limited to loopback clients because the API
 reveals directory names on the machine running OneRad.  It never creates,
 moves, edits, or deletes files.
+
+Docker deployments:
+  Set ``ONERAD_ALLOW_REMOTE_FS=1`` to relax the loopback restriction
+  (the browser runs on the host, so requests arrive from the Docker
+  bridge IP rather than 127.0.0.1).
+
+  Set ``ONERAD_FS_ROOTS`` to a colon-separated list of host directories
+  that have been bind-mounted into the container so the path-picker can
+  surface them (e.g. ``ONERAD_FS_ROOTS=/data/input:/data/output``).
 """
 
 from __future__ import annotations
@@ -21,13 +30,42 @@ router = APIRouter()
 _LIST_TIMEOUT_SECONDS = 5.0
 
 
+def _allow_remote_fs() -> bool:
+    return os.environ.get("ONERAD_ALLOW_REMOTE_FS", "") == "1"
+
+
+def _custom_fs_roots() -> List[str]:
+    """Parse ONERAD_FS_ROOTS into a list of existing directory paths."""
+    raw = os.environ.get("ONERAD_FS_ROOTS", "").strip()
+    if not raw:
+        return []
+    sep = ";" if os.name == "nt" else ":"
+    roots: List[str] = []
+    for part in raw.split(sep):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            p = Path(part).expanduser().resolve(strict=False)
+            if p.is_dir():
+                roots.append(str(p))
+        except (OSError, RuntimeError, ValueError):
+            continue
+    return roots
+
+
 def _is_loopback(host: str) -> bool:
     """Return whether *host* represents a loopback client.
 
     Starlette's TestClient uses ``testclient`` as the synthetic peer name, so
     it is allowed for endpoint tests.
+
+    When ``ONERAD_ALLOW_REMOTE_FS=1`` every client is considered loopback
+    (used in Docker deployments).
     """
 
+    if _allow_remote_fs():
+        return True
     if host in {"localhost", "testclient"}:
         return True
     try:
@@ -41,7 +79,7 @@ def _require_loopback(request: Request) -> None:
     if not _is_loopback(client_host):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="文件系统浏览仅允许从运行 OneRad 的本机访问",
+            detail="文件系统浏览仅允许从运行 OneRad 的本机访问（Docker 部署请设置 ONERAD_ALLOW_REMOTE_FS=1）",
         )
 
 
@@ -62,6 +100,12 @@ def _resolved_path(raw_path: str) -> Path:
 
 def _root_candidates() -> List[Dict[str, str]]:
     candidates: List[Dict[str, str]] = []
+
+    # 1) Custom roots from ONERAD_FS_ROOTS (Docker bind-mounts, etc.)
+    for custom_path in _custom_fs_roots():
+        candidates.append({"name": f"📂 {custom_path}", "path": custom_path})
+
+    # 2) Standard OS roots
     home = Path.home().resolve(strict=False)
     if home.exists():
         candidates.append({"name": "主目录", "path": str(home)})

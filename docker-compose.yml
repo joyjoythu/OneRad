@@ -10,8 +10,17 @@ services:
       - ./data:/app/data
       # Analysis outputs (reports, figures, features)
       - ./output:/app/output
+      # ---- 挂载你的影像数据目录（二选一）----
+      # 方式 A：直接挂载宿主机目录到容器内
+      # 将下面 /host/path/to/images 替换为评委本机的影像数据路径：
+      # - /host/path/to/images:/data/input
+      # 方式 B：把数据复制到 ./data/input 目录（已挂载到 /app/data）
+      #   评委只需把影像数据放到项目 data/input/ 文件夹下即可
     environment:
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
       - BASE_URL=${BASE_URL:-https://api.deepseek.com/v1}
+      # Docker 文件系统浏览（允许容器内浏览挂载进来的数据目录）
+      - ONERAD_ALLOW_REMOTE_FS=1
+      - ONERAD_FS_ROOTS=/data/input
     # Note: data/ and output/ directories on the host must be writable by UID 1000.
     # On Linux, run: chown -R 1000:1000 ./data ./output

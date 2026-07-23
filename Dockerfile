@@ -53,8 +53,8 @@ COPY --from=frontend-builder /app/dist ./frontend/dist
 # predictable on Linux. Ensure host ./data and ./output are owned by UID 1000,
 # or adjust these IDs to match the host user.
 RUN groupadd -g 1000 appuser && useradd -u 1000 -g appuser -m appuser && \
-    mkdir -p /app/data /app/output && \
-    chown -R appuser:appuser /app/data /app/output /app/frontend/dist
+    mkdir -p /app/data /app/output /data/input && \
+    chown -R appuser:appuser /app/data /app/output /app/frontend/dist /data/input
 
 # Persist SQLite databases and settings in the mounted /app/data directory
 ENV ONERAD_DATA_DIR=/app/data
