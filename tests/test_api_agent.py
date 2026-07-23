@@ -1398,7 +1398,7 @@ async def _run_interrupt_then_resume(tmp_path, action):
 
     返回 (graph, config, 中断时的 snapshot)。mock 模式同 test_agent_graph.py。
     """
-    project = {"path": str(tmp_path), "analysis": {"api_key": "fake", "model": "deepseek-v4-pro"}}
+    project = {"path": str(tmp_path), "id": "test-project", "analysis": {"api_key": "fake", "model": "deepseek-v4-pro"}}
     state = build_initial_state(project)
     state["messages"] = [HumanMessage(content="list files")]
 

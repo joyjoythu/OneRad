@@ -322,7 +322,7 @@ def process_tool_calls(state: AgentState, config: Optional[RunnableConfig] = Non
         ):
             thread_id = (config or {}).get("configurable", {}).get("thread_id")
             results = _run_subagents(
-                {"tasks": parsed["tasks"], "mode": "explore"},
+                {"tasks": parsed["tasks"], "mode": "explore", "tool_call_id": tool_call_id},
                 state,
                 config,
                 thread_id,
@@ -916,14 +916,17 @@ def _run_subagents(
     if not tasks:
         return {"success": False, "error": "Missing subagent tasks"}
     mode = pending.get("mode", "general")
+    # 发起 dispatch 的 tool_call_id：透传进状态推送，前端据此把子任务面板
+    # 锚定回发起它的那条 assistant 消息。
+    tool_call_id = pending.get("tool_call_id")
 
     if len(tasks) == 1:
-        results = [_run_subagent(tasks[0], state, config, parent_thread_id, mode=mode)]
+        results = [_run_subagent(tasks[0], state, config, parent_thread_id, mode=mode, tool_call_id=tool_call_id)]
     else:
         workers = min(len(tasks), _SUBAGENT_MAX_WORKERS)
         with ThreadPoolExecutor(max_workers=workers) as pool:
             futures = [
-                pool.submit(_run_subagent, task, state, config, parent_thread_id, mode=mode)
+                pool.submit(_run_subagent, task, state, config, parent_thread_id, mode=mode, tool_call_id=tool_call_id)
                 for task in tasks
             ]
             results = [f.result() for f in futures]
@@ -1003,6 +1006,7 @@ def _run_subagent(
     config: Optional[RunnableConfig],
     parent_thread_id: Optional[str],
     mode: str = "general",
+    tool_call_id: Optional[str] = None,
 ) -> dict:
     """在隔离上下文中运行单个子 agent（嵌套深度限制为 1 层）。
 
@@ -1027,6 +1031,7 @@ def _run_subagent(
         "task": task,
         "status": "running",
         "entries": [],
+        "tool_call_id": tool_call_id,
     }
     _publish_subagent(parent_thread_id, status)
 

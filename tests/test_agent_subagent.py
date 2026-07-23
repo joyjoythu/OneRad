@@ -15,7 +15,7 @@ from app.api.agent import _sync_payload
 
 
 def _make_state(tmp_path):
-    project = {"path": str(tmp_path), "analysis": {"api_key": "fake", "model": "deepseek-v4-pro"}}
+    project = {"path": str(tmp_path), "id": "test-project", "analysis": {"api_key": "fake", "model": "deepseek-v4-pro"}}
     state = build_initial_state(project)
     state["messages"] = [HumanMessage(content="帮我看看项目里有什么")]
     return state
@@ -391,6 +391,8 @@ def test_dispatch_subagent_under_async_parent_with_sqlite_saver(tmp_path):
         assert subagent_events, "未收到任何 subagent 状态推送"
         assert subagent_events[-1]["subagent"]["status"] == "done"
         assert subagent_events[-1]["subagent"]["id"]
+        # 推送携带发起 dispatch 的 tool_call_id，供前端锚定面板位置
+        assert subagent_events[-1]["subagent"]["tool_call_id"] == "call_sub"
 
     asyncio.run(main())
 
@@ -587,3 +589,35 @@ def test_dispatch_unknown_mode_falls_back_to_general(tmp_path):
     snapshot = graph.get_state(config)
     assert snapshot.values["interrupt_type"] == "subagent_dispatch"
     assert snapshot.values["pending_subagent"]["tasks"] == ["做件事"]
+
+
+def test_run_subagents_publishes_tool_call_id(tmp_path):
+    """子 agent 状态推送携带发起它的 tool_call_id，前端据此把面板锚定回
+    发起 dispatch_subagent 的那条 assistant 消息，而不是钉在消息列表末尾。"""
+    from app.agent import nodes as agent_nodes
+
+    state = _make_state(tmp_path)
+    published = []
+
+    class FakeSubGraph:
+        def stream(self, _input, _config, stream_mode=None):
+            yield {"messages": [AIMessage(content="子任务结论")]}
+
+    with (
+        patch("app.agent.graph.create_agent_graph", return_value=FakeSubGraph()),
+        patch.object(
+            agent_nodes,
+            "_publish_subagent",
+            lambda _tid, payload, persist=True: published.append(payload),
+        ),
+    ):
+        agent_nodes._run_subagents(
+            {"tasks": ["做件事"], "tool_call_id": "call_sub"},
+            state,
+            None,
+            "parent-thread",
+        )
+
+    assert published, "未推送任何子 agent 状态"
+    for payload in published:
+        assert payload["tool_call_id"] == "call_sub"

@@ -70,12 +70,15 @@ export interface SubagentEntry {
 }
 
 /** 单个子 agent 的运行状态（运行中经 SSE 滚动推送，结束时定格）。
- * id 为派生的子线程 id，并行分派时用于区分多个子任务。 */
+ * id 为派生的子线程 id，并行分派时用于区分多个子任务。
+ * tool_call_id 为发起 dispatch_subagent 的工具调用 id，前端据此把面板
+ * 锚定回对应 assistant 消息；缺失时面板兜底渲染在消息列表末尾。 */
 export interface SubagentStatus {
   id: string
   task: string
   status: 'running' | 'done' | 'failed' | 'cancelled'
   entries: SubagentEntry[]
+  tool_call_id?: string | null
 }
 
 export interface RadiomicsPair {

@@ -1146,4 +1146,56 @@ describe('AgentChat subagent panel', () => {
     await flushPromises()
     expect(wrapper.find('.subagent-entries').isVisible()).toBe(true)
   })
+
+  it('anchors the subagent panel inside the dispatching assistant message', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.threadId = 'thread-1'
+    agentStore.busy = false
+    agentStore.messages = [
+      {
+        role: 'assistant',
+        content: '我先派一个子任务去统计。',
+        tool_calls: [
+          { id: 'call-1', name: 'dispatch_subagent', args: { tasks: ['统计数据文件'] } },
+        ],
+      },
+      { role: 'assistant', content: '子任务结果如下，请查收。' },
+    ]
+    agentStore.subagentStatuses = {
+      'sub-1': { ...mockSubagentStatus('sub-1', 'done'), tool_call_id: 'call-1' },
+    }
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    const rows = wrapper.findAll('.message-row')
+    expect(rows).toHaveLength(2)
+    // 面板内联在发起 dispatch 的那条消息里，而不是钉在消息列表末尾。
+    expect(rows[0].find('.subagent-panel').exists()).toBe(true)
+    expect(rows[1].find('.subagent-panel').exists()).toBe(false)
+  })
+
+  it('falls back to the bottom stage when the dispatching message is unknown', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.threadId = 'thread-1'
+    agentStore.busy = true
+    agentStore.messages = [{ role: 'user', content: 'hi' }]
+    agentStore.subagentStatuses = {
+      'sub-1': mockSubagentStatus('sub-1', 'running'),
+    }
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    // 没有 tool_call_id 锚点时仍渲染在列表底部（原有行为兜底）。
+    const rows = wrapper.findAll('.message-row')
+    expect(rows[0].find('.subagent-panel').exists()).toBe(false)
+    expect(wrapper.find('.subagent-panel').exists()).toBe(true)
+  })
 })
