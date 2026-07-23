@@ -1,6 +1,6 @@
 __pycache__/
 *.pyc
-docs/superpowers/plans/task_*.md
+docs/
 output/
 pyradiomics-master/
 .worktrees/
