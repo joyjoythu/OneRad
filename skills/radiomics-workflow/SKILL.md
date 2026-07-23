@@ -7,7 +7,7 @@ description: Workflow guidance for radiomics discovery, parameter confirmation, 
 
 Reason about a radiomics study as a traceable sequence:
 
-0. When asked to start the analysis, first survey the project with `dispatch_subagent(mode="explore")`: fan out independent read-only subtasks covering discovery candidates, pairing status, extraction parameters, and clinical table structure, and reconcile their conclusions before touching any write or extraction step.
+0. When asked to start the analysis, re-analyze, or re-execute the workflow, first survey the project with `dispatch_subagent(mode="explore")`: fan out independent read-only subtasks covering discovery candidates, pairing status, extraction parameters, and clinical table structure, and reconcile their conclusions before touching any write or extraction step. This applies equally to first-time and repeat analyses — only exploration reveals what already exists and what has changed.
 1. Discover image and segmentation candidates and verify patient-level pairing.
 2. Confirm extraction parameters before extracting. Feature extraction depends only on images, masks, and the parameter YAML — it does not need clinical data.
    - Run `inspect_image_spacing` on the confirmed pairs and compare the measured spacing distribution with the YAML's current `resampledPixelSpacing`.
@@ -28,6 +28,6 @@ Prefer the dedicated discovery, extraction, and analysis tools for these stages.
 
 ## Progress reporting (update_todo_list)
 
-When asked to start the analysis (or any multi-stage task), first call `update_todo_list` to create one step per macro stage (0–6 above), then submit the full updated list each time a stage is entered or completed, so the side panel reflects real progress.
+When asked to start, re-analyze, re-execute, or continue any multi-stage task (including the full analysis workflow), first call `update_todo_list` to create one step per macro stage (0–6 above), then submit the full updated list each time a stage is entered or completed, so the side panel reflects real progress. For re-analysis, inspect existing outputs first and mark already-completed stages accordingly.
 
 Do not redo finished work: if the survey finds usable existing outputs, mark the corresponding stages `completed` and start `in_progress` from the actual entry point. Feature extraction resumes per-case from h5 cache — when only part of the cohort is extracted, keep that stage `in_progress` and continue with the remaining cases rather than restarting.
