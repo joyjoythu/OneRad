@@ -141,24 +141,6 @@ describe('useAgentStore', () => {
     expect(store.subagentStatuses['sub-1']?.status).toBe('done')
   })
 
-  it('freezes in-progress todos as cancelled on stop', async () => {
-    const store = useAgentStore()
-    await store.ensureThread('project-1')
-    store.todos = [
-      { content: '项目勘察', status: 'completed' },
-      { content: '特征提取', status: 'in_progress' },
-      { content: '统计分析', status: 'pending' },
-    ]
-
-    await store.stop()
-
-    expect(store.todos).toEqual([
-      { content: '项目勘察', status: 'completed' },
-      { content: '特征提取', status: 'cancelled' },
-      { content: '统计分析', status: 'pending' },
-    ])
-  })
-
   it('freezes running subagents as cancelled on stop', async () => {
     const store = useAgentStore()
     await store.ensureThread('project-1')

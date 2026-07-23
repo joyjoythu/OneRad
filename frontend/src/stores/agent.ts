@@ -598,11 +598,6 @@ export const useAgentStore = defineStore('agent', () => {
           s.status === 'running' ? { ...s, status: 'cancelled' as const } : s,
         ])
       )
-      // 计划面板保留并定格：仍在”进行中”的步骤按已停止处理，
-      // 避免因 SSE /stop 终态事件的竞态导致图标一直转圈。
-      todos.value = todos.value.map((t) =>
-        t.status === 'in_progress' ? { ...t, status: 'cancelled' as const } : t
-      )
       radiomicsProgress.value = null
       currentThinking.value = null
     }
