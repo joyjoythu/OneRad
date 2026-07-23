@@ -16,3 +16,7 @@ frontend/dist/
 # 自己的开发笔记，不提交
 Docker速查.md
 
+# 离线部署（给评委的打包文件，不从源码仓库分发）
+评委说明.md
+docker-compose.offline.yml
+
