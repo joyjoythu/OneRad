@@ -591,12 +591,17 @@ export const useAgentStore = defineStore('agent', () => {
       // 无论成功与否都复位忙碌；失败原因由 axios 拦截器 toast，
       // 若后端仍在运行，后续发送会被 409 兜底，状态自愈。
       busy.value = false
-      // 子任务面板保留并定格：仍在“运行中”的按已停止处理。
+      // 子任务面板保留并定格：仍在”运行中”的按已停止处理。
       subagentStatuses.value = Object.fromEntries(
         Object.entries(subagentStatuses.value).map(([id, s]) => [
           id,
           s.status === 'running' ? { ...s, status: 'cancelled' as const } : s,
         ])
+      )
+      // 计划面板保留并定格：仍在”进行中”的步骤按已停止处理，
+      // 避免因 SSE /stop 终态事件的竞态导致图标一直转圈。
+      todos.value = todos.value.map((t) =>
+        t.status === 'in_progress' ? { ...t, status: 'cancelled' as const } : t
       )
       radiomicsProgress.value = null
       currentThinking.value = null
