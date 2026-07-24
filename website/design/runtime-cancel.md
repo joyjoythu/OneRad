@@ -42,4 +42,5 @@ Docker / Windows 均无法安全地强杀线程。`cancel_event` 是**协作式*
 2. 清除 checkpoint 中残留的 `interrupt_type` + `pending_*` 字段（防止前端收到 `running=false` 后因 `interrupt_type` 非空而重新弹出审批面板）
 3. 修复未应答的 `tool_calls`：为每个缺失 id 写入 `ToolMessage({"cancelled": True, "reason": "用户停止了操作"})`，保证下次 `send_message` 时 LLM 不因 history 格式残缺而 400
 4. 补打本轮新消息的时间戳
-5. 推送 `running=false` 的最终快照
+5. 将计划面板中仍为 `in_progress` 的步骤定格为 `cancelled`——否则刷新/重连后前端仍按 in_progress 渲染，计划面板会一直显示运行中动画
+6. 推送 `running=false` 的最终快照

@@ -14,7 +14,7 @@
 
 | 维度 | `mode="explore"` | `mode="general"` |
 |------|-----------------|-----------------|
-| 工具集 | 9 个（只读探索 + ask_user_choice） | 约 23 个（全部除 dispatch_subagent） |
+| 工具集 | 8 个（仅只读探索工具） | 约 23 个（全部除 dispatch_subagent） |
 | confirm 流程 | 无——在 process_tool_calls 中直接执行 | 有——走 auto_confirm（子 Agent 内部 auto_approve=True） |
 | 可见性 | 中间过程只推前端，不进主对话 | 中间过程只推前端，不进主对话 |
 | 典型用法 | 项目开局探索：扫目录/读配置/查临床表 | 需要写操作或计算的子任务 |

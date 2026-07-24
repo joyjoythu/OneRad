@@ -10,7 +10,7 @@ System prompt 不是硬编码在 Python 中的字符串，而是放在 `skills/<
 - 非编程人员也可修改 prompt（调整工作流步骤、措辞风格等）
 - Git 版本控制友好，prompt 变更可追溯
 
-`app/skills.py` 的 `load_skill(name)` 读取 `skills/<name>/SKILL.md` 并剥离 YAML frontmatter；`load_skill_bundle(names)` 将多个 skill 以注释标记拼接。主 Agent 调用 `load_skill_bundle(("agent-core", "radiomics-workflow"))`。skill 名须匹配 `^[a-z0-9]+(?:-[a-z0-9]+)*$`。
+`app/skills.py` 的 `load_skill(name)` 读取 `skills/<name>/SKILL.md` 并剥离 YAML frontmatter；`load_skill_bundle(names)` 将多个 skill 以注释标记拼接。主 Agent 调用 `load_skill_bundle(("agent-core", "radiomics-workflow", "word-report"))`。skill 名须匹配 `^[a-z0-9]+(?:-[a-z0-9]+)*$`。
 
 ### Skill 清单
 

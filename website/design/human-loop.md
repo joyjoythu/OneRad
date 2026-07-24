@@ -36,8 +36,9 @@ POST   POST   POST
 | `radiomics_analysis` | RadiomicsPanel.vue | 查看分析参数（特征 CSV/临床表/ID 列/Label 列）→ 确认 / 取消 |
 | `feature_statistics` | RadiomicsPanel.vue | 查看统计参数 → 确认 / 取消 |
 | `subagent_dispatch` | ApprovalPanel.vue | 查看子任务列表 → 确认 / 取消 |
+| `user_choice` | ChoicePanel.vue | 查看问题与选项 → 选择 / 输入「其他」答案 / 取消 |
 
-**ask_user_choice 的特殊处理**：不经过 `human_review` 中断流程。`process_tool_calls` 中直接设置 `pending_choice` + `interrupt_type = "choice"`，前端渲染 ChoicePanel，用户选择后答案通过专用 API 写入 `choice_answer` 并作为 ToolMessage 返回给 LLM，**图不挂起**。
+**ask_user_choice 的提问同样经 human_review 挂起**（`interrupt_type = "user_choice"`），但 `route_after_process` 对它强制走 human_review——`auto_approve` 不能代答，否则答案为空。前端渲染 ChoicePanel，用户选择（或输入「其他」）后由 `POST /threads/{id}/answer` 转为 `Command(resume={"action": "answer", "answer": ...})` 恢复图执行，`execute_confirmed` 的 user_choice 分支把答案作为 ToolMessage 返回给 LLM。
 
 完整的触发工具矩阵见 [关键设计决策 · interrupt_type 完整矩阵](/design/decisions#interrupt-type-完整矩阵)。
 

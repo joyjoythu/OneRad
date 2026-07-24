@@ -40,6 +40,7 @@
 | `POST` | `/api/agent/threads/{id}/confirm` | 确认当前中断 | 202 `{"thread_id": "uuid"}` |
 | `POST` | `/api/agent/threads/{id}/cancel` | 取消当前中断 | 202 `{"thread_id": "uuid"}` |
 | `POST` | `/api/agent/threads/{id}/other` | 取消中断 + 传替代指令 | 202 `{"thread_id": "uuid"}` |
+| `POST` | `/api/agent/threads/{id}/answer` | 提交选择面板答案（ask_user_choice） | 202 `{"thread_id": "uuid"}` |
 | `POST` | `/api/agent/threads/{id}/stop` | 停止运行中的流（不清除对话） | 202 `{"thread_id": "uuid", "status": "stopped"}` |
 | `PUT` | `/api/agent/threads/{id}/auto-approve` | 切换自动审批 | 200 `{"auto_approve": bool}` |
 | `POST` | `/api/agent/threads/{id}/export` | 导出对话（md/docx） | 200 `{"path": "...", "format": "md"}` |
@@ -67,6 +68,7 @@
 | `radiomics_analysis` | run_radiomics_analysis | `pending_radiomics_analysis` | RadiomicsPanel | — | 是 |
 | `feature_statistics` | run_feature_statistics | `pending_feature_statistics` | RadiomicsPanel | — | 是 |
 | `subagent_dispatch` | dispatch_subagent(general) | `pending_subagent` | ApprovalPanel | — | 是 |
+| `user_choice` | ask_user_choice | `pending_choice` | ChoicePanel | 选择/输入答案 | 否 |
 
 ## 核心文件索引
 
@@ -101,6 +103,18 @@
 | `app/conversation_export.py` | 对话导出为 Markdown/Word 文档 |
 | `app/projects.py` | ProjectStore SQLite 管理（项目/线程/记忆/SSE 事件表） |
 | `app/llm.py` | LLM 客户端封装 + 标题生成 + JSON 模式调用 |
+| `app/image_spacing.py` | 影像 spacing 分布检测（`inspect_spacing`），为 resampledPixelSpacing 提供依据 |
+| `app/cir_features.py` | 单例 PyRadiomics 特征提取（`cir_get_features`），由 FeatureAgent 调用 |
+| `app/metrics.py` | 评估指标计算，由交叉验证引擎调用 |
+| `app/api/__init__.py` | `create_app()` 装配：lifespan、路由注册、前端静态托管 |
+| `app/api/deps.py` | FastAPI 依赖注入（`get_project_store` 等） |
+| `app/api/filesystem.py` | 只读文件系统浏览（创建项目的路径选择器） |
+| `app/api/fs.py` | 旧版目录列举接口（前端已改用 filesystem，待清理） |
+| `app/api/runs.py` | 离线管线运行记录查询 |
+| `main.py` | 入口：无参数启动 FastAPI 服务；带 `--image-dir`/`--feature-csv` 走 CLI 离线分析管线 |
+| `app/orchestrator.py` | CLI 离线分析管线编排（`register_default_handlers`） |
+| `app/direct_analysis.py` | CLI 直接分析入口：从特征 CSV + 临床表直接建模 |
+| `app/discovery.py` / `app/qc.py` / `app/utils.py` | CLI 管线配对发现 / 质量控制 / 参数解析辅助（与 Agent 侧并行的旧实现） |
 
 ### Skills 与前端
 
@@ -122,6 +136,9 @@
 | `frontend/src/components/ScriptPanel.vue` | 脚本审批面板 |
 | `frontend/src/components/RadiomicsPanel.vue` | 影像组学审批面板 |
 | `frontend/src/components/TodoPanel.vue` | 右侧步骤进度面板 |
+| `frontend/src/components/ChoicePanel.vue` | ask_user_choice 结构化提问面板 |
+| `frontend/src/components/CommandPanel.vue` | system_command 类操作审批面板 |
+| `frontend/src/components/SubagentPanel.vue` | 子 Agent 并行状态面板 |
 
 ## 向后兼容约定
 

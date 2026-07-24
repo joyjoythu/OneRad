@@ -53,10 +53,11 @@ AgentState 定义于 `app/agent/state.py`（TypedDict），字段按职责分为
 | 分组 | 字段 | 语义 |
 |------|------|------|
 | 对话核心 | `messages` | `add_messages` reducer 保证消息追加而非覆盖；`AIMessage.additional_kwargs` 携带 `reasoning_content`（思考链全文）与 `timestamp`；ToolMessage 的 `tool_call_id` 与 AIMessage `tool_calls[*].id` 一一对应 |
-| 对话核心 | `project_path` / `base_url` / `model` | 当前项目根目录 / LLM API 地址（固定 `https://api.deepseek.com/v1`）/ 当前会话模型名 |
+| 对话核心 | `project_path` / `project_id` / `base_url` / `model` | 当前项目根目录 / 项目 ID（长期记忆的注入与隔离粒度）/ LLM API 地址（固定 `https://api.deepseek.com/v1`）/ 当前会话模型名 |
 | 安全凭证 | `api_key` (NotRequired) | 仅兼容旧版 checkpoint；新线程通过 `RunnableConfig.configurable.api_key` 传入，避免密钥写入 SQLite |
-| 中断状态 | `interrupt_type` | 8 种取值之一：`file_plan` / `system_command` / `python_script` / `radiomics_plan` / `radiomics_execution` / `radiomics_analysis` / `feature_statistics` / `subagent_dispatch`；另有非中断交互 `"choice"`（`ask_user_choice`，不经 human_review） |
+| 中断状态 | `interrupt_type` | 9 种取值之一：`file_plan` / `system_command` / `python_script` / `radiomics_plan` / `radiomics_execution` / `radiomics_analysis` / `feature_statistics` / `subagent_dispatch` / `user_choice`（`ask_user_choice` 提问，同样经 human_review 挂起，但不允许 auto_approve 代答） |
 | 中断状态 | `pending_*` 系列（9 个） | `pending_plan` / `pending_command` / `pending_script` / `pending_radiomics_plan` / `pending_radiomics_execution` / `pending_radiomics_analysis` / `pending_feature_statistics` / `pending_subagent` / `pending_choice`——**同一时刻至多一个非 None** |
+| 中断状态 | `script_risk_level` | 待审脚本的风险等级（low / medium / high），供前端面板展示高危标记 |
 | 用户反馈 | `confirmed` / `choice_answer` / `other_instruction` | True=确认 / False=取消；选择面板提交的答案；用户选择「其他」时输入的替代指令 |
 | UI 辅助 | `context_usage` / `todos` | 最近一次 LLM 调用的 token 用量；步骤面板清单（`update_todo_list` 全量替换） |
 | UI 辅助 | `tool_outputs` / `operation_log` | 累积型列表字段（reducer 追加）：前端状态栏与日志面板 |
