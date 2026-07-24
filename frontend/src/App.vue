@@ -8,6 +8,12 @@
       <nav class="app-nav">
         <router-link to="/" exact-active-class="active">任务</router-link>
         <router-link to="/settings" exact-active-class="active">设置</router-link>
+        <a
+          href="https://joyjoythu.github.io/OneRad/"
+          target="_blank"
+          rel="noopener"
+          data-testid="user-guide-link"
+        >使用指南</a>
       </nav>
     </header>
     <div class="app-body">
