@@ -44,7 +44,7 @@ POST   POST   POST
 
 ## 取消的语义处理
 
-- **简单查询取消**（`system_command`）：仅返回 cancelled ToolMessage，LLM 自然知道「操作没做」，不会误判
+- **写工具取消**（`system_command`）：仅返回 cancelled ToolMessage，LLM 自然知道「操作没做」，不会误判。只读探索工具（`list_directory` 等 7 个）已改为免确认直接执行，不再产生中断，故不存在「简单查询取消」的场景
 - **重操作取消**（`file_plan` / `python_script` / `radiomics_*` / `feature_statistics` / `subagent_dispatch`）：返回 cancelled ToolMessage，并追加 HumanMessage（"我取消了刚才的操作，请不要重试。请询问我现在想做什么。"），防止 LLM 将「取消结果」误读为「操作失败」而自动重试
 
 ## 执行结果的防重问标记
@@ -71,6 +71,8 @@ LLM 调用 → 工具函数校验参数 → 返回 {"_pending_tool": ..., 参数
          → human_review / auto_confirm
          → execute_confirmed 实际执行
 ```
+
+唯一的例外是 7 个只读探索工具（`list_directory` / `find_files` / `get_file_info` / `read_yaml` / `read_json` / `read_tabular_file` / `inspect_image_spacing`）：不修改任何文件、无副作用，`process_tool_calls` 中识别（`_READONLY_TOOLS`）后直接执行并返回结果，不经过中断流程。
 
 这种设计的优势：
 

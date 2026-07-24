@@ -23,7 +23,7 @@ class Sandbox:
 
 ### 确认-执行分离
 
-传统 Agent 工具设计是「LLM 调用 → 工具函数直接执行 → 返回结果」；OneRad 的工具设计是两层：LLM 调用 → 工具函数校验参数 → 返回 `{"_pending_tool": ..., 参数}` → `process_tool_calls` 识别为需确认 → `human_review` / `auto_confirm` → `execute_confirmed` 实际执行。详见 [人机协同机制](/design/human-loop#确认-执行分离)。
+传统 Agent 工具设计是「LLM 调用 → 工具函数直接执行 → 返回结果」；OneRad 的工具设计是两层：LLM 调用 → 工具函数校验参数 → 返回 `{"_pending_tool": ..., 参数}` → `process_tool_calls` 识别为需确认 → `human_review` / `auto_confirm` → `execute_confirmed` 实际执行。唯一的例外是 7 个只读探索工具（`list_directory` 等）：无副作用且受路径沙箱约束，`process_tool_calls` 识别后直接执行，不进入中断流程。详见 [人机协同机制](/design/human-loop#确认-执行分离)。
 
 ### 纵深防御链
 

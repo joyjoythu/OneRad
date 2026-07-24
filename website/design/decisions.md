@@ -14,6 +14,7 @@
 | 子 Agent 步数上限 | **150 superstep（约 37 轮工具调用）** | 默认 25 | 子 Agent 整个生命周期在单次 stream 内完成，无分段预算；37 轮足以完成复杂的数据探索和分析任务 |
 | 子 Agent 结果截断 | **4000 字符** | 不截断 / 更短 | 4000 字符足以传达结论、文件路径和关键数字；过短丢失信息，过长消耗主对话上下文 |
 | 同一轮 tool_calls 限制 | **最多 1 个需确认** | 允许多个 | 防止 `pending_*` 互相覆盖（状态字段非列表只有一份）；多个需确认工具 LLM 可串行分轮发送 |
+| 只读工具确认策略 | **免确认直接执行** | 与写工具同样需确认 | 只读无副作用；Sandbox 路径沙箱限制越界兜底；减少确认疲劳，写/重操作仍需确认的设计不变 |
 | high 风险脚本 | **标记高危 + 用户知情确认后执行** | 直接拒绝 | 把决策权交回用户；合法任务（如 `requests` 下载数据集）不应被技术手段阻止 |
 | 中危脚本沙箱 | **注入沙箱头 wrapper** | 静态拒绝 / Docker | 运行时 hook `open()` 是 best-effort 防御而非安全边界；在 Windows 上比 Docker 更轻量且无额外依赖 |
 | SSE 高频事件 | **不持久化** | 全部持久化 | 避免 SQLite 写入成为瓶颈（thinking 每秒可产数十 chunk）；重连靠 values 快照兜底（完整思考链在 `AIMessage.additional_kwargs` 中） |
@@ -60,7 +61,7 @@
 
 | interrupt_type | 触发工具 | pending 字段 | 前端面板 | 用户可编辑 | 取消时追加 HumanMessage |
 |---------------|---------|-------------|---------|:---:|:---:|
-| `system_command` | list_directory, find_files, get_file_info, read_yaml, read_json, read_tabular_file, update_yaml, create_json, update_json, inspect_image_spacing, convert_dicom_to_nifti, word_create, word_append | `pending_command` | CommandPanel | — | 否 |
+| `system_command` | update_yaml, create_json, update_json, convert_dicom_to_nifti, word_create, word_append | `pending_command` | CommandPanel | — | 否 |
 | `file_plan` | plan_file_operations | `pending_plan` | PlanEditor | 编辑计划 | 是 |
 | `python_script` | execute_python_script | `pending_script` | ScriptPanel | — | 是 |
 | `radiomics_plan` | discover_radiomics_pairs | `pending_radiomics_plan` | RadiomicsPanel | 修改配对 | 是 |
@@ -144,7 +145,7 @@
 
 - `AgentState.api_key` 标记为 `NotRequired`：新线程不再写入此字段，但旧 checkpoint 可能仍有值。`_resolve_api_key` 的优先级：`configurable` → `state` → 环境变量
 - `AgentState.model` 写入受支持模型名；`_resolve_model` 对不在 `DEEPSEEK_MODELS` 中的值回退到默认模型（`deepseek-v4-flash`）
-- 取消操作时的 HumanMessage 追加只针对重操作类型（`file_plan`/`python_script`/`radiomics_*`/`feature_statistics`/`subagent_dispatch`），简单查询不追加
+- 取消操作时的 HumanMessage 追加只针对重操作类型（`file_plan`/`python_script`/`radiomics_*`/`feature_statistics`/`subagent_dispatch`），`system_command`（写工具）不追加；只读工具免确认直接执行，不产生中断
 - `executed: True` 注入：对 dict 结果做键注入保留原结构，对非 dict 结果包裹为 `{"executed": True, "results": ...}`
 - `/stop` 的 checkpoint 清理：清除残留 `interrupt_type` 后，若 snapshot 仍含未应答 tool_calls，为每个缺失 id 补 ToolMessage（保证后续 LLM 调用不 400）
 
