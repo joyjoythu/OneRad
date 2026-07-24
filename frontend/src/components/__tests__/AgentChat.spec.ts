@@ -197,6 +197,7 @@ describe('AgentChat', () => {
     const value = (wrapper.find('textarea').element as HTMLTextAreaElement).value
     expect(value).toContain('DICOM')
     expect(value).toContain('nii.gz')
+    expect(value).toContain('update_todo_list')
   })
 
   it('confirms before clearing the current task and keeps history untouched', async () => {

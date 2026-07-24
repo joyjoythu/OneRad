@@ -432,7 +432,7 @@ const QUICK_ACTIONS = [
     icon: Files,
     divided: true,
     prompt:
-      '请扫描当前项目目录，找到其中的 DICOM 数据（.dcm 文件），将其全部转换为 NIfTI（.nii.gz）格式。输出目录请根据项目结构合理选择（如在原数据旁新建 nifti 目录），转换前先告诉我你找到的输入目录和计划的输出目录。',
+      '请扫描当前项目目录，找到其中的 DICOM 数据（.dcm 文件），将其全部转换为 NIfTI（.nii.gz）格式。输出目录请根据项目结构合理选择（如在原数据旁新建 nifti 目录）。转换开始前调用 update_todo_list 创建步骤“转换 DICOM 到 NIfTI”并标记为 in_progress，转换完成后再调用 update_todo_list 将其标记为 completed。转换前先告诉我你找到的输入目录和计划的输出目录。',
   },
   {
     command: 'export-md',

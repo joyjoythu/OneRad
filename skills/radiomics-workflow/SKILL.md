@@ -31,4 +31,6 @@ Prefer the dedicated discovery, extraction, and analysis tools for these stages.
 
 When asked to start, re-analyze, re-execute, or continue any multi-stage task (including the full analysis workflow), you MUST first call `update_todo_list` to create one step per macro stage (0–6 above), then submit the full updated list each time a stage is entered or completed, so the side panel reflects real progress. Never start working on stages without first creating the todo list. For re-analysis, inspect existing outputs first and mark already-completed stages accordingly.
 
+When the task is a standalone DICOM to NIfTI conversion (for example, triggered by the "格式转换" quick action or an explicit "convert DICOM to NIfTI" request), you MUST also call `update_todo_list` first with a single step describing the conversion, mark it `in_progress` before calling `convert_dicom_to_nifti`, and mark it `completed` once the conversion finishes. This keeps the side panel consistent even for single-step conversions.
+
 Do not redo finished work: if the survey finds usable existing outputs, mark the corresponding stages `completed` and start `in_progress` from the actual entry point. Feature extraction resumes per-case from h5 cache — when only part of the cohort is extracted, keep that stage `in_progress` and continue with the remaining cases rather than restarting.
