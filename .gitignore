@@ -25,3 +25,8 @@ autoradiomics.tar.gz
 projects.db
 checkpoints.db
 
+# 文档站点（website/ 源码需要提交，仅忽略构建产物与依赖）
+website/node_modules/
+website/.vitepress/dist/
+website/.vitepress/cache/
+
