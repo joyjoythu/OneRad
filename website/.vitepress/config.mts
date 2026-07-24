@@ -43,6 +43,7 @@ export default defineConfig({
           { text: '分析技能（Skills）', link: '/features/skills' },
           { text: '工具说明', link: '/features/tools' },
           { text: 'Todo List 步骤展示', link: '/features/todo-panel' },
+          { text: '快捷操作', link: '/features/quick-actions' },
           { text: '@ 文件索引', link: '/features/file-index' },
           { text: '项目记忆', link: '/features/project-memory' },
           { text: '断点续提', link: '/features/resume' },
