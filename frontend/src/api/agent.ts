@@ -48,7 +48,7 @@ export interface PendingScript {
 }
 
 export interface RadiomicsProgress {
-  stage: 'start' | 'extracting' | 'finalizing' | string
+  stage: 'start' | 'extracting' | 'finalizing' | 'converting' | string
   current: number
   total: number
   patient_id?: string

@@ -621,6 +621,10 @@ const statusText = computed(() => {
     const progress = agentStore.radiomicsProgress
     if (progress) {
       if (progress.stage === 'finalizing') return '正在保存特征结果…'
+      if (progress.stage === 'converting') {
+        const suffix = progress.patient_id ? `：${progress.patient_id}` : ''
+        return `正在转换 DICOM → NIfTI (${progress.current}/${progress.total})${suffix}…`
+      }
       if (progress.stage === 'extracting') {
         const suffix = progress.patient_id ? `：${progress.patient_id}` : ''
         return `正在提取影像组学特征 (${progress.current}/${progress.total})${suffix}…`
@@ -644,6 +648,9 @@ const extractionPercent = computed(() => {
   const progress = agentStore.radiomicsProgress
   if (!progress || !progress.total) return null
   if (progress.stage === 'finalizing') return 100
+  if (progress.stage === 'converting') {
+    return Math.min(100, Math.round((progress.current / progress.total) * 100))
+  }
   if (progress.stage === 'extracting') {
     return Math.min(100, Math.round((progress.current / progress.total) * 100))
   }

@@ -471,6 +471,24 @@ describe('AgentChat', () => {
     expect(wrapper.find('.el-progress__text').text()).toContain('100%')
   })
 
+  it('converting 阶段显示 DICOM 转换进度', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const agentStore = useAgentStore()
+    agentStore.threadId = 'thread-1'
+    agentStore.messages = [{ role: 'user', content: 'hi' }]
+    agentStore.busy = true
+    agentStore.radiomicsProgress = {
+      stage: 'converting', current: 2, total: 5, patient_id: 'dcm_T1.nii.gz',
+    }
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('正在转换 DICOM → NIfTI (2/5)：dcm_T1.nii.gz')
+  })
+
   it('does not render the progress strip when not extracting', async () => {
     const projectStore = useProjectStore()
     projectStore.currentProject = mockProject()
