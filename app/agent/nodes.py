@@ -622,7 +622,7 @@ def _publish_agent_progress(thread_id: Optional[str], payload: Optional[dict]) -
             ctx.loop,
         )
     except Exception:
-        logger.debug("推送提取进度失败", exc_info=True)
+        logger.debug("推送进度失败", exc_info=True)
 
 
 def _publish_thinking(thread_id: Optional[str], text: str, done: bool) -> None:
