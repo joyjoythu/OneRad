@@ -602,7 +602,7 @@ def _resolve_tool_call_id(state: AgentState) -> str:
 
 
 def _publish_agent_progress(thread_id: Optional[str], payload: Optional[dict]) -> None:
-    """从节点线程向 SSE 订阅者推送影像组学提取进度。
+    """节点线程向 SSE 订阅者推送耗时操作（提取/转换等）进度的旁路，经 radiomics_progress 事件。
 
     节点运行在工作线程中，需通过 run_coroutine_threadsafe 回到主事件循环发布。
     上下文缺失（线程未在运行）或事件循环已关闭时静默跳过。
