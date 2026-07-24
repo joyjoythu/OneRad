@@ -358,6 +358,11 @@ async def _maybe_extract_memories(
         messages = _render_messages(values)
         if not messages:
             return
+        # 检查全局记忆开关，避免在记忆关闭时白白调用 LLM 提取
+        settings_store = getattr(app.state, "settings_store", None)
+        if settings_store is not None and not settings_store.is_memory_enabled():
+            logger.debug("记忆功能已关闭，跳过提取 thread_id=%s", thread_id)
+            return
         from app.agent.memory import extract_memories
         from app.llm import LLMClient
 
@@ -366,11 +371,6 @@ async def _maybe_extract_memories(
             extract_memories, messages, llm_client
         )
         if not memories:
-            return
-        # 检查全局记忆开关
-        settings_store = getattr(app.state, "settings_store", None)
-        if settings_store is not None and not settings_store.is_memory_enabled():
-            logger.debug("记忆功能已关闭，跳过提取 thread_id=%s", thread_id)
             return
         store = app.state.project_store
         inserted = await asyncio.to_thread(
@@ -1012,6 +1012,8 @@ async def stop_stream(
                 "pending_radiomics_analysis": None,
                 "pending_feature_statistics": None,
                 "pending_subagent": None,
+                "pending_choice": None,
+                "choice_answer": None,
                 "script_risk_level": None,
                 "confirmed": None,
                 "other_instruction": None,
