@@ -365,6 +365,7 @@ def process_tool_calls(state: AgentState, config: Optional[RunnableConfig] = Non
             "plan_file_operations",
             "discover_radiomics_pairs",
             "inspect_image_spacing",
+            "convert_dicom_to_nifti",
             "extract_radiomics_features",
             "run_radiomics_analysis",
             "run_feature_statistics",
@@ -395,6 +396,7 @@ def process_tool_calls(state: AgentState, config: Optional[RunnableConfig] = Non
                         "read_yaml", "read_json", "read_tabular_file", "update_yaml",
                         "create_json", "update_json",
                         "inspect_image_spacing",
+                        "convert_dicom_to_nifti",
                         "word_create", "word_append"}:
                 interrupt_type = "system_command"
                 updates["pending_command"] = {"tool_call_id": tool_call_id, **parsed}
@@ -1365,6 +1367,16 @@ def _run_system_command(command: dict, project_path: str) -> dict:
                     return {"error": "pair missing image_path"}
                 image_paths.append(str(sandbox.resolve(rel, must_exist=False)))
             result = inspect_spacing(str(sandbox.root), image_paths=image_paths or None)
+            return {"tool": tool, "result": result}
+        elif tool == "convert_dicom_to_nifti":
+            input_dir = args.get("input_dir")
+            output_dir = args.get("output_dir")
+            if input_dir is None or output_dir is None:
+                return {"error": "missing required argument: input_dir/output_dir"}
+            in_root = sandbox.resolve(input_dir, must_exist=True)
+            out_root = sandbox.resolve(output_dir, must_exist=False)
+            from app.dicom_convert import convert_dicom_tree
+            result = convert_dicom_tree(in_root, out_root)
             return {"tool": tool, "result": result}
         return {"error": f"unknown command {tool}"}
     except Exception as e:

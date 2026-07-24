@@ -172,3 +172,27 @@ def test_agent_tool_no_dicom_returns_error_without_pending(tmp_path):
         {"input_dir": "empty", "output_dir": "nii"}))
     assert result["success"] is False
     assert "_pending_tool" not in result
+
+
+def test_run_system_command_executes_conversion(tmp_path):
+    from app.agent.nodes import _run_system_command
+    _write_dicom_series(tmp_path / "dcm", "1.2.3.4.100", "T1", n_slices=3)
+    result = _run_system_command(
+        {"_pending_tool": "convert_dicom_to_nifti",
+         "args": {"input_dir": str(tmp_path / "dcm"),
+                  "output_dir": str(tmp_path / "out")}},
+        str(tmp_path),
+    )
+    assert result["tool"] == "convert_dicom_to_nifti"
+    assert result["result"]["total"] == 1
+    assert result["result"]["failed"] == []
+    assert (tmp_path / "out" / "dcm_T1.nii.gz").exists()
+
+
+def test_run_system_command_missing_args(tmp_path):
+    from app.agent.nodes import _run_system_command
+    result = _run_system_command(
+        {"_pending_tool": "convert_dicom_to_nifti", "args": {}},
+        str(tmp_path),
+    )
+    assert "missing required argument" in result["error"]
