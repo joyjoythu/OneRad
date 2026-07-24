@@ -803,7 +803,8 @@ def execute_confirmed(state: AgentState, config: Optional[RunnableConfig] = None
     if itype == "file_plan":
         results = execute_plan(state["pending_plan"]["plan"], state["project_path"])
     elif itype == "system_command":
-        results = _run_system_command(state["pending_command"], state["project_path"])
+        results = _run_system_command(
+            state["pending_command"], state["project_path"], thread_id=thread_id)
     elif itype == "python_script":
         results = execute_script_if_safe(state["pending_script"], state["project_path"])
     elif itype == "radiomics_plan":
@@ -1121,7 +1122,8 @@ def _run_subagent(
         agent_runtime.unregister(sub_thread_id)
 
 
-def _run_system_command(command: dict, project_path: str) -> dict:
+def _run_system_command(command: dict, project_path: str,
+                        thread_id: Optional[str] = None) -> dict:
     """执行已确认的系统命令。"""
     tool = command.get("_pending_tool") or command.get("tool")
     args = command.get("args", {})
@@ -1376,7 +1378,16 @@ def _run_system_command(command: dict, project_path: str) -> dict:
             in_root = sandbox.resolve(input_dir, must_exist=True)
             out_root = sandbox.resolve(output_dir, must_exist=False)
             from app.dicom_convert import convert_dicom_tree
-            result = convert_dicom_tree(in_root, out_root)
+
+            def progress_callback(payload: dict) -> None:
+                _publish_agent_progress(thread_id, payload)
+
+            try:
+                result = convert_dicom_tree(
+                    in_root, out_root, progress_callback=progress_callback)
+            finally:
+                # 节点结束后清除前端进度显示（与提取节点同模式）。
+                _publish_agent_progress(thread_id, None)
             return {"tool": tool, "result": result}
         return {"error": f"unknown command {tool}"}
     except Exception as e:

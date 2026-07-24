@@ -223,3 +223,25 @@ def test_convert_progress_callback_exception_does_not_abort(tmp_path):
     assert summary["total"] == 1
     assert summary["failed"] == []
     assert (tmp_path / "out" / "seq_T1.nii.gz").exists()
+
+
+def test_run_system_command_publishes_convert_progress(tmp_path, monkeypatch):
+    import app.agent.nodes as nodes
+    _write_dicom_series(tmp_path / "dcm", "1.2.3.4.100", "T1", n_slices=3)
+    published = []
+    monkeypatch.setattr(nodes, "_publish_agent_progress",
+                        lambda tid, payload: published.append((tid, payload)))
+    result = nodes._run_system_command(
+        {"_pending_tool": "convert_dicom_to_nifti",
+         "args": {"input_dir": str(tmp_path / "dcm"),
+                  "output_dir": str(tmp_path / "out")}},
+        str(tmp_path),
+        thread_id="thread-1",
+    )
+    assert result["result"]["total"] == 1
+    assert published[0] == ("thread-1",
+                            {"stage": "converting", "current": 0, "total": 1})
+    assert published[1][1]["current"] == 1
+    assert published[1][1]["patient_id"] == "dcm_T1.nii.gz"
+    # 节点结束后清除前端进度显示
+    assert published[-1] == ("thread-1", None)
