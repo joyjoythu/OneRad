@@ -25,24 +25,24 @@ def build_tools(
 
     @tool
     def list_directory(path: str) -> str:
-        """列出项目目录下的内容。执行前需要用户确认。"""
+        """列出项目目录下的内容。只读操作，直接执行无需确认。"""
         return json.dumps({"_pending_tool": "list_directory", "args": {"path": path}})
 
     @tool
     def find_files(pattern: str, path: str = ".") -> str:
-        """在项目目录内按通配符搜索文件。执行前需要用户确认。"""
+        """在项目目录内按通配符搜索文件。只读操作，直接执行无需确认。"""
         return json.dumps({"_pending_tool": "find_files", "args": {"pattern": pattern, "path": path}})
 
     @tool
     def get_file_info(path: str) -> str:
-        """获取文件或目录的元信息。执行前需要用户确认。"""
+        """获取文件或目录的元信息。只读操作，直接执行无需确认。"""
         return json.dumps({"_pending_tool": "get_file_info", "args": {"path": path}})
 
     @tool
     def read_yaml(path: str, key: str = "") -> str:
         """读取项目内的 YAML 文件，返回解析后的内容（JSON）。
         key 可选：用点号路径取子节点，如 "setting.binWidth"，
-        留空返回整个文件内容。执行前需要用户确认。"""
+        留空返回整个文件内容。只读操作，直接执行无需确认。"""
         return json.dumps(
             {"_pending_tool": "read_yaml", "args": {"path": path, "key": key}},
             ensure_ascii=False,
@@ -52,7 +52,7 @@ def build_tools(
     def read_json(path: str, key: str = "") -> str:
         """读取项目内的 JSON 文件，返回解析后的内容。
         key 可选：用点号路径取子节点，如 "setting.binWidth"，
-        留空返回整个文件内容。执行前需要用户确认。"""
+        留空返回整个文件内容。只读操作，直接执行无需确认。"""
         return json.dumps(
             {"_pending_tool": "read_json", "args": {"path": path, "key": key}},
             ensure_ascii=False,
@@ -87,7 +87,7 @@ def build_tools(
         """读取项目内的 CSV 或 Excel 文件（按扩展名自动识别），返回智能预览：
         完整行列数、全部列名与类型、前 head 行数据。
         CSV 自动尝试 utf-8/gbk 编码；Excel 可用 sheet_name 指定工作表（默认第一个）；
-        columns 可只读取指定列；head=0 时只看结构不取数据。执行前需要用户确认。"""
+        columns 可只读取指定列；head=0 时只看结构不取数据。只读操作，直接执行无需确认。"""
         return json.dumps(
             {"_pending_tool": "read_tabular_file",
              "args": {"path": path, "sheet_name": sheet_name,
@@ -147,7 +147,7 @@ def build_tools(
         pairs 可选:与 extract_radiomics_features 相同的配对列表(只读取其中的
         image_path);不传则扫描项目 images/ 目录下的全部 .nii.gz。
         返回各轴 spacing 的中位数/范围/不同取值数、逐例明细(病例数 ≤50 时)、
-        建议值与读取失败列表。执行前需要用户确认。"""
+        建议值与读取失败列表。只读操作，直接执行无需确认。"""
         args: Dict[str, Any] = {}
         if pairs:
             args["pairs"] = pairs

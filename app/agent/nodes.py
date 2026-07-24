@@ -36,6 +36,17 @@ from app.skills import load_skill_bundle
 
 logger = logging.getLogger(__name__)
 
+# 只读工具：不修改任何文件，跳过人工确认直接执行。
+_READONLY_TOOLS = {
+    "list_directory",
+    "find_files",
+    "get_file_info",
+    "read_yaml",
+    "read_json",
+    "read_tabular_file",
+    "inspect_image_spacing",
+}
+
 
 def _resolve_model(state: AgentState, config: Optional[RunnableConfig] = None) -> str:
     """返回该会话选定的模型；旧检查点里不受支持的模型名回退到默认模型。"""
@@ -352,13 +363,17 @@ def process_tool_calls(state: AgentState, config: Optional[RunnableConfig] = Non
             ))
             continue
 
+        # 只读工具：免确认，直接在本节点内执行并返回结果。
+        if name in _READONLY_TOOLS and isinstance(parsed, dict):
+            thread_id = (config or {}).get("configurable", {}).get("thread_id")
+            results = _run_system_command(parsed, state["project_path"], thread_id=thread_id)
+            updates["messages"].append(ToolMessage(
+                content=json.dumps(results, ensure_ascii=False),
+                tool_call_id=tool_call_id,
+            ))
+            continue
+
         needs_confirmation = name in {
-            "list_directory",
-            "find_files",
-            "get_file_info",
-            "read_yaml",
-            "read_json",
-            "read_tabular_file",
             "update_yaml",
             "create_json",
             "update_json",
@@ -392,10 +407,8 @@ def process_tool_calls(state: AgentState, config: Optional[RunnableConfig] = Non
                 ))
                 continue
             confirmation_pending = True
-            if name in {"list_directory", "find_files", "get_file_info",
-                        "read_yaml", "read_json", "read_tabular_file", "update_yaml",
+            if name in {"update_yaml",
                         "create_json", "update_json",
-                        "inspect_image_spacing",
                         "convert_dicom_to_nifti",
                         "word_create", "word_append"}:
                 interrupt_type = "system_command"

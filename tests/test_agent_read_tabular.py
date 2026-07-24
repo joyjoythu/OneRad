@@ -54,12 +54,18 @@ def test_read_tabular_file_returns_pending(tmp_path):
     assert data["args"]["path"] == "data.csv"
 
 
-def test_process_tool_calls_marks_system_command_interrupt(tmp_path):
-    """主 agent 调用时应走 system_command 确认中断。"""
+def test_process_tool_calls_readonly_executes_without_interrupt(tmp_path):
+    """只读工具免确认：不触发中断，直接在本节点执行并返回结果。"""
+    pd.DataFrame({"a": [1, 2]}).to_csv(tmp_path / "data.csv", index=False)
     state = _make_state(tmp_path, {"path": "data.csv"})
     updates = process_tool_calls(state, {"configurable": {}})
-    assert updates["interrupt_type"] == "system_command"
-    assert updates["pending_command"]["_pending_tool"] == "read_tabular_file"
+    assert updates["interrupt_type"] is None
+    assert updates.get("pending_command") is None
+    tool_msg = updates["messages"][0]
+    assert tool_msg.tool_call_id == "tc1"
+    parsed = json.loads(tool_msg.content)
+    assert parsed["tool"] == "read_tabular_file"
+    assert parsed["result"]["shape"] == [2, 1]
 
 
 def test_run_system_command_reads_csv_preview(tmp_path):

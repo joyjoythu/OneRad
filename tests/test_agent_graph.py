@@ -65,7 +65,7 @@ def test_graph_interrupts_on_system_command(tmp_path):
         mock_stream.side_effect = [
             AIMessage(
                 content="",
-                tool_calls=[{"name": "list_directory", "args": {"path": "."}, "id": "call_list"}],
+                tool_calls=[{"name": "create_json", "args": {"path": "out.json", "content": {}}, "id": "call_list"}],
             ),
             AIMessage(content="Done"),
         ]
@@ -76,6 +76,38 @@ def test_graph_interrupts_on_system_command(tmp_path):
         final = graph.invoke(Command(resume={"action": "confirm"}), config)
 
     tool_msg = _find_result_tool_message(final["messages"], tool_call_id="call_list")
+    assert tool_msg is not None
+    parsed = json.loads(tool_msg.content)
+    assert parsed["tool"] == "create_json"
+    assert "result" in parsed
+
+
+def test_graph_readonly_tool_skips_confirmation(tmp_path):
+    """只读工具（如 list_directory）免确认，不触发中断，直接执行。"""
+    project = {"path": str(tmp_path), "id": "test-project", "analysis": {"api_key": "fake", "model": "deepseek-v4-pro"}}
+    state = build_initial_state(project)
+    state["messages"] = [HumanMessage(content="list files")]
+
+    graph = create_agent_graph()
+    config = {
+        "configurable": {"thread_id": "test-readonly-no-confirm", "api_key": "fake"}
+    }
+
+    with patch("app.agent.nodes._stream_chat_completion") as mock_stream:
+        mock_stream.side_effect = [
+            AIMessage(
+                content="",
+                tool_calls=[{"name": "list_directory", "args": {"path": "."}, "id": "call_readonly"}],
+            ),
+            AIMessage(content="Done"),
+        ]
+
+        events = list(graph.stream(state, config))
+        assert not any("__interrupt__" in e for e in events)
+
+        final = graph.get_state(config).values
+
+    tool_msg = _find_result_tool_message(final["messages"], tool_call_id="call_readonly")
     assert tool_msg is not None
     parsed = json.loads(tool_msg.content)
     assert parsed["tool"] == "list_directory"
@@ -139,7 +171,7 @@ def test_graph_cancel_operation(tmp_path):
         mock_stream.side_effect = [
             AIMessage(
                 content="",
-                tool_calls=[{"name": "list_directory", "args": {"path": "."}, "id": "call_cancel"}],
+                tool_calls=[{"name": "create_json", "args": {"path": "out.json", "content": {}}, "id": "call_cancel"}],
             ),
             AIMessage(content="Done"),
         ]
@@ -297,7 +329,7 @@ def test_graph_non_dict_resume_defaults_to_cancel(tmp_path):
         mock_stream.side_effect = [
             AIMessage(
                 content="",
-                tool_calls=[{"name": "list_directory", "args": {"path": "."}, "id": "call_non_dict"}],
+                tool_calls=[{"name": "create_json", "args": {"path": "out.json", "content": {}}, "id": "call_non_dict"}],
             ),
             AIMessage(content="Done"),
         ]

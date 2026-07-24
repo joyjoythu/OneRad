@@ -1418,7 +1418,7 @@ async def _run_interrupt_then_resume(tmp_path, action):
         mock_stream.side_effect = [
             AIMessage(
                 content="",
-                tool_calls=[{"name": "list_directory", "args": {"path": "."}, "id": "call_list"}],
+                tool_calls=[{"name": "create_json", "args": {"path": "out.json", "content": {}}, "id": "call_list"}],
             ),
             AIMessage(content="Done"),
         ]
@@ -1452,9 +1452,9 @@ async def test_stream_backfill_preserves_interrupt_resume(tmp_path):
         for m in final.values["messages"]
         if isinstance(m, ToolMessage) and m.tool_call_id == "call_list"
     ]
-    assert tool_msgs, "confirm 后应补齐 list_directory 的执行结果"
+    assert tool_msgs, "confirm 后应补齐 create_json 的执行结果"
     parsed = json.loads(tool_msgs[-1].content)
-    assert parsed.get("tool") == "list_directory"
+    assert parsed.get("tool") == "create_json"
     assert "result" in parsed
     for msg in final.values["messages"]:
         assert msg.additional_kwargs.get("timestamp")
