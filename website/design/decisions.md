@@ -109,7 +109,7 @@
 | `app/api/__init__.py` | `create_app()` 装配：lifespan、路由注册、前端静态托管 |
 | `app/api/deps.py` | FastAPI 依赖注入（`get_project_store` 等） |
 | `app/api/filesystem.py` | 只读文件系统浏览（创建项目的路径选择器） |
-| `app/api/fs.py` | 旧版目录列举接口（前端已改用 filesystem，待清理） |
+| `reference_code/legacy_fs/` | 旧版目录列举接口 `fs.py`/`fs.ts`（已被 filesystem 取代，2026-07 移出主应用，仅作参考） |
 | `app/api/runs.py` | 离线管线运行记录查询 |
 | `main.py` | 入口：无参数启动 FastAPI 服务；带 `--image-dir`/`--feature-csv` 走 CLI 离线分析管线 |
 | `app/orchestrator.py` | CLI 离线分析管线编排（`register_default_handlers`） |

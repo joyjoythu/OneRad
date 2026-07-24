@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from starlette.responses import FileResponse
 
-from app.api import agent, filesystem, fs, projects, runs, settings
+from app.api import agent, filesystem, projects, runs, settings
 from app.api.sse import EventBridge
 from app.projects import ProjectStore
 from app.settings import GeneralSettingsStore
@@ -72,7 +72,6 @@ def create_app() -> FastAPI:
     app.include_router(
         filesystem.router, prefix="/api/filesystem", tags=["filesystem"]
     )
-    app.include_router(fs.router, prefix="/api/fs", tags=["fs"])
 
     dist_dir = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
     if dist_dir.exists():

@@ -46,10 +46,6 @@ vi.mock('@/api/settings', () => ({
   updateSettings: vi.fn(),
 }))
 
-vi.mock('@/api/fs', () => ({
-  listDirectory: vi.fn(),
-}))
-
 vi.mock('vue-router', () => ({
   useRoute: () => ({ path: '/' }),
   useRouter: () => ({ push: routerPush }),
