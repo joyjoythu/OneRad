@@ -23,6 +23,7 @@ export default defineConfig({
       { text: '快速上手', link: '/guide/installation' },
       { text: '功能详解', link: '/features/human-approval' },
       { text: '参考', link: '/reference/yaml-config' },
+      { text: '设计思路', link: '/design/principles' },
     ],
 
     sidebar: [
@@ -55,6 +56,23 @@ export default defineConfig({
         items: [
           { text: 'PyRadiomics 参数配置', link: '/reference/yaml-config' },
           { text: '常见问题 FAQ', link: '/reference/faq' },
+        ],
+      },
+      {
+        text: '设计思路',
+        items: [
+          { text: '设计目标与原则', link: '/design/principles' },
+          { text: '整体架构', link: '/design/architecture' },
+          { text: 'LangGraph 状态机', link: '/design/state-machine' },
+          { text: '人机协同机制', link: '/design/human-loop' },
+          { text: '运行时上下文与取消', link: '/design/runtime-cancel' },
+          { text: '子 Agent 系统', link: '/design/subagent-system' },
+          { text: 'Skills 与项目记忆', link: '/design/skills-memory' },
+          { text: '流式通信与前端', link: '/design/streaming' },
+          { text: '增量分析与状态感知', link: '/design/incremental' },
+          { text: '结果解读与可解释性', link: '/design/interpretation' },
+          { text: '安全与数据支撑', link: '/design/security-data' },
+          { text: '关键设计决策', link: '/design/decisions' },
         ],
       },
     ],
