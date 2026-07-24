@@ -239,7 +239,7 @@
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="projectStore.loading" @click="handleCreate">
+        <el-button type="primary" :loading="creating" @click="handleCreate">
           创建
         </el-button>
       </template>
@@ -287,6 +287,7 @@ const router = useRouter()
 
 const dialogVisible = ref(false)
 const pathPickerVisible = ref(false)
+const creating = ref(false)
 const formRef = ref<FormInstance>()
 const form = reactive({
   name: '',
@@ -588,25 +589,30 @@ async function handleDeleteThread(project: Project, thread: ThreadSummary): Prom
 }
 
 async function handleCreate(): Promise<void> {
-  if (!formRef.value) return
+  if (!formRef.value || creating.value) return
+  creating.value = true
 
   try {
-    await formRef.value.validate()
-  } catch {
-    ElMessage.warning('请填写必填项')
-    return
-  }
+    try {
+      await formRef.value.validate()
+    } catch {
+      ElMessage.warning('请填写必填项')
+      return
+    }
 
-  try {
-    await projectStore.createProject({
-      name: form.name.trim(),
-      path: form.path.trim(),
-      description: form.description.trim() || undefined,
-    })
+    try {
+      await projectStore.createProject({
+        name: form.name.trim(),
+        path: form.path.trim(),
+        description: form.description.trim() || undefined,
+      })
 
-    dialogVisible.value = false
-  } catch (err: any) {
-    ElMessage.error(err.response?.data?.detail || err.message || '创建项目失败')
+      dialogVisible.value = false
+    } catch (err: any) {
+      ElMessage.error(err.response?.data?.detail || err.message || '创建项目失败')
+    }
+  } finally {
+    creating.value = false
   }
 }
 

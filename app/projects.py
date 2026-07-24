@@ -130,6 +130,22 @@ class ProjectStore:
 
     def create_project(self, name: str, path: str, description: str = "") -> Dict[str, Any]:
         project_path = Path(path).resolve()
+
+        # 先查重再产生任何副作用（建目录、写文件），避免失败的创建留下痕迹，
+        # 也给出明确的冲突原因（查重与 INSERT 之间的竞态仍由 UNIQUE 约束兜底）。
+        conn = self._connect()
+        try:
+            row = conn.execute(
+                "SELECT name, path FROM projects WHERE name = ? OR path = ?",
+                (name, str(project_path)),
+            ).fetchone()
+        finally:
+            conn.close()
+        if row is not None:
+            if row[1] == str(project_path):
+                raise ValueError(f"项目路径已被项目“{row[0]}”使用: {project_path}")
+            raise ValueError(f"项目名已存在: {name}")
+
         if not project_path.exists():
             project_path.mkdir(parents=True, exist_ok=True)
         if not project_path.is_dir():
@@ -168,14 +184,19 @@ class ProjectStore:
                 "analysis_model": "logistic",
             },
         }
-        with open(project_yaml_path, "w", encoding="utf-8") as f:
-            yaml.safe_dump(project_data, f, allow_unicode=True, sort_keys=False)
+        try:
+            with open(project_yaml_path, "w", encoding="utf-8") as f:
+                yaml.safe_dump(project_data, f, allow_unicode=True, sort_keys=False)
 
-        if DEFAULT_PARAMS_TEMPLATE.exists():
-            shutil.copy(DEFAULT_PARAMS_TEMPLATE, params_yaml_path)
-        else:
-            with open(params_yaml_path, "w", encoding="utf-8") as f:
-                yaml.safe_dump({}, f)
+            if DEFAULT_PARAMS_TEMPLATE.exists():
+                shutil.copy(DEFAULT_PARAMS_TEMPLATE, params_yaml_path)
+            else:
+                with open(params_yaml_path, "w", encoding="utf-8") as f:
+                    yaml.safe_dump({}, f)
+        except Exception:
+            # 文件写失败时回滚已提交的 DB 行，避免"报错但项目实际已创建"。
+            self.delete_project(project_id)
+            raise
 
         return {
             "id": project_id,
