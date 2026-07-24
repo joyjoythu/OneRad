@@ -86,3 +86,35 @@ def scan_dicom_series(root: Union[str, Path]) -> List[SeriesInfo]:
             ))
     found.sort(key=lambda s: (s.directory, s.series_id))
     return found
+
+
+def convert_dicom_tree(input_root: Union[str, Path],
+                       output_root: Union[str, Path]) -> dict:
+    """把 input_root 下所有 DICOM 序列转换为 .nii.gz，输出镜像输入相对结构。
+
+    单个序列失败只记录错误不中断；已存在的输出文件直接覆盖。
+    返回 {"total": n, "converted": [relpath...], "failed": [{...}]}。
+    """
+    input_root = Path(input_root)
+    output_root = Path(output_root)
+    series = scan_dicom_series(input_root)
+    converted: List[str] = []
+    failed: List[dict] = []
+    reader = sitk.ImageSeriesReader()
+    for info in series:
+        src_dir = input_root if info.directory == "." else input_root / info.directory
+        out_path = output_root / info.output_relpath
+        try:
+            file_names = reader.GetGDCMSeriesFileNames(str(src_dir), info.series_id)
+            reader.SetFileNames(file_names)
+            image = reader.Execute()
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            sitk.WriteImage(image, str(out_path))
+            converted.append(info.output_relpath)
+        except Exception as exc:
+            failed.append({
+                "series_id": info.series_id,
+                "directory": info.directory,
+                "error": str(exc),
+            })
+    return {"total": len(series), "converted": converted, "failed": failed}

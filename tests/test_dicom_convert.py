@@ -4,7 +4,7 @@ from pathlib import Path
 
 import SimpleITK as sitk
 
-from app.dicom_convert import scan_dicom_series
+from app.dicom_convert import scan_dicom_series, convert_dicom_tree
 
 
 def _write_dicom_series(dir_path: Path, series_uid: str, description: str = "",
@@ -82,3 +82,61 @@ def test_scan_duplicate_descriptions_get_unique_names(tmp_path):
 def test_scan_empty_directory_returns_empty(tmp_path):
     (tmp_path / "empty").mkdir()
     assert scan_dicom_series(tmp_path) == []
+
+
+def test_convert_flat_directory(tmp_path):
+    _write_dicom_series(tmp_path / "dcm", "1.2.3.4.100", "T1", n_slices=3)
+    out = tmp_path / "out"
+    summary = convert_dicom_tree(tmp_path / "dcm", out)
+    assert summary["total"] == 1
+    assert summary["failed"] == []
+    assert summary["converted"] == ["dcm_T1.nii.gz"]
+    img = sitk.ReadImage(str(out / "dcm_T1.nii.gz"))
+    assert img.GetSize() == (8, 8, 3)
+
+
+def test_convert_nested_mirrors_structure(tmp_path):
+    _write_dicom_series(tmp_path / "patient01" / "seq", "1.2.3.4.100", "T2")
+    out = tmp_path / "out"
+    summary = convert_dicom_tree(tmp_path, out)
+    assert summary["total"] == 1
+    assert summary["converted"] == [str(Path("patient01/seq/seq_T2.nii.gz"))]
+    assert (out / "patient01" / "seq" / "seq_T2.nii.gz").exists()
+
+
+def test_convert_multi_series_produces_one_file_each(tmp_path):
+    d = tmp_path / "seq"
+    _write_dicom_series(d, "1.2.3.4.100", "T1", n_slices=2)
+    _write_dicom_series(d, "1.2.3.4.200", "T2", n_slices=5)
+    out = tmp_path / "out"
+    summary = convert_dicom_tree(d, out)
+    assert summary["total"] == 2
+    assert summary["failed"] == []
+    assert (out / "seq_T1.nii.gz").exists()
+    assert (out / "seq_T2.nii.gz").exists()
+
+
+def test_convert_no_dicom_returns_empty_summary(tmp_path):
+    (tmp_path / "empty").mkdir()
+    summary = convert_dicom_tree(tmp_path, tmp_path / "out")
+    assert summary == {"total": 0, "converted": [], "failed": []}
+
+
+def test_convert_single_series_failure_does_not_abort(tmp_path, monkeypatch):
+    _write_dicom_series(tmp_path / "bad", "1.2.3.4.100", "T1", n_slices=2)
+    _write_dicom_series(tmp_path / "good", "1.2.3.4.200", "T2", n_slices=2)
+    real_execute = sitk.ImageSeriesReader.Execute
+
+    def flaky_execute(self):
+        names = self.GetFileNames()
+        if names and Path(names[0]).parent.name == "bad":
+            raise RuntimeError("boom")
+        return real_execute(self)
+
+    monkeypatch.setattr(sitk.ImageSeriesReader, "Execute", flaky_execute)
+    summary = convert_dicom_tree(tmp_path, tmp_path / "out")
+    assert summary["total"] == 2
+    assert summary["converted"] == [str(Path("good/good_T2.nii.gz"))]
+    assert len(summary["failed"]) == 1
+    assert summary["failed"][0]["directory"] == "bad"
+    assert "boom" in summary["failed"][0]["error"]
