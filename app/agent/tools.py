@@ -157,6 +157,45 @@ def build_tools(
         )
 
     @tool
+    def convert_dicom_to_nifti(input_dir: str, output_dir: str) -> str:
+        """递归扫描 input_dir 下的 DICOM（.dcm）序列并转换为 .nii.gz，
+        输出到 output_dir 并镜像输入的相对目录结构。支持任意文件夹结构
+        （扁平/多层嵌套/混合）；同一目录的多个序列各转换为一个独立文件，
+        文件名形如 <目录名>_<序列描述>.nii.gz。输入数据是 DICOM 时应在
+        配对发现（discover_radiomics_pairs）之前先调用本工具完成转换。
+        执行前需要用户确认。"""
+        from app.dicom_convert import scan_dicom_series
+        try:
+            in_root = sandbox.resolve(input_dir, must_exist=True)
+            out_root = sandbox.resolve(output_dir, must_exist=False)
+        except FileNotFoundError:
+            return json.dumps(
+                {"success": False, "error": f"输入目录不存在: {input_dir}"},
+                ensure_ascii=False)
+        except ValueError:
+            return json.dumps(
+                {"success": False, "error": "路径超出项目目录"},
+                ensure_ascii=False)
+        if not in_root.is_dir():
+            return json.dumps(
+                {"success": False, "error": f"输入路径不是目录: {input_dir}"},
+                ensure_ascii=False)
+        series = scan_dicom_series(in_root)
+        if not series:
+            return json.dumps(
+                {"success": False, "error": f"未在 {input_dir} 下找到 DICOM 序列"},
+                ensure_ascii=False)
+        # args 保留原始相对路径；nodes.py 侧执行时会再 resolve 一次（幂等安全）
+        return json.dumps({
+            "_pending_tool": "convert_dicom_to_nifti",
+            "args": {"input_dir": input_dir, "output_dir": output_dir},
+            "meta": {
+                "n_series": len(series),
+                "series": [s.to_dict() for s in series[:50]],
+            },
+        }, ensure_ascii=False)
+
+    @tool
     def extract_radiomics_features(pairs: List[Dict[str, str]], yaml_path: str = "",
                                    force_rerun: bool = False) -> str:
         """根据 image/mask 配对批量提取影像组学特征。执行前需要用户确认。
@@ -408,6 +447,7 @@ def build_tools(
         tools["reformat_report"] = reformat_report
         tools["update_todo_list"] = update_todo_list
         tools["ask_user_choice"] = ask_user_choice
+        tools["convert_dicom_to_nifti"] = convert_dicom_to_nifti
 
     if allow_subagent and not readonly:
         @tool

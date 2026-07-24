@@ -140,3 +140,35 @@ def test_convert_single_series_failure_does_not_abort(tmp_path, monkeypatch):
     assert len(summary["failed"]) == 1
     assert summary["failed"][0]["directory"] == "bad"
     assert "boom" in summary["failed"][0]["error"]
+
+
+def test_agent_tool_returns_pending_with_series_summary(tmp_path):
+    from app.agent.tools import build_tools
+    _write_dicom_series(tmp_path / "dcm", "1.2.3.4.100", "T1", n_slices=3)
+    tools = build_tools(str(tmp_path), llm=None)
+    result = json.loads(tools["convert_dicom_to_nifti"].invoke(
+        {"input_dir": "dcm", "output_dir": "nii"}))
+    assert result["_pending_tool"] == "convert_dicom_to_nifti"
+    assert result["args"] == {"input_dir": "dcm", "output_dir": "nii"}
+    assert result["meta"]["n_series"] == 1
+    assert result["meta"]["series"][0]["description"] == "T1"
+    assert result["meta"]["series"][0]["num_slices"] == 3
+
+
+def test_agent_tool_rejects_sandbox_escape(tmp_path):
+    from app.agent.tools import build_tools
+    tools = build_tools(str(tmp_path), llm=None)
+    result = json.loads(tools["convert_dicom_to_nifti"].invoke(
+        {"input_dir": "../outside", "output_dir": "nii"}))
+    assert result["success"] is False
+    assert "路径超出项目目录" in result["error"]
+
+
+def test_agent_tool_no_dicom_returns_error_without_pending(tmp_path):
+    from app.agent.tools import build_tools
+    (tmp_path / "empty").mkdir()
+    tools = build_tools(str(tmp_path), llm=None)
+    result = json.loads(tools["convert_dicom_to_nifti"].invoke(
+        {"input_dir": "empty", "output_dir": "nii"}))
+    assert result["success"] is False
+    assert "_pending_tool" not in result
