@@ -196,3 +196,30 @@ def test_run_system_command_missing_args(tmp_path):
         str(tmp_path),
     )
     assert "missing required argument" in result["error"]
+
+
+def test_convert_reports_progress_per_series(tmp_path):
+    _write_dicom_series(tmp_path / "seq", "1.2.3.4.100", "T1", n_slices=2)
+    _write_dicom_series(tmp_path / "seq", "1.2.3.4.200", "T2", n_slices=2)
+    events = []
+    summary = convert_dicom_tree(
+        tmp_path / "seq", tmp_path / "out", progress_callback=events.append)
+    assert summary["total"] == 2
+    assert events[0] == {"stage": "converting", "current": 0, "total": 2}
+    assert [e["current"] for e in events] == [0, 1, 2]
+    assert all(e["stage"] == "converting" and e["total"] == 2 for e in events)
+    assert events[1]["patient_id"].endswith(".nii.gz")
+    assert events[2]["patient_id"].endswith(".nii.gz")
+
+
+def test_convert_progress_callback_exception_does_not_abort(tmp_path):
+    _write_dicom_series(tmp_path / "seq", "1.2.3.4.100", "T1", n_slices=2)
+
+    def boom(_payload):
+        raise RuntimeError("callback failed")
+
+    summary = convert_dicom_tree(
+        tmp_path / "seq", tmp_path / "out", progress_callback=boom)
+    assert summary["total"] == 1
+    assert summary["failed"] == []
+    assert (tmp_path / "out" / "seq_T1.nii.gz").exists()

@@ -3,6 +3,7 @@
 递归识别任意文件夹结构：任何含 .dcm 的目录视为转换单元，
 同一目录内按 SeriesInstanceUID 分组，每个序列各输出一个 .nii.gz。
 """
+import logging
 import os
 import re
 from dataclasses import dataclass, asdict
@@ -10,6 +11,8 @@ from pathlib import Path
 from typing import List, Union
 
 import SimpleITK as sitk
+
+logger = logging.getLogger(__name__)
 
 _INVALID_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 _WHITESPACE = re.compile(r"\s+")
@@ -89,21 +92,43 @@ def scan_dicom_series(root: Union[str, Path]) -> List[SeriesInfo]:
 
 
 def convert_dicom_tree(input_root: Union[str, Path],
-                       output_root: Union[str, Path]) -> dict:
+                       output_root: Union[str, Path],
+                       progress_callback=None) -> dict:
     """把 input_root 下所有 DICOM 序列转换为 .nii.gz，输出镜像输入相对结构。
 
     单个序列失败只记录错误不中断；已存在的输出文件直接覆盖。
+    progress_callback 可选，扫描完成后收到
+    {"stage": "converting", "current": 0, "total": N}，之后每开始转换一个
+    序列收到 {"stage": "converting", "current": i, "total": N,
+    "patient_id": 输出文件名}；回调异常不中断转换。
     返回 {"total": n, "converted": [relpath...], "failed": [{...}]}。
     """
     input_root = Path(input_root)
     output_root = Path(output_root)
+
+    def report(payload: dict) -> None:
+        """向调用方上报进度；回调异常不应中断转换。"""
+        if progress_callback is None:
+            return
+        try:
+            progress_callback(payload)
+        except Exception:
+            logger.debug("progress_callback 调用失败", exc_info=True)
+
     series = scan_dicom_series(input_root)
+    report({"stage": "converting", "current": 0, "total": len(series)})
     converted: List[str] = []
     failed: List[dict] = []
     reader = sitk.ImageSeriesReader()
-    for info in series:
+    for idx, info in enumerate(series, start=1):
         src_dir = input_root if info.directory == "." else input_root / info.directory
         out_path = output_root / info.output_relpath
+        report({
+            "stage": "converting",
+            "current": idx,
+            "total": len(series),
+            "patient_id": Path(info.output_relpath).name,
+        })
         try:
             file_names = reader.GetGDCMSeriesFileNames(str(src_dir), info.series_id)
             reader.SetFileNames(file_names)
