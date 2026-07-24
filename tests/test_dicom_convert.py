@@ -116,6 +116,23 @@ def test_convert_multi_series_produces_one_file_each(tmp_path):
     assert (out / "seq_T2.nii.gz").exists()
 
 
+def test_convert_skips_existing_output_for_resume(tmp_path, monkeypatch):
+    _write_dicom_series(tmp_path / "dcm", "1.2.3.4.100", "T1", n_slices=2)
+    out = tmp_path / "out"
+    existing = out / "dcm_T1.nii.gz"
+    existing.parent.mkdir(parents=True)
+    existing.write_bytes(b"already converted")
+
+    def fail_execute(self):
+        raise AssertionError("已存在的输出不应重新转换")
+
+    monkeypatch.setattr(sitk.ImageSeriesReader, "Execute", fail_execute)
+    summary = convert_dicom_tree(tmp_path / "dcm", out)
+    assert summary["failed"] == []
+    assert summary["converted"] == ["dcm_T1.nii.gz"]
+    assert existing.read_bytes() == b"already converted"
+
+
 def test_convert_no_dicom_returns_empty_summary(tmp_path):
     (tmp_path / "empty").mkdir()
     summary = convert_dicom_tree(tmp_path, tmp_path / "out")

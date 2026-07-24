@@ -96,7 +96,7 @@ def convert_dicom_tree(input_root: Union[str, Path],
                        progress_callback=None) -> dict:
     """把 input_root 下所有 DICOM 序列转换为 .nii.gz，输出镜像输入相对结构。
 
-    单个序列失败只记录错误不中断；已存在的输出文件直接覆盖。
+    单个序列失败只记录错误不中断；已存在的输出文件直接跳过（断点续转）。
     progress_callback 可选，扫描完成后收到
     {"stage": "converting", "current": 0, "total": N}，之后每开始转换一个
     序列收到 {"stage": "converting", "current": i, "total": N,
@@ -129,6 +129,10 @@ def convert_dicom_tree(input_root: Union[str, Path],
             "total": len(series),
             "patient_id": Path(info.output_relpath).name,
         })
+        if out_path.exists():
+            # 断点续转：已有输出的序列视为已完成，直接跳过
+            converted.append(info.output_relpath)
+            continue
         try:
             file_names = reader.GetGDCMSeriesFileNames(str(src_dir), info.series_id)
             reader.SetFileNames(file_names)
