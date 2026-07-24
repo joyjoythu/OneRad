@@ -331,6 +331,7 @@ import {
   Delete,
   Document,
   Download,
+  Files,
   Loading,
   Odometer,
   Operation,
@@ -424,6 +425,14 @@ const QUICK_ACTIONS = [
     divided: true,
     prompt:
       '请基于当前项目配置重新执行完整分析。先检查项目现有产出物状态，然后说明将复用哪些数据与参数、会覆盖或新生成哪些结果，随后按完整工作流逐步执行。',
+  },
+  {
+    command: 'convert-dicom',
+    label: '格式转换',
+    icon: Files,
+    divided: true,
+    prompt:
+      '请扫描当前项目目录，找到其中的 DICOM 数据（.dcm 文件），将其全部转换为 NIfTI（.nii.gz）格式。输出目录请根据项目结构合理选择（如在原数据旁新建 nifti 目录），转换前先告诉我你找到的输入目录和计划的输出目录。',
   },
   {
     command: 'export-md',

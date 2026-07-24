@@ -181,6 +181,24 @@ describe('AgentChat', () => {
     )
   })
 
+  it('fills the input with the dicom conversion quick action prompt', async () => {
+    const projectStore = useProjectStore()
+    projectStore.currentProject = mockProject()
+
+    const wrapper = setupWrapper()
+    await flushPromises()
+
+    const dropdown = wrapper.findComponent(ElDropdown)
+    expect(dropdown.exists()).toBe(true)
+    dropdown.vm.$emit('command', 'convert-dicom')
+    await flushPromises()
+
+    expect(wrapper.emitted('send-message')).toBeUndefined()
+    const value = (wrapper.find('textarea').element as HTMLTextAreaElement).value
+    expect(value).toContain('DICOM')
+    expect(value).toContain('nii.gz')
+  })
+
   it('confirms before clearing the current task and keeps history untouched', async () => {
     const projectStore = useProjectStore()
     projectStore.currentProject = mockProject()
