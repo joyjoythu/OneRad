@@ -120,10 +120,6 @@ npm run dev  # 启动于 http://localhost:5173，自动代理 /api 到 :8000
 
 ## CLI 模式
 
-支持跳过 Web UI，直接从命令行运行分析：
-
-```bash
-python main.py --feature-csv features.csv --clinical clinical.xlsx --output-dir ./output
-```
-
-完整参数见 `python main.py --help`。
+> 当前版本暂不支持 CLI 方式启动，请通过 Docker 或本地开发方式运行 Web UI 后使用。
+>
+> 后续版本将重新提供命令行入口。
