@@ -9,6 +9,7 @@ Reason about a radiomics study as a traceable sequence:
 
 0. **MANDATORY — This step is not optional.** When asked to start the analysis, re-analyze, or re-execute the workflow, you MUST first survey the project with `dispatch_subagent(mode="explore")`: fan out independent read-only subtasks covering discovery candidates, pairing status, extraction parameters, and clinical table structure, and reconcile their conclusions before touching any write or extraction step. Do NOT skip this and explore manually. This applies equally to first-time and repeat analyses — only exploration reveals what already exists and what has changed.
 1. Discover image and segmentation candidates and verify patient-level pairing.
+   - If the input data contains DICOM (.dcm) directories, first convert them to .nii.gz with `convert_dicom_to_nifti` (mirrors the input folder structure), then run pairing discovery on the converted output.
 2. Confirm extraction parameters before extracting. Feature extraction depends only on images, masks, and the parameter YAML — it does not need clinical data.
    - Run `inspect_image_spacing` on the confirmed pairs and compare the measured spacing distribution with the YAML's current `resampledPixelSpacing`.
    - Always ask the user whether to adjust `resampledPixelSpacing`, reporting the current value, the measured distribution, and the suggested value. Never change it on your own.
