@@ -487,6 +487,8 @@ describe('AgentChat', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('正在转换 DICOM → NIfTI (2/5)：dcm_T1.nii.gz')
+    expect(wrapper.find('.el-progress').exists()).toBe(true)
+    expect(wrapper.find('.el-progress__text').text()).toContain('40%')
   })
 
   it('does not render the progress strip when not extracting', async () => {
