@@ -43,7 +43,7 @@ export default defineConfig({
           { text: '@ 文件索引', link: '/features/file-index' },
           { text: '项目记忆', link: '/features/project-memory' },
           { text: '断点续提', link: '/features/resume' },
-          { text: 'Word 报告生成', link: '/features/word-report' },
+          { text: 'Word 统计报告', link: '/features/word-report' },
         ],
       },
       {
